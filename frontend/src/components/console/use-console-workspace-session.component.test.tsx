@@ -29,6 +29,21 @@ function props(overrides: Partial<Props> = {}): Props {
 }
 
 describe("useConsoleWorkspaceSession", () => {
+  it("does not attach an empty-session placeholder without an ID", () => {
+    const attachConsoleSession = vi.fn();
+    renderHook(() =>
+      useConsoleWorkspaceSession(
+        props({
+          attachConsoleSession,
+          selectedRuntimeTarget: { id: 4 },
+          selectedTargetUsesLiveConsole: true,
+          runtimeSelectedSession: { transcript: "", status: "idle", error: null },
+        }),
+      ),
+    );
+    expect(attachConsoleSession).not.toHaveBeenCalled();
+  });
+
   it("keeps structured session state isolated by target", () => {
     const initial = props();
     const { result, rerender } = renderHook((value) => useConsoleWorkspaceSession(value), { initialProps: initial });

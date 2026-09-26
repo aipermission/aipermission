@@ -24,15 +24,21 @@ type SelectionTarget = ConsoleNavigationTarget & {
   project_slug?: string;
 };
 type Message = Pick<RuntimeMessage, "direction" | "consumed_at" | "runtime_id">;
-type Props<Target> = {
-  messages: { data: Message[] };
+type Props<Target, MessageItem extends Message> = {
+  messages: { data: MessageItem[] };
   pendingApprovals: readonly Pick<ConnectorApproval, "target_ref">[];
   selectedTargetRef: string;
   setSearchParams: (_params: { target: string }, _options?: { replace: boolean }) => void;
   targets: { data: Target[] } | null;
 };
 
-export function useConsoleTargetSelection<Target extends SelectionTarget>({ messages, pendingApprovals, selectedTargetRef, setSearchParams, targets }: Props<Target>) {
+export function useConsoleTargetSelection<Target extends SelectionTarget, MessageItem extends Message = Message>({
+  messages,
+  pendingApprovals,
+  selectedTargetRef,
+  setSearchParams,
+  targets,
+}: Props<Target, MessageItem>) {
   const [profileByTarget, setProfileByTarget] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});

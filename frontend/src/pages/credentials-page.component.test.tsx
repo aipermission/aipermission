@@ -34,8 +34,8 @@ beforeEach(() => {
 it("loads the generic credential inventories and shows the empty state", async () => {
   render(<CredentialsPage />);
   expect(await screen.findByText("Create your first connector credential.")).toBeVisible();
-  expect(apiGet).toHaveBeenCalledWith("/api/connectors");
-  expect(apiGet).toHaveBeenCalledWith("/api/connector-targets/inventory");
+  expect(apiGet).toHaveBeenCalledWith("/api/connectors", { signal: expect.any(AbortSignal) });
+  expect(apiGet).toHaveBeenCalledWith("/api/connector-targets/inventory", { signal: expect.any(AbortSignal) });
 });
 
 it("disables credential fields and mode changes while a save is pending", () => {

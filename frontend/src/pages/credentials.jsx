@@ -1,6 +1,5 @@
 import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { apiGet } from "../lib/api";
+import { useMemo, useState } from "react";
 import { useGateway } from "../lib/gateway-context";
 import { Badge } from "../components/ui/badge";
 import { ActionMenu } from "../components/ui/action-menu";
@@ -12,6 +11,7 @@ import { ConnectorIcon, connectorKindLabel, connectorSummary } from "../connecto
 import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { ConnectorTemplateNotFound, getConnectorModel, getConnectorTemplate } from "../connectors/templates/registry";
 import { useCredentialProfileEditor } from "../connectors/editor/use-credential-profile-editor";
+import { useCredentialInventory } from "../connectors/editor/use-credential-inventory";
 
 function emptyCredentialState(kind, options = {}) {
   return getConnectorModel(kind)?.emptyCredentialState?.(options) || {};
@@ -19,8 +19,7 @@ function emptyCredentialState(kind, options = {}) {
 
 export function CredentialsPage() {
   const { credentials, loadCredentials } = useGateway();
-  const [connectorCatalog, setConnectorCatalog] = useState({ state: "loading", data: [], error: null });
-  const [connectorTargets, setConnectorTargets] = useState({ state: "loading", data: [], error: null });
+  const { catalog: connectorCatalog, targets: connectorTargets, refresh: refreshInventory } = useCredentialInventory();
   const availableConnectorKinds = useMemo(() => {
     const backendKinds = new Set((connectorCatalog.data || []).map((item) => item.kind));
     if (backendKinds.size === 0) return [];
@@ -60,38 +59,8 @@ export function CredentialsPage() {
       onSubmit: editor.save,
     }) || {};
 
-  useEffect(() => {
-    void loadConnectorCatalog();
-    void loadConnectorTargets();
-  }, []);
-
-  async function loadConnectorCatalog() {
-    setConnectorCatalog((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/connectors");
-      setConnectorCatalog({ state: "ready", data: data.items || [], error: null });
-      return data.items || [];
-    } catch (error) {
-      setConnectorCatalog({ state: "error", data: [], error: error.message });
-      return [];
-    }
-  }
-
-  async function loadConnectorTargets() {
-    setConnectorTargets((current) => ({ ...current, state: "loading", error: null }));
-    try {
-      const data = await apiGet("/api/connector-targets/inventory");
-      const items = data.items || [];
-      setConnectorTargets({ state: "ready", data: items, error: null });
-      return items;
-    } catch (error) {
-      setConnectorTargets({ state: "error", data: [], error: error.message });
-      return [];
-    }
-  }
-
   async function refreshCredentials() {
-    await Promise.all([loadCredentials(), loadConnectorCatalog(), loadConnectorTargets()]);
+    await Promise.all([loadCredentials(), refreshInventory()]);
   }
 
   function openCredentialEditor(row) {

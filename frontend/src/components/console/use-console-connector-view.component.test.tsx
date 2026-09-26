@@ -34,6 +34,11 @@ describe("useConsoleConnectorView", () => {
     act(() => {
       expect(result.current.openOperation({ open: false, connector_kind: "example" })).toBe(false);
       expect(result.current.openOperation({ open: true })).toBe(false);
+      expect(result.current.openOperation([])).toBe(false);
+      expect(result.current.openOperation("invalid")).toBe(false);
+      expect(result.current.openOperation({ open: true, connector_kind: "example", type: {} })).toBe(false);
+      expect(result.current.openOperation({ open: true, connector_kind: "example", state: 4 })).toBe(false);
+      expect(result.current.openOperation({ open: true, connector_kind: "example", error: [] })).toBe(false);
       result.current.openActivity();
     });
     expect(result.current.operation.open).toBe(false);
@@ -41,5 +46,18 @@ describe("useConsoleConnectorView", () => {
 
     act(() => result.current.closeActivity());
     expect(result.current.activityOpen).toBe(false);
+  });
+
+  it("preserves opaque connector payloads and functional operation updates", () => {
+    const { result } = renderView();
+    const ownedPayload = { target_id: 3, action: "inspect" };
+    act(() => {
+      expect(result.current.openOperation({ open: true, connector_kind: "example", type: "manage", payload: ownedPayload })).toBe(true);
+    });
+    expect(result.current.operation.payload).toBe(ownedPayload);
+    act(() => result.current.setOperation((current) => ({ ...current, open: false })));
+    expect(result.current.OperationTemplate).toBe(Operations);
+    expect(result.current.operation.open).toBe(false);
+    expect(result.current.operation.payload).toBe(ownedPayload);
   });
 });

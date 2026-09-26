@@ -1,39 +1,23 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./editor-support";
+import type {
+  ConnectorEditorForm,
+  ConnectorEditorFormIdentity,
+  ConnectorEditorOperation,
+  ConnectorEditorProps,
+  ConnectorEditorTarget,
+} from "./connector-editor-controller-types";
 
-type ConnectorForm = { connector_kind: string; project_id?: string | number; [field: string]: unknown };
-type Target = {
-  id: number;
-  connector_kind: string;
-  project_id?: string | number;
-  profiles?: readonly unknown[];
-  [field: string]: unknown;
-};
-type Operation = { open?: boolean; connector_kind?: string; kind?: string; [field: string]: unknown };
-type Model = {
-  syncForm?: (_context: { form: ConnectorForm; firstCredentialID: string | number | null }) => ConnectorForm | null;
-  formFromTarget?: (_context: { target: Target; profile: Record<string, unknown> | null | undefined }) => ConnectorForm;
-  save?: (_context: { mode: "create" | "edit"; form: ConnectorForm; target: Target | null }) => void | Promise<unknown>;
-  operationFromError?: (
-    _error: unknown,
-    _context: { mode: "create" | "edit"; form: ConnectorForm; target: Target | null },
-  ) => Operation | null;
-  deleteTarget?: (_context: { target: Target; removeKey: boolean }) => void | Promise<unknown>;
-};
-type Props = {
-  defaultKind: string;
-  firstCredentialID: string | number | null;
-  defaultProjectID: string | number;
-  emptyFormForKind: (_kind: string, _context?: { firstCredentialID: string | number | null }) => ConnectorForm;
-  modelForKind: (_kind: string) => Model | null;
-  onRefresh?: () => void | Promise<void>;
-  onOperation?: (_operation: Operation) => boolean | void;
-};
-type Drawer = { open: boolean; mode: "create" | "edit"; kind: string; target: Target | null };
-type DeleteDialog = { open: boolean; target: Target | null };
+type Drawer<Target> = { open: boolean; mode: "create" | "edit"; kind: string; target: Target | null };
+type DeleteDialog<Target> = { open: boolean; target: Target | null };
 
-export function useConnectorEditor({
+export function useConnectorEditor<
+  Form extends ConnectorEditorFormIdentity = ConnectorEditorForm,
+  Target extends ConnectorEditorTarget = ConnectorEditorTarget,
+  Profile extends object = Record<string, unknown>,
+  Operation extends ConnectorEditorOperation = ConnectorEditorOperation,
+>({
   defaultKind,
   firstCredentialID,
   defaultProjectID,
@@ -41,11 +25,11 @@ export function useConnectorEditor({
   modelForKind,
   onRefresh,
   onOperation,
-}: Props) {
-  const [drawer, setDrawer] = useState<Drawer>({ open: false, mode: "create", kind: defaultKind, target: null });
-  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog>({ open: false, target: null });
-  const deleteOwnerRef = useRef<{ generation: number; targetID: number | null }>({ generation: 0, targetID: null });
-  const [form, setForm] = useState<ConnectorForm>(() => emptyFormForKind(defaultKind));
+}: ConnectorEditorProps<Form, Target, Profile, Operation>) {
+  const [drawer, setDrawer] = useState<Drawer<Target>>({ open: false, mode: "create", kind: defaultKind, target: null });
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialog<Target>>({ open: false, target: null });
+  const deleteOwnerRef = useRef<{ generation: number; targetID: string | number | null }>({ generation: 0, targetID: null });
+  const [form, setForm] = useState<Form>(() => emptyFormForKind(defaultKind));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
   const pendingSaveRef = useRef<symbol | null>(null);
   const editorEpochRef = useRef(0);
@@ -71,7 +55,7 @@ export function useConnectorEditor({
     setDrawer({ open: true, mode: "create", kind, target: null });
   }
 
-  function openEdit(target: Target, profile: Record<string, unknown> | null | undefined) {
+  function openEdit(target: Target, profile: Profile | null | undefined) {
     const model = modelForKind(target.connector_kind);
     if (!model?.formFromTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(target.connector_kind), message: null });
@@ -105,7 +89,7 @@ export function useConnectorEditor({
     setDrawer((current) => ({ ...current, kind }));
   }
 
-  function updateField(field: string, value: unknown) {
+  function updateField<Field extends keyof Form>(field: Field, value: Form[Field]) {
     if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     setForm((current) => ({ ...current, [field]: value }));
   }

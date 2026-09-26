@@ -1,37 +1,9 @@
 import { Notice } from "../../components/ui/notice";
-import { allowedConnectorIcons, connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
-import { assertNetworkTransportMetadata, uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
-import { usesStandardTargetProfileLifecycle } from "./_shared/target-profile-lifecycle";
+import { connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
+import { uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
+import { assertConnectorTemplate, connectorKindFromPath } from "./template-registration";
 
 const templateModules = import.meta.glob("./*/index.ts", { eager: true });
-
-const requiredModelFunctions = Object.freeze([
-  "activeCredential",
-  "canDelete",
-  "canEdit",
-  "credentialFormProps",
-  "credentialHint",
-  "credentialRows",
-  "credentialStateFromRow",
-  "deleteCredential",
-  "deleteDialog",
-  "deleteTarget",
-  "emptyCredentialState",
-  "emptyForm",
-  "formFromTarget",
-  "save",
-  "saveCredential",
-  "submitDisabled",
-  "submitLabel",
-  "syncForm",
-  "targetDisplayName",
-  "targetEndpoint",
-  "targetProfileLabel",
-  "targetSubtitle",
-  "test",
-  "recoverableRunningActions",
-  "usesLiveConsole",
-]);
 
 export const connectorTemplates = Object.freeze(
   Object.fromEntries(
@@ -85,49 +57,4 @@ function assertConnectorTemplateRegistration() {
     assertConnectorTemplate(kind, connectorTemplates[kind]);
   }
   uniqueNetworkTransportDescriptors(Object.entries(connectorTemplateMetadata));
-}
-
-function assertConnectorTemplate(kind, template) {
-  if (!template?.metadata) {
-    throw new Error(`Connector template ${kind} is missing metadata`);
-  }
-  if (template.metadata.kind !== kind) {
-    throw new Error(`Connector template ${kind} metadata kind must be ${kind}`);
-  }
-  for (const field of ["label", "summary", "version"]) {
-    if (!String(template.metadata[field] || "").trim()) {
-      throw new Error(`Connector template ${kind} metadata is missing ${field}`);
-    }
-  }
-  if (!allowedConnectorIcons.includes(template.metadata.icon || "")) {
-    throw new Error(`Connector template ${kind} metadata icon must be one of: ${allowedConnectorIcons.join(", ")}`);
-  }
-  if (!["standard", "custom"].includes(template.metadata.profile_lifecycle)) {
-    throw new Error(`Connector template ${kind} metadata profile_lifecycle must be standard or custom`);
-  }
-  assertNetworkTransportMetadata(kind, template.metadata.network_transport);
-  for (const slot of ["Console", "CredentialForm", "Form", "RowActions"]) {
-    if (typeof template[slot] !== "function") {
-      throw new Error(`Connector template ${kind} is missing ${slot} slot`);
-    }
-  }
-  if (!template.model || typeof template.model !== "object") {
-    throw new Error(`Connector template ${kind} is missing model exports`);
-  }
-  for (const fn of requiredModelFunctions) {
-    if (typeof template.model[fn] !== "function") {
-      throw new Error(`Connector template ${kind} model is missing ${fn}()`);
-    }
-  }
-  if (template.metadata.profile_lifecycle === "standard" && !usesStandardTargetProfileLifecycle(template.model)) {
-    throw new Error(`Connector template ${kind} standard profile lifecycle must use the shared executable contract`);
-  }
-}
-
-function connectorKindFromPath(path) {
-  const match = String(path).match(/^\.\/([^/]+)\/index\.ts$/);
-  if (!match) {
-    throw new Error(`Invalid connector template path: ${path}`);
-  }
-  return match[1];
 }
