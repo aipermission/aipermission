@@ -64,8 +64,8 @@ it("starts an inactive S3 console through the structured session control", async
   const onNewStructuredSession = vi.fn();
   render(
     <S3ConnectorConsoleTemplate
-      target={{ ref: "s3:1:1", name: "objects", config: { bucket: "test-bucket" } }}
-      approvals={{ data: [] }}
+      target={gatewayTargetFixture({ ref: "s3:1:1", connector_kind: "s3", name: "objects", config: { bucket: "test-bucket" } })}
+      approvals={{ state: "ready", data: [], error: null }}
       theme="dark"
       session={{ active: false, startedAt: "" }}
       onNewStructuredSession={onNewStructuredSession}

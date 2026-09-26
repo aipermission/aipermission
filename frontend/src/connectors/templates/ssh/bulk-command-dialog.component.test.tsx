@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet as realGet, apiPost as realPost } from "../../../lib/api";
 import { BulkCommandDialog } from "./bulk-command-dialog";
+import { SSHConnectorToolbarActionsTemplate } from "./console";
 
 vi.mock("../../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
 const apiGet = vi.mocked(realGet);
@@ -21,6 +22,32 @@ function deferred() {
 beforeEach(() => {
   apiGet.mockReset();
   apiPost.mockReset();
+});
+
+it("preserves real bulk dialog drafts through toolbar projections and resets them only for a new runtime", async () => {
+  const user = userEvent.setup();
+  const props = {
+    theme: "dark" as const,
+    selectedRuntimeTarget: target,
+    liveConsoleTargets: [target],
+    selectedSession: null,
+    selectedSessionLive: false,
+  };
+  const view = render(<SSHConnectorToolbarActionsTemplate {...props} />);
+  await user.click(screen.getByRole("button", { name: "Bulk" }));
+  await user.type(screen.getByRole("textbox", { name: "Command" }), "printf unchanged");
+  await user.type(screen.getByRole("textbox", { name: "Reason" }), "Keep this draft");
+  view.rerender(
+    <SSHConnectorToolbarActionsTemplate {...props} selectedRuntimeTarget={{ ...target }} liveConsoleTargets={[{ ...target }]} />,
+  );
+  expect(screen.getByRole("textbox", { name: "Command" })).toHaveValue("printf unchanged");
+  expect(screen.getByRole("textbox", { name: "Reason" })).toHaveValue("Keep this draft");
+  const next = { ...target, id: 8, name: "Other host" };
+  view.rerender(<SSHConnectorToolbarActionsTemplate {...props} selectedRuntimeTarget={next} liveConsoleTargets={[next]} />);
+  expect(screen.getByRole("textbox", { name: "Command" })).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "Reason" })).toHaveValue("");
+  expect(screen.getByRole("checkbox", { name: "Select Other host" })).toBeChecked();
+  expect(apiPost).not.toHaveBeenCalled();
 });
 
 it("submits the selected targets with the exact bulk command contract", async () => {

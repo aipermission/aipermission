@@ -6,6 +6,7 @@ import { BulkCommandDialog } from "./bulk-command-dialog";
 import { FileTransferDialog } from "../../../components/file-transfer/file-transfer-dialog";
 import type { ReactNode } from "react";
 import type { SSHToolbarProps } from "./console-types";
+import { sshConsoleRuntime } from "./console-runtime";
 
 export function SSHConnectorConsoleTemplate({ children }: { children?: ReactNode }) {
   return children;
@@ -13,7 +14,7 @@ export function SSHConnectorConsoleTemplate({ children }: { children?: ReactNode
 
 export function SSHConnectorToolbarActionsTemplate({
   theme,
-  selectedRuntimeTarget,
+  selectedRuntimeTarget: runtimeInput,
   selectedSession,
   selectedSessionLive,
   selectedUnreadMessages = [],
@@ -26,7 +27,11 @@ export function SSHConnectorToolbarActionsTemplate({
 }: SSHToolbarProps) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [filesOpen, setFilesOpen] = useState(false);
-  const sshTargets = liveConsoleTargets.filter((target) => target.connector_kind === "ssh");
+  const selectedRuntimeTarget = sshConsoleRuntime(runtimeInput);
+  const sshTargets = liveConsoleTargets.flatMap((target) => {
+    const runtime = sshConsoleRuntime(target);
+    return runtime ? [runtime] : [];
+  });
   const transferRuntimeID = selectedRuntimeTarget?.target?.transfer_runtime_id;
 
   const buttonClass = `h-9 border px-3 ${theme === "light" ? "border-stone-300 text-stone-800 hover:bg-stone-100" : "border-stone-600 text-stone-100 hover:bg-stone-700"}`;

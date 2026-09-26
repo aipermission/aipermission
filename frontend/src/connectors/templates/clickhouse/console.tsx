@@ -1,4 +1,5 @@
-import { SQLConnectorConsole, SQLConnectorToolbarActions } from "../_shared/sql-console";
+import { SQLConnectorToolbarActions } from "../_shared/sql-console";
+import { createSQLConsoleSlot } from "../_shared/sql-console-slot";
 import type { ComponentProps } from "react";
 import type { SQLConsoleConfigInput } from "../_shared/sql-console-config";
 
@@ -32,9 +33,7 @@ export const clickHouseConsoleConfig = {
     `SELECT *\nFROM ${quoteClickHouseIdentifier(table.schema)}.${quoteClickHouseIdentifier(table.table)}\nLIMIT ${maxRows};`,
 } satisfies SQLConsoleConfigInput;
 
-export function ClickHouseConnectorConsoleTemplate(props: Omit<ComponentProps<typeof SQLConnectorConsole>, "config">) {
-  return <SQLConnectorConsole {...props} config={clickHouseConsoleConfig} />;
-}
+export const ClickHouseConnectorConsoleTemplate = createSQLConsoleSlot(clickHouseConsoleConfig);
 
 export function ClickHouseConnectorToolbarActionsTemplate(props: Omit<ComponentProps<typeof SQLConnectorToolbarActions>, "label">) {
   return <SQLConnectorToolbarActions {...props} label="ClickHouse" />;

@@ -1,4 +1,5 @@
-import { SQLConnectorConsole, SQLConnectorToolbarActions } from "../_shared/sql-console";
+import { SQLConnectorToolbarActions } from "../_shared/sql-console";
+import { createSQLConsoleSlot } from "../_shared/sql-console-slot";
 import type { ComponentProps } from "react";
 import type { SQLConsoleConfigInput } from "../_shared/sql-console-config";
 
@@ -47,9 +48,7 @@ const config: SQLConsoleConfigInput = {
   defaultDatabase: "database",
 };
 
-export function PostgresConnectorConsoleTemplate(props: Omit<ComponentProps<typeof SQLConnectorConsole>, "config">) {
-  return <SQLConnectorConsole {...props} config={config} />;
-}
+export const PostgresConnectorConsoleTemplate = createSQLConsoleSlot(config);
 
 export function PostgresConnectorToolbarActionsTemplate(props: Omit<ComponentProps<typeof SQLConnectorToolbarActions>, "label">) {
   return <SQLConnectorToolbarActions {...props} label="Postgres" />;

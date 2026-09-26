@@ -13,6 +13,7 @@ import type { ComponentProps } from "react";
 import { connectorConsoleTheme } from "./_shared/console-theme";
 import { emptyRedisConfirmDialog } from "./redis/use-redis-mutations";
 import { connectorActionFixture } from "../../test/connector-action-fixtures";
+import { gatewayTargetFixture } from "../../test/connector-inventory-fixtures";
 
 const styles = connectorConsoleTheme("dark");
 
@@ -216,11 +217,12 @@ it("renders the split S3 console empty-session contract", async () => {
   const onStart = vi.fn();
   render(
     <S3ConnectorConsoleTemplate
-      target={{ ref: "s3:1:1", config: { host: "s3.example", bucket: "docs" } }}
-      approvals={{ data: [] }}
+      target={gatewayTargetFixture({ ref: "s3:1:1", connector_kind: "s3", config: { host: "s3.example", bucket: "docs" } })}
+      approvals={{ state: "ready", data: [], error: null }}
       theme="dark"
-      session={{ active: false }}
+      session={{ active: false, startedAt: "" }}
       onNewStructuredSession={onStart}
+      onRefreshActivity={vi.fn()}
     />,
   );
   await user.click(screen.getByRole("button", { name: "Start S3 session" }));
