@@ -1,5 +1,22 @@
 import { LoaderCircle, RefreshCcw, TerminalSquare, XCircle } from "lucide-react";
 import { Button } from "../../../components/ui/button";
+import type { ReactNode } from "react";
+
+export type LiveConsolePanelProps = {
+  children?: ReactNode;
+  subject: string;
+  subjectRef: string;
+  emptyMessage: string;
+  selectedRuntimeTarget?: object | null;
+  sessionLive: boolean;
+  pending: boolean;
+  theme: "dark" | "light";
+  mutedClass: string;
+  borderClass: string;
+  warning?: string;
+  onStart?: () => unknown;
+  onEnd?: () => unknown;
+};
 
 export function LiveConsolePanel({
   children,
@@ -15,7 +32,7 @@ export function LiveConsolePanel({
   warning,
   onStart,
   onEnd,
-}) {
+}: LiveConsolePanelProps) {
   const light = theme === "light";
   const subjectLabel = subject ? `${subject[0].toUpperCase()}${subject.slice(1)}` : "";
   if (!subject) {

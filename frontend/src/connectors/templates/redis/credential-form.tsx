@@ -4,8 +4,16 @@ import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 import { connectorProductLabel, serverProductLabel } from "./model";
+import type { CredentialFormProps, UsernameCredentialForm } from "../_shared/connector-form-types";
 
-export function RedisCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function RedisCredentialFormTemplate({
+  targets,
+  form,
+  formMode = "create",
+  state,
+  onChange,
+  onSubmit,
+}: CredentialFormProps<UsernameCredentialForm>) {
   const redisTargets = targets.filter((target) => target.connector_kind === "redis");
   const selectedTarget = redisTargets.find((target) => Number(target.id) === Number(form.target_id));
   const product = selectedTarget ? serverProductLabel(selectedTarget) : connectorProductLabel;

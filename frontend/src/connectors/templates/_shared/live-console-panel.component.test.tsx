@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { LiveConsolePanel } from "./live-console-panel";
+import type { LiveConsolePanelProps } from "./live-console-panel";
 
 const baseProps = {
   subject: "container",
@@ -13,7 +14,7 @@ const baseProps = {
   theme: "dark",
   mutedClass: "text-stone-400",
   borderClass: "border-stone-700",
-};
+} satisfies LiveConsolePanelProps;
 
 describe("LiveConsolePanel", () => {
   it("distinguishes empty, connecting, and live console states", () => {

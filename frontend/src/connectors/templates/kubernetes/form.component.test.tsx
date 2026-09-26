@@ -4,7 +4,13 @@ import { verifyTransportProfileForm } from "../_shared/network-transport-form.te
 import { KubernetesConnectorFormTemplate } from "./form";
 
 it("keeps Kubernetes wired to the shared transport profile contract", async () => {
-  await verifyTransportProfileForm(KubernetesConnectorFormTemplate, { kubectl_command: "kubectl", kubeconfig_path: "" });
+  await verifyTransportProfileForm(KubernetesConnectorFormTemplate, {
+    kubectl_command: "kubectl",
+    context: "",
+    default_namespace: "",
+    scope_mode: "all",
+    namespaces: "",
+  });
 });
 
 it("edits an explicit namespace scope", () => {

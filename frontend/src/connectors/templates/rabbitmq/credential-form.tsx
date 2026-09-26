@@ -3,8 +3,16 @@ import { Button } from "../../../components/ui/button";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
+import type { CredentialFormProps, UsernameCredentialForm } from "../_shared/connector-form-types";
 
-export function RabbitMQCredentialFormTemplate({ targets, form, formMode = "create", state, onChange, onSubmit }) {
+export function RabbitMQCredentialFormTemplate({
+  targets,
+  form,
+  formMode = "create",
+  state,
+  onChange,
+  onSubmit,
+}: CredentialFormProps<UsernameCredentialForm>) {
   const rabbitTargets = targets.filter((target) => target.connector_kind === "rabbitmq");
   const editing = formMode === "edit";
   return (
