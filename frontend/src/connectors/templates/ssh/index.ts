@@ -5,6 +5,7 @@ import { SSHConnectorFormTemplate } from "./form";
 import { SSHConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";
 import { SSHConnectorOperationsTemplate } from "./operations";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: SSHConnectorConsoleTemplate,
@@ -15,4 +16,4 @@ export default Object.freeze({
   Operations: SSHConnectorOperationsTemplate,
   RowActions: SSHConnectorRowActionsTemplate,
   ToolbarActions: SSHConnectorToolbarActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

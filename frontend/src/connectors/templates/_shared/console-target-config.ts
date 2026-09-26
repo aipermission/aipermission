@@ -22,6 +22,12 @@ export function optionalConsoleBoolean(value: unknown, label: string, field: str
   throw invalid(label, field);
 }
 
+export function optionalConsoleTextList(value: unknown, label: string, field: string): string | string[] | undefined {
+  if (value === undefined || typeof value === "string") return value;
+  if (Array.isArray(value) && value.every((item: unknown): item is string => typeof item === "string")) return [...value];
+  throw invalid(label, field);
+}
+
 function invalid(label: string, field: string): Error {
   return new Error(`Invalid ${label} console target ${field}.`);
 }

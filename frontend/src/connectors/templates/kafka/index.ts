@@ -4,6 +4,7 @@ import { KafkaConnectorFormTemplate } from "./form";
 import { KafkaConnectorRowActionsTemplate } from "./list-item";
 import { KafkaConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: KafkaConnectorConsoleTemplate,
@@ -12,4 +13,4 @@ export default Object.freeze({
   model,
   Operations: KafkaConnectorOperationsTemplate,
   RowActions: KafkaConnectorRowActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

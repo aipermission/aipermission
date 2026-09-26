@@ -5,14 +5,14 @@ import { KubernetesResourceWorkspace } from "./resource-workspace";
 import { KubernetesRestartDialog } from "./restart-dialog";
 import { useKubernetesBrowser } from "./use-kubernetes-browser";
 import { useRolloutRestart } from "./use-rollout-restart";
-import type { ComponentProps, ReactNode } from "react";
-import type { KubernetesBrowserProps } from "./use-kubernetes-browser";
+import { liveConsoleSlotSession, runtimeConsoleSlotTarget } from "../_shared/runtime-console-slot";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
 
-type KubernetesConsoleProps = KubernetesBrowserProps & Pick<ComponentProps<typeof KubernetesResourceWorkspace>, "theme" | "selectedRuntimeTarget" | "onEndLiveSession"> & { children?: ReactNode };
-
-export function KubernetesConnectorConsoleTemplate(props: KubernetesConsoleProps) {
-  const { children, target, theme, selectedRuntimeTarget, onEndLiveSession } = props;
-  const browser = useKubernetesBrowser(props);
+export function KubernetesConnectorConsoleTemplate(props: ConsoleWorkspaceSlotProps) {
+  const { children, theme, selectedRuntimeTarget, onEndLiveSession } = props;
+  const target = runtimeConsoleSlotTarget(props.target, "Kubernetes");
+  const session = liveConsoleSlotSession(props.session);
+  const browser = useKubernetesBrowser({ ...props, target, session });
   const restart = useRolloutRestart({
     targetRef: target.ref,
     tab: browser.tab,

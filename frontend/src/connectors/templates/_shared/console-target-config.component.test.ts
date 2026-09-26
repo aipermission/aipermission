@@ -5,6 +5,7 @@ import {
   optionalConsolePort,
   optionalConsoleText,
   optionalConsoleTextOrNumber,
+  optionalConsoleTextList,
 } from "./console-target-config";
 
 it("accepts absent configuration and preserves valid primitive field values", () => {
@@ -21,6 +22,11 @@ it("accepts absent configuration and preserves valid primitive field values", ()
   expect(optionalConsoleTextOrNumber("0", "Example", "database")).toBe("0");
   expect(optionalConsoleTextOrNumber(0, "Example", "database")).toBe(0);
   expect(optionalConsoleTextOrNumber(undefined, "Example", "database")).toBeUndefined();
+  expect(optionalConsoleTextList(undefined, "Example", "folders")).toBeUndefined();
+  expect(optionalConsoleTextList("INBOX", "Example", "folders")).toBe("INBOX");
+  const folders = ["INBOX", "Sent"];
+  expect(optionalConsoleTextList(folders, "Example", "folders")).toEqual(folders);
+  expect(optionalConsoleTextList(folders, "Example", "folders")).not.toBe(folders);
 });
 
 it("rejects malformed field types without coercing gateway values", () => {
@@ -36,5 +42,8 @@ it("rejects malformed field types without coercing gateway values", () => {
   }
   for (const value of [null, [], {}, "false", 0]) {
     expect(() => optionalConsoleBoolean(value, "Example", "enabled")).toThrow("Invalid Example console target enabled.");
+  }
+  for (const value of [null, {}, ["INBOX", 1], 0, false]) {
+    expect(() => optionalConsoleTextList(value, "Example", "folders")).toThrow("Invalid Example console target folders.");
   }
 });

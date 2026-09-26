@@ -1,6 +1,6 @@
 import type { ComponentProps, ComponentType, ReactNode } from "react";
 import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
-import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts";
+import type { ConnectorApproval, ConsoleSession } from "../../lib/gateway-contracts/security-contracts";
 import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts";
 import type { ConsoleRuntimeTarget } from "../use-gateway-resources";
 import type { ConnectorActivityDialog } from "./connector-activity-dialog";
@@ -13,7 +13,8 @@ type Completion = () => void | Promise<unknown>;
 type WorkspaceSession = ReturnType<typeof useConsoleWorkspaceSession>;
 type Recovery = ComponentProps<typeof ConsoleRecoveryPanel>;
 type LiveSession = ComponentProps<typeof PtyConsole>["session"] &
-  NonNullable<ComponentProps<typeof NoLiveSession>["lastSession"]> & { id?: number };
+  NonNullable<ComponentProps<typeof NoLiveSession>["lastSession"]> &
+  Pick<ConsoleSession, "name"> & { id?: number };
 
 export type ConsoleWorkspaceActions = {
   selectProfile: (_profileID: string) => void;

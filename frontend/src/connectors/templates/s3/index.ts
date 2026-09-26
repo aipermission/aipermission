@@ -4,6 +4,7 @@ import { S3ConnectorFormTemplate } from "./form";
 import { S3ConnectorRowActionsTemplate } from "./list-item";
 import { S3ConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: S3ConnectorConsoleTemplate,
@@ -12,4 +13,4 @@ export default Object.freeze({
   model,
   Operations: S3ConnectorOperationsTemplate,
   RowActions: S3ConnectorRowActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);

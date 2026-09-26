@@ -349,32 +349,48 @@ frontend/src/connectors/templates/<kind>/
 The folder is discovered automatically. Do not manually edit
 `frontend/src/connectors/templates/registry.jsx` or
 `frontend/src/connectors/templates/catalog.ts` for a normal connector. The Vite
-bundle discovers `index.jsx` and `metadata.json` through `import.meta.glob`.
+bundle discovers `index.ts` and `metadata.json` through `import.meta.glob`.
 
 Expected files:
 
 - `metadata.json`: label, summary, icon, version, badge tone, profile lifecycle,
   and optional transport-provider capability metadata
-- `model.js`: display helpers, target subtitle, profile labels, operations, and
+- `model.ts`: display helpers, target subtitle, profile labels, operations, and
   whether the target uses a live terminal
-- `form.jsx`: add/edit connector target form
-- `credential-form.jsx`: credential profile form
-- `list-item.jsx`: connector-specific row operations
-- `console.jsx`: connector console/activity surface and toolbar actions
+- `form.tsx`: add/edit connector target form
+- `credential-form.tsx`: credential profile form
+- `list-item.tsx`: connector-specific row operations
+- `console.tsx`: connector console/activity surface and toolbar actions
 
 Template slots:
 
 | File or export         | Required | Use it for                                                                                                                |
 | ---------------------- | -------: | ------------------------------------------------------------------------------------------------------------------------- |
 | `metadata.json`        |      yes | Connector label, version, summary, icon, and badge tone.                                                                  |
-| `model.js`             |      yes | Display helpers, target/profile labels, endpoint text, test/delete behavior, and whether the target uses a live terminal. |
-| `form.jsx`             |      yes | Add/edit target fields for the connector target schema.                                                                   |
-| `credential-form.jsx`  |      yes | Add/edit credential profile fields for the credential schema.                                                             |
-| `list-item.jsx`        |      yes | Connector-specific row operations on the Connectors page. Do not put generic Edit/Delete/Test actions here.               |
-| `console.jsx`          |      yes | Structured activity surface or live-console template for the Console page.                                                |
+| `model.ts`             |      yes | Display helpers, target/profile labels, endpoint text, test/delete behavior, and whether the target uses a live terminal. |
+| `form.tsx`             |      yes | Add/edit target fields for the connector target schema.                                                                   |
+| `credential-form.tsx`  |      yes | Add/edit credential profile fields for the credential schema.                                                             |
+| `list-item.tsx`        |      yes | Connector-specific row operations on the Connectors page. Do not put generic Edit/Delete/Test actions here.               |
+| `console.tsx`          |      yes | Structured activity surface or live-console template for the Console page.                                                |
 | `CredentialRowActions` | optional | Extra credential-row actions, such as copying an SSH install command.                                                     |
 | `ToolbarActions`       | optional | Connector-specific Console toolbar actions, such as Files or Bulk for SSH.                                                |
 | `Operations`           | optional | Connector-specific dialogs/operations launched from list rows.                                                            |
+
+Each `index.ts` must preserve its native model/form inference while checking
+the shared console slots with `satisfies ConsoleTemplateContract` from
+`frontend/src/connectors/templates/console-template-contract.d.ts`. `Console`
+accepts `ConsoleWorkspaceSlotProps`; optional `ToolbarActions` accepts
+`ConsoleToolbarSlotProps`. Do not cast a native component to this contract.
+Decode connector-owned fields from the public target's `config` and `public`
+records inside the connector. Structured consoles use
+`structuredConsoleSlotSession`; runtime-backed consoles use
+`liveConsoleSlotSession` and preserve the independent target, profile, runtime,
+and named-session identities. A shared workspace session must never be assumed
+to be the connector's native session shape merely because the registry loads it.
+The workspace contains console/toolbar render failures in independent generic
+slot boundaries. A failed slot does not replace surrounding navigation or the
+other slot. The boundary resets for a new target/profile or updated saved target,
+and permits an explicit retry without displaying arbitrary exception payloads.
 
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.
@@ -413,7 +429,7 @@ transport selector. Each field reads a public target/profile path and may
 provide a non-secret display fallback; the shared UI joins those values with
 the declared separator.
 
-`model.js` is the connector UI contract. Keep these exports small and
+`model.ts` is the connector UI contract. Keep these exports small and
 connector-local:
 
 Set `profile_lifecycle` in `metadata.json` to `standard` when the model uses
@@ -458,7 +474,7 @@ Connector templates may add optional exports for connector-owned operations,
 but generic Test/Edit/Delete and permission/history behavior must stay in the
 shared pages and stores.
 
-The frontend registry validates required template slots and required `model.js`
+The frontend registry validates required template slots and required `model.ts`
 exports at runtime during tests. If a connector folder omits a required slot,
 uses an unsupported metadata icon, or has metadata whose `kind` does not match
 the folder name, `npm test` fails before the UI can silently render a partial
@@ -472,7 +488,7 @@ backend/internal/connectors/builtin/catalogruntime/register.go
 backend/internal/connectors/builtin/adaptercontainers/register.go
 backend/internal/connectors/builtin/adapterresources/register.go
 frontend/src/connectors/templates/<kind>/metadata.json
-frontend/src/connectors/templates/<kind>/index.jsx
+frontend/src/connectors/templates/<kind>/index.ts
 ```
 
 Backend registration is explicit in the Go binary and split by ownership:
@@ -602,12 +618,12 @@ Redis / Valkey checklist:
 - backend route tests if the built-in connector list or inventory expectations
   are exact
 - `frontend/src/connectors/templates/redis/metadata.json`
-- `frontend/src/connectors/templates/redis/index.jsx`
-- `frontend/src/connectors/templates/redis/model.js`
-- `frontend/src/connectors/templates/redis/form.jsx`
-- `frontend/src/connectors/templates/redis/credential-form.jsx`
-- `frontend/src/connectors/templates/redis/list-item.jsx`
-- `frontend/src/connectors/templates/redis/console.jsx`
+- `frontend/src/connectors/templates/redis/index.ts`
+- `frontend/src/connectors/templates/redis/model.ts`
+- `frontend/src/connectors/templates/redis/form.tsx`
+- `frontend/src/connectors/templates/redis/credential-form.tsx`
+- `frontend/src/connectors/templates/redis/list-item.tsx`
+- `frontend/src/connectors/templates/redis/console.tsx`
 - frontend smoke/runtime tests that assert the shipped connector folders
 - README, REST/MCP docs, and connector-specific safety notes
 
@@ -776,7 +792,7 @@ Exact checklist for built-in connector registration:
 - focused registration tests beside every changed registration owner, plus
   aggregate catalog coverage in `backend/internal/connectors/builtin/`
 - frontend templates under `frontend/src/connectors/templates/<kind>/`
-- frontend `metadata.json` and `index.jsx` auto-discovery through the template
+- frontend `metadata.json` and `index.ts` auto-discovery through the template
   registry and catalog loaders
 - frontend smoke coverage in `frontend/src/lib/app.smoke.test.js`
 - frontend runtime registry coverage that imports/evaluates the template

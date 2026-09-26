@@ -10,15 +10,25 @@ import { useKafkaWrites } from "./use-kafka-writes";
 import { KafkaOffsetDialog, KafkaPublishDialog } from "./write-dialogs";
 import type { KafkaBrowserProps } from "./console-types";
 import type { ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
+import type { ConsoleWorkspaceSlotProps } from "../../../components/console/console-workspace-types";
+import { kafkaConsoleTarget } from "./console-target";
+import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
+
+type KafkaConsoleProps = Pick<
+  ConsoleWorkspaceSlotProps,
+  "target" | "approvals" | "theme" | "session" | "onNewStructuredSession" | "onRefreshActivity"
+>;
 
 export function KafkaConnectorConsoleTemplate({
-  target,
+  target: gatewayTarget,
   approvals,
   theme = "dark",
-  session,
+  session: workspaceSession,
   onNewStructuredSession,
   onRefreshActivity,
-}: KafkaBrowserProps & { theme?: string; onNewStructuredSession?: () => void }) {
+}: KafkaConsoleProps) {
+  const target = kafkaConsoleTarget(gatewayTarget);
+  const session = structuredConsoleSlotSession(workspaceSession);
   const browser = useKafkaBrowser({ target, approvals, session, onRefreshActivity });
   const writes = useKafkaWrites({ browser });
   const styles = connectorConsoleTheme(theme);

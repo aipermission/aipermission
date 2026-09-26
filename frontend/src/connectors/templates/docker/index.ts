@@ -4,6 +4,7 @@ import { DockerConnectorFormTemplate } from "./form";
 import { DockerConnectorRowActionsTemplate } from "./list-item";
 import { DockerConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
+import type { ConsoleTemplateContract } from "../console-template-contract";
 
 export default Object.freeze({
   Console: DockerConnectorConsoleTemplate,
@@ -12,4 +13,4 @@ export default Object.freeze({
   model,
   Operations: DockerConnectorOperationsTemplate,
   RowActions: DockerConnectorRowActionsTemplate,
-});
+} satisfies ConsoleTemplateContract);
