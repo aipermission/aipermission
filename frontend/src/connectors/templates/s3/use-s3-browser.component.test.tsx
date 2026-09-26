@@ -1,7 +1,8 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { saveBlob } from "../../../lib/api";
-import type { useRequestGuard } from "../../../lib/request-guard";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import type { GuardedConnectorActionOptions } from "../_shared/action-runner";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { defaultUploadDialog } from "./dialogs";
 import { useS3Browser } from "./use-s3-browser";
@@ -16,7 +17,10 @@ const objects = [
   { key: "backups/two.aipdb", size: 20 },
 ];
 
-type MockAction = { actionName: string; input: { key?: string }; requestGuard: ReturnType<typeof useRequestGuard>; channel: string };
+type MockAction = GuardedConnectorActionOptions;
+function actionResult(actionName: string, output: unknown): ConnectorActionResponse {
+  return { status: "completed", request_id: 1, target_ref: "s3:1:1", connector_kind: "s3", action_name: actionName, retry_policy: { class: "read_only", guidance: "Read again." }, output };
+}
 const mockedSaveBlob = vi.mocked(saveBlob);
 const mockedRunAction = vi.mocked(runGuardedConnectorAction);
 
@@ -25,11 +29,11 @@ beforeEach(() => {
   mockedRunAction.mockReset();
   mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
     if (actionName === "list_objects") {
-      return { action_name: actionName, output: { directories: [{ prefix: "backups/archive/" }], objects, next_cursor: "next" } };
+      return actionResult(actionName, { directories: [{ prefix: "backups/archive/" }], objects, next_cursor: "next" });
     }
     if (actionName === "get_object_metadata")
-      return { action_name: actionName, output: { key: input.key, content_type: "application/octet-stream" } };
-    return { action_name: actionName, output: {} };
+      return actionResult(actionName, { key: input?.key, content_type: "application/octet-stream" });
+    return actionResult(actionName, {});
   });
 });
 
@@ -90,10 +94,10 @@ it("aborts a failed native S3 download writer and reports the error", async () =
     }),
   );
   mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
-    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
-    if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
+    if (actionName === "list_objects") return actionResult(actionName, { objects, directories: [] });
+    if (actionName === "get_object_metadata") return actionResult(actionName, { key: input?.key });
     if (actionName === "download_object") {
-      return { action_name: actionName, output: { filename: "one.aipdb", content_base64: "aGVsbG8=" } };
+      return actionResult(actionName, { filename: "one.aipdb", content_base64: "aGVsbG8=" });
     }
     return null;
   });
@@ -145,10 +149,10 @@ it("reports picker and buffered download failures", async () => {
 
   Reflect.deleteProperty(window, "showSaveFilePicker");
   mockedRunAction.mockImplementation(async ({ actionName, input }: MockAction) => {
-    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
-    if (actionName === "get_object_metadata") return { action_name: actionName, output: { key: input.key } };
+    if (actionName === "list_objects") return actionResult(actionName, { objects, directories: [] });
+    if (actionName === "get_object_metadata") return actionResult(actionName, { key: input?.key });
     if (actionName === "download_object") {
-      return { action_name: actionName, output: { filename: "one.aipdb", content_base64: "aGVsbG8=" } };
+      return actionResult(actionName, { filename: "one.aipdb", content_base64: "aGVsbG8=" });
     }
     return null;
   });
@@ -389,10 +393,10 @@ it("keeps metadata empty when selection is cleared before detail completes", asy
     resolveMetadata = resolve;
   });
   mockedRunAction.mockImplementation(async ({ actionName, input, requestGuard, channel }: MockAction) => {
-    if (actionName === "list_objects") return { action_name: actionName, output: { objects, directories: [] } };
-    const request = requestGuard.begin(channel);
+    if (actionName === "list_objects") return actionResult(actionName, { objects, directories: [] });
+    const request = requestGuard.begin(channel || actionName);
     const item = await metadata;
-    const result = request.isCurrent() ? { action_name: actionName, output: { key: input.key, ...item } } : null;
+    const result = request.isCurrent() ? actionResult(actionName, { key: input?.key, ...item }) : null;
     request.complete();
     return result;
   });

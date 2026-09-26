@@ -5,8 +5,10 @@ import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
 import { queueTotals } from "./helpers";
+import type { RabbitBrowser } from "./use-rabbitmq-browser";
+import type { RabbitQueue, RabbitStyles } from "./browser-types";
 
-export function QueueBrowser({ browser, styles }) {
+export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styles: RabbitStyles }) {
   return (
     <section
       className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${styles.border} ${styles.subtlePanel}`}
@@ -92,7 +94,7 @@ export function QueueBrowser({ browser, styles }) {
   );
 }
 
-function QueueTotalsStrip({ queues, mutedClass, borderClass }) {
+function QueueTotalsStrip({ queues, mutedClass, borderClass }: { queues: readonly RabbitQueue[]; mutedClass: string; borderClass: string }) {
   const totals = queueTotals(queues);
   return (
     <div className={`grid gap-1 border-t p-3 text-xs ${borderClass}`}>
@@ -104,12 +106,12 @@ function QueueTotalsStrip({ queues, mutedClass, borderClass }) {
   );
 }
 
-function actionTone(status) {
+function actionTone(status: string | undefined) {
   if (status === "failed") return "bad";
   if (status === "completed") return "good";
   return "warn";
 }
 
-function numberText(value) {
+function numberText(value: unknown) {
   return value === undefined || value === null || value === "" ? "0" : String(value);
 }

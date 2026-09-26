@@ -4,10 +4,26 @@ import { useRabbitMQPublishOwnership } from "./use-rabbitmq-publish-ownership";
 
 const noActiveRequests = async () => [];
 
+it.each([{}, [null], [{ id: 0 }]])("does not unlock publishing for malformed discovery data %j", async (malformed) => {
+  vi.useFakeTimers();
+  const getAction = vi.fn().mockResolvedValueOnce(malformed).mockResolvedValueOnce([]);
+  const rendered = renderHook(() => useRabbitMQPublishOwnership("rabbitmq:4:9", [], "ready", getAction));
+  try {
+    await act(async () => {});
+    expect(rendered.result.current.locked).toBe(true);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(getAction).toHaveBeenCalledTimes(2);
+    expect(rendered.result.current.locked).toBe(false);
+  } finally {
+    rendered.unmount();
+    vi.useRealTimers();
+  }
+});
+
 it("allows only the current publish attempt to update or release ownership", async () => {
   const { result } = renderHook(() => useRabbitMQPublishOwnership("rabbitmq:1:1", [], "ready", noActiveRequests));
 
-  let attemptID;
+  let attemptID = 0;
   act(() => {
     attemptID = result.current.begin();
   });
@@ -84,10 +100,10 @@ it("fails closed and retries when scoped ownership discovery is unavailable", as
 });
 
 it("uses the exact request endpoint when a pending publish falls outside the bounded activity list", async () => {
-  let resolveExact;
+  let resolveExact: (_value: unknown) => void = () => {};
   const getAction = vi.fn(
     () =>
-      new Promise((resolve) => {
+      new Promise<unknown>((resolve) => {
         resolveExact = resolve;
       }),
   );

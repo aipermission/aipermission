@@ -6,7 +6,7 @@ type ActionItem = {
   error?: string;
   display_text?: string;
   request_id?: number | string;
-  output?: Record<string, unknown>;
+  output?: unknown;
 };
 
 export function connectorActionError(item: ActionItem | null | undefined, fallback = "Connector action failed.") {
@@ -25,7 +25,8 @@ export function connectorActionRequestID(item: ActionItem | null | undefined) {
 }
 
 export function connectorActionCode(item: ActionItem | null | undefined) {
-  return String(item?.output?.code || "");
+  const output = item?.output;
+  return String(output && typeof output === "object" && "code" in output ? output.code || "" : "");
 }
 
 export function requireCompletedConnectorAction<T extends ActionItem>(item: T, fallback = "Connector action failed."): T | null {

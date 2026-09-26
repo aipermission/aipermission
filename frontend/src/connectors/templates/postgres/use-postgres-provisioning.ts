@@ -4,6 +4,7 @@ import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { requireCompletedConnectorAction } from "../_shared/action-result";
+import { normalizeConnectorOutput } from "../_shared/sql-console-data";
 import {
   buildProvisionScope,
   buildProvisionSQLPreview,
@@ -78,7 +79,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
         setMetadata({ state: "pending", error: "Metadata request is awaiting approval.", schemas: [] });
         return;
       }
-      setMetadata({ state: "ready", error: "", schemas: groupMetadataRows(item.output?.rows || []) });
+      setMetadata({ state: "ready", error: "", schemas: groupMetadataRows(normalizeConnectorOutput(item.output).rows) });
     } catch (error) {
       if (request.isCurrent()) setMetadata({ state: "error", error: errorMessage(error, "Could not load schema metadata."), schemas: [] });
     } finally {

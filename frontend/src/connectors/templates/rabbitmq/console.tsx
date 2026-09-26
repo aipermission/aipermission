@@ -5,8 +5,9 @@ import { StructuredSessionEmpty } from "../_shared/structured-session-empty";
 import { QueueBrowser } from "./queue-browser";
 import { QueueDetail } from "./queue-detail";
 import { useRabbitMQBrowser } from "./use-rabbitmq-browser";
+import type { RabbitBrowserProps, RabbitTarget } from "./browser-types";
 
-export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }) {
+export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, session, onNewStructuredSession, onRefreshActivity }: RabbitBrowserProps & { theme: "dark" | "light"; onNewStructuredSession: () => void }) {
   const browser = useRabbitMQBrowser({ target, approvals, session, onRefreshActivity });
   const styles = connectorConsoleTheme(theme);
 
@@ -36,7 +37,7 @@ export function RabbitMQConnectorConsoleTemplate({ target, approvals, theme, ses
   );
 }
 
-function RabbitEndpointFooter({ target, borderClass, mutedClass }) {
+function RabbitEndpointFooter({ target, borderClass, mutedClass }: { target: RabbitTarget; borderClass: string; mutedClass: string }) {
   return (
     <ConnectorEndpointFooter
       leading={target.ref}

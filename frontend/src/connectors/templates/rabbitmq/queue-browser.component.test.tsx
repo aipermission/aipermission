@@ -3,18 +3,26 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { QueueBrowser } from "./queue-browser";
 import { QueueDetail } from "./queue-detail";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+import type { RabbitBrowser } from "./use-rabbitmq-browser";
 
-const styles = {
-  activeRow: "active",
-  border: "border",
-  input: "input",
-  muted: "muted",
-  rowHover: "hover",
-  subtlePanel: "panel",
-};
+const styles = connectorConsoleTheme("dark");
 
-function browser(overrides = {}) {
+function browser(overrides: Partial<RabbitBrowser> = {}): RabbitBrowser {
   return {
+    activeSession: { active: true },
+    bindings: [],
+    messages: [],
+    queueDetail: null,
+    peekCount: 5,
+    setPeekCount: vi.fn(),
+    detailMode: "inspect",
+    setDetailMode: vi.fn(),
+    publish: { exchange: "amq.default", customRoutingKey: false, routingKey: "", payload: "", properties: "{}" },
+    setPublish: vi.fn(),
+    startPublish: vi.fn(),
+    publishMessage: vi.fn(async () => {}),
+    peekMessages: vi.fn(async () => {}),
     activeQueue: "",
     applyVhost: vi.fn(),
     filteredQueues: [],
@@ -22,11 +30,11 @@ function browser(overrides = {}) {
     pattern: "",
     publishLocked: false,
     queues: [],
-    refreshQueues: vi.fn(),
-    selectQueue: vi.fn(),
+    refreshQueues: vi.fn(async () => {}),
+    selectQueue: vi.fn(async () => {}),
     setPattern: vi.fn(),
     setVhostDraft: vi.fn(),
-    state: { state: "idle" },
+    state: { state: "idle", error: "", message: "" },
     vhost: "/",
     vhostDraft: "/",
     ...overrides,
@@ -42,12 +50,12 @@ it("edits a vhost draft and applies it only when the form is submitted", async (
   expect(model.setVhostDraft).toHaveBeenCalled();
   expect(model.applyVhost).not.toHaveBeenCalled();
 
-  fireEvent.submit(screen.getByPlaceholderText("vhost").closest("form"));
+  fireEvent.submit(screen.getByRole("button", { name: "Refresh" }).closest("form")!);
   expect(model.applyVhost).toHaveBeenCalledOnce();
 });
 
 it("locks vhost changes while publishing", () => {
-  const model = browser({ publishLocked: true, state: { state: "idle" } });
+  const model = browser({ publishLocked: true });
   render(<QueueBrowser browser={model} styles={styles} />);
 
   expect(screen.getByPlaceholderText("vhost")).toBeDisabled();
@@ -73,7 +81,7 @@ it("renders publish and inspection details through the RabbitMQ workspace", asyn
     detailMode: "publish",
     messages: [],
     peekCount: 5,
-    peekMessages: vi.fn(),
+    peekMessages: vi.fn(async () => {}),
     publish: {
       exchange: "amq.default",
       customRoutingKey: false,
@@ -81,7 +89,7 @@ it("renders publish and inspection details through the RabbitMQ workspace", asyn
       payload: "fixture",
       properties: '{"content_type":"application/json"}',
     },
-    publishMessage: vi.fn(),
+    publishMessage: vi.fn(async () => {}),
     queueDetail: { name: "jobs.ready", state: "running" },
     setDetailMode: vi.fn(),
     setPeekCount: vi.fn(),
@@ -93,7 +101,7 @@ it("renders publish and inspection details through the RabbitMQ workspace", asyn
   expect(screen.getByRole("button", { name: "Publish message" })).toBeVisible();
   await user.click(screen.getByRole("combobox", { name: "Search queue routing keys" }));
   expect(screen.getByRole("option", { name: /Custom routing key/ })).toBeVisible();
-  fireEvent.submit(screen.getByRole("button", { name: "Publish message" }).closest("form"));
+  fireEvent.submit(screen.getByRole("button", { name: "Publish message" }).closest("form")!);
   expect(model.publishMessage).toHaveBeenCalledOnce();
 
   view.rerender(<QueueDetail browser={{ ...model, detailMode: "inspect" }} styles={styles} />);

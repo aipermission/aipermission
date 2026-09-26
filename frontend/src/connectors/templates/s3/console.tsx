@@ -46,7 +46,7 @@ export function S3ConnectorConsoleTemplate({
 }: S3ConsoleProps) {
   const classes = connectorConsoleTheme(theme);
   const browser = useS3Browser({ target, approvals, session, onRefreshActivity });
-  const scopeKey = `${target.ref}:${browser.activeSession.startedAt || "inactive"}`;
+  const scopeKey = JSON.stringify([target.ref, browser.activeSession.active, browser.activeSession.startedAt]);
   const [transferOpen, setTransferOpen] = useState(false);
   const [presignOpen, setPresignOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
@@ -141,6 +141,7 @@ export function S3ConnectorConsoleTemplate({
       </div>
       <S3EndpointFooter target={target} borderClass={classes.border} mutedClass={classes.muted} />
       <S3ConsoleDialogs
+        scopeKey={scopeKey}
         target={target}
         theme={theme}
         classes={classes}
@@ -161,6 +162,7 @@ export function S3ConnectorConsoleTemplate({
 }
 
 function S3ConsoleDialogs({
+  scopeKey,
   target,
   theme,
   classes,
@@ -176,6 +178,7 @@ function S3ConsoleDialogs({
   lifecycleOpen,
   setLifecycleOpen,
 }: {
+  scopeKey: string;
   target: S3ConsoleTarget;
   theme: string;
   classes: ReturnType<typeof connectorConsoleTheme>;
@@ -210,6 +213,7 @@ function S3ConsoleDialogs({
       />
       <S3PresignDialog
         open={presignOpen}
+        scopeKey={scopeKey}
         selectedKey={browser.selectedKey}
         theme={theme}
         inputClass={classes.input}
@@ -220,19 +224,22 @@ function S3ConsoleDialogs({
       />
       <S3VersionsDialog
         open={versionsOpen}
+        scopeKey={scopeKey}
         objectKey={browser.selectedKey}
         theme={theme}
         borderClass={classes.border}
         mutedClass={classes.muted}
         onClose={() => setVersionsOpen(false)}
         onRun={browser.runS3Action}
-        onChanged={async () => {
+        onChanged={async (isCurrent) => {
+          if (!isCurrent()) return;
           await browser.refreshObjects({ reset: true });
-          if (browser.selectedKey) await browser.readObjectMetadata(browser.selectedKey);
+          if (isCurrent() && browser.selectedKey) await browser.readObjectMetadata(browser.selectedKey);
         }}
       />
       <S3LifecycleDialog
         open={lifecycleOpen}
+        scopeKey={scopeKey}
         bucket={target.config?.bucket || "bucket"}
         theme={theme}
         inputClass={classes.input}

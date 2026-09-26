@@ -5,6 +5,7 @@ import { useRequestGuard } from "../../../lib/request-guard";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { approvalsForTarget, base64Blob, filenameFromKey, parentPrefix, safeDownloadName, visibleObjectBytes } from "./helpers";
 import type { S3MetadataPanelProps } from "./metadata-panel";
+import { readS3Directories, readS3Metadata, readS3Objects, s3OutputRecord } from "./output";
 
 type BrowserObject = { key: string; size?: number | string | null; last_modified?: string; etag?: string };
 type BrowserDirectory = { prefix: string; name?: string };
@@ -103,11 +104,12 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
       channel: "objects",
     });
     if (!item) return [];
-    const nextDirectories: BrowserDirectory[] = Array.isArray(item.output?.directories) ? item.output.directories : [];
-    const nextObjects: BrowserObject[] = Array.isArray(item.output?.objects) ? item.output.objects : [];
+    const output = s3OutputRecord(item.output);
+    const nextDirectories = readS3Directories(output.directories);
+    const nextObjects = readS3Objects(output.objects);
     setDirectories((current) => (reset ? nextDirectories : [...current, ...nextDirectories]));
     setObjects((current) => (reset ? nextObjects : [...current, ...nextObjects]));
-    setNextToken(item.output?.next_cursor || "");
+    setNextToken(typeof output.next_cursor === "string" ? output.next_cursor : "");
     if (reset) setSelectedKey((current) => (current && !nextObjects.some((object) => object.key === current) ? "" : current));
     return nextObjects;
   }
@@ -149,7 +151,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
       suppressError: false,
       channel: "metadata",
     });
-    if (item) setMetadata(item.output || null);
+    if (item) setMetadata(readS3Metadata(item.output));
   }
 
   async function downloadSelected() {
@@ -172,17 +174,18 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
         busy: "downloading",
       });
       if (!item || !preparation.isCurrent() || scopeKeyRef.current !== operationScope || selectedKeyRef.current !== key) return;
-      const output = item.output || {};
-      const blob = base64Blob(output.content_base64 || "", output.content_type || "application/octet-stream");
+      const output = s3OutputRecord(item.output);
+      if (typeof output.content_base64 !== "string") throw new Error("Invalid S3 download content.");
+      const blob = base64Blob(output.content_base64, typeof output.content_type === "string" ? output.content_type : "application/octet-stream");
+      const savedFilename = typeof output.filename === "string" && output.filename ? output.filename : filename;
       if (saveHandle) {
-        const savedFilename = output.filename || filename;
         await writeNativeDownload(saveHandle, blob);
         if (preparation.isCurrent() && scopeKeyRef.current === operationScope && selectedKeyRef.current === key) {
           setState({ state: "idle", error: "", message: `Saved ${savedFilename}.` });
         }
         return;
       }
-      await saveBlob(blob, output.filename || filename, { picker: false });
+      await saveBlob(blob, savedFilename, { picker: false });
     } catch (error) {
       if (preparation.isCurrent()) {
         setState({ state: "error", error: errorMessage(error, "Download failed."), message: "" });
@@ -201,7 +204,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
       busy: "reading",
       channel: "metadata",
     });
-    if (item) setMetadata(item.output || null);
+    if (item) setMetadata(readS3Metadata(item.output));
   }
 
   function clearSelection() {

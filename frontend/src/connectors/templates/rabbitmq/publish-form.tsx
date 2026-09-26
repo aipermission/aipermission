@@ -4,9 +4,12 @@ import { Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
 import { RoutingKeyPicker } from "./routing-key-picker";
+import type { ReactNode } from "react";
+import type { RabbitBrowser } from "./use-rabbitmq-browser";
+import type { RabbitStyles } from "./browser-types";
 
-export function RabbitPublishForm({ browser, styles }) {
-  const setPublish = (values) => browser.setPublish((current) => ({ ...current, ...values }));
+export function RabbitPublishForm({ browser, styles }: { browser: RabbitBrowser; styles: RabbitStyles }) {
+  const setPublish = (values: Partial<RabbitBrowser["publish"]>) => browser.setPublish((current) => ({ ...current, ...values }));
   return (
     <form
       className="grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] gap-3"
@@ -112,7 +115,7 @@ export function RabbitPublishForm({ browser, styles }) {
   );
 }
 
-function FieldBlock({ label, help, mutedClass, children, grow = false }) {
+function FieldBlock({ label, help, mutedClass, children, grow = false }: { label: string; help?: string; mutedClass: string; children: ReactNode; grow?: boolean }) {
   return (
     <div className={`grid min-h-0 gap-1 text-sm font-medium ${grow ? "grid-rows-[auto_minmax(0,1fr)_auto]" : ""}`}>
       <span>{label}</span>
