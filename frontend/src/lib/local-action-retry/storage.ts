@@ -1,20 +1,21 @@
 import { attemptsStore, databaseName, databaseVersion, entriesStore, keysStore, reservationsStore } from "./constants.ts";
 import { storageError } from "./errors.ts";
-import { validRetryDatabaseSchema } from "./records.js";
-import { isBrowserRuntime, requireBrowserIndexedDB } from "./runtime.js";
+import { validRetryDatabaseSchema } from "./records.ts";
+import type { ActionAttempt, RetryEntry, SigningReservation } from "./records.ts";
+import { isBrowserRuntime, requireBrowserIndexedDB } from "./runtime.ts";
 
-export const memoryEntries = new Map();
-export const memoryKeys = new Map();
-export const memoryReservations = new Map();
-export const memoryAttempts = new Map();
+export const memoryEntries = new Map<string, Map<string, RetryEntry>>();
+export const memoryKeys = new Map<string, CryptoKey>();
+export const memoryReservations = new Map<string, Map<string, SigningReservation>>();
+export const memoryAttempts = new Map<string, ActionAttempt>();
 
-let memoryQueue = Promise.resolve();
-let retryDatabasePromise;
-let retryDatabase;
+let memoryQueue: Promise<unknown> = Promise.resolve();
+let retryDatabasePromise: Promise<IDBDatabase> | undefined;
+let retryDatabase: IDBDatabase | undefined;
 
 export function openRetryDatabase() {
   if (retryDatabasePromise) return retryDatabasePromise;
-  retryDatabasePromise = new Promise((resolve, reject) => {
+  retryDatabasePromise = new Promise<IDBDatabase>((resolve, reject) => {
     let settled = false;
     const request = globalThis.indexedDB.open(databaseName, databaseVersion);
     request.onupgradeneeded = () => {
@@ -73,20 +74,20 @@ export function openRetryDatabase() {
   return retryDatabasePromise;
 }
 
-export function transactionPromise(database, storeName, mode, operation) {
+export function transactionPromise<Result>(database: IDBDatabase, storeName: string, mode: IDBTransactionMode, operation: (_store: IDBObjectStore) => Result | PromiseLike<Result>) {
   return storesTransactionPromise(database, [storeName], mode, (stores) => operation(stores[storeName]));
 }
 
-export function storesTransactionPromise(database, storeNames, mode, operation) {
-  return new Promise((resolve, reject) => {
+export function storesTransactionPromise<Result>(database: IDBDatabase, storeNames: string[], mode: IDBTransactionMode, operation: (_stores: Record<string, IDBObjectStore>) => Result | PromiseLike<Result>): Promise<Result> {
+  return new Promise<Result>((resolve, reject) => {
     const transaction = database.transaction(storeNames, mode);
     const stores = Object.fromEntries(storeNames.map((storeName) => [storeName, transaction.objectStore(storeName)]));
-    let result;
-    let operationError;
+    let completedOperation: { result: Result } | undefined;
+    let operationError: unknown;
     try {
       Promise.resolve(operation(stores))
         .then((value) => {
-          result = value;
+          completedOperation = { result: value };
         })
         .catch((error) => {
           operationError = error;
@@ -96,20 +97,23 @@ export function storesTransactionPromise(database, storeNames, mode, operation) 
       operationError = error;
       transaction.abort();
     }
-    transaction.oncomplete = () => resolve(result);
+    transaction.oncomplete = () => {
+      if (!completedOperation) reject(storageError());
+      else resolve(completedOperation.result);
+    };
     transaction.onerror = () => reject(operationError || transaction.error || storageError());
     transaction.onabort = () => reject(operationError || transaction.error || storageError());
   });
 }
 
-export function requestPromise(request) {
-  return new Promise((resolve, reject) => {
+export function requestPromise<Result>(request: IDBRequest<Result>) {
+  return new Promise<Result>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error || storageError());
   });
 }
 
-export function withMemoryTransaction(operation) {
+export function withMemoryTransaction<Result>(operation: () => Result | PromiseLike<Result>) {
   const next = memoryQueue.then(operation, operation);
   memoryQueue = next.catch(() => {});
   return next;
@@ -133,7 +137,7 @@ export async function resetRetryStorage() {
 }
 
 function deleteRetryDatabase() {
-  return new Promise((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     const request = globalThis.indexedDB.deleteDatabase(databaseName);
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error || storageError());

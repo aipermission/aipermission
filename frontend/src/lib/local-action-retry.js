@@ -9,9 +9,9 @@ import {
   reserveEntry,
   retireEntryAttempt,
   updateEntryIfMatching,
-} from "./local-action-retry/entries.js";
+} from "./local-action-retry/entries.ts";
 import { retryIdentityChangedError } from "./local-action-retry/errors.ts";
-import { stableRequestSignature, validRetryEntry } from "./local-action-retry/records.js";
+import { stableRequestSignature, validRetryEntry } from "./local-action-retry/records.ts";
 import {
   assertNoLegacyLedger,
   currentRetryScope,
@@ -19,9 +19,9 @@ import {
   readLegacyLedger,
   removeLegacyLedger,
   requestReconciliation,
-} from "./local-action-retry/runtime.js";
-import { releaseSigningReservation, reserveSigningKey } from "./local-action-retry/signing.js";
-import { resetRetryStorage } from "./local-action-retry/storage.js";
+} from "./local-action-retry/runtime.ts";
+import { releaseSigningReservation, reserveSigningKey } from "./local-action-retry/signing.ts";
+import { resetRetryStorage } from "./local-action-retry/storage.ts";
 
 export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent };
 

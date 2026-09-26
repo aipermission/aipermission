@@ -6,6 +6,23 @@ import {
   workspaceCookieName,
 } from "./constants.ts";
 import { storageError } from "./errors.ts";
+import type { RetryScope } from "./records.ts";
+
+export type ReconciliationDetail = {
+  requestID?: number | null;
+  operationRef?: string;
+  assistantHint?: string;
+  createdAt?: string;
+  resolve: (_confirmed: boolean) => void;
+};
+
+type LegacyScope = RetryScope & { legacyKey: string };
+type ReconciliationEntry = {
+  request_id?: unknown;
+  operation_ref?: unknown;
+  assistant_hint?: unknown;
+  created_at: string;
+};
 
 export function currentRetryScope(explicitWorkspaceID = "") {
   const workspaceID = String(explicitWorkspaceID || readCookie(scopedUICookieName(workspaceCookieName))).trim();
@@ -13,13 +30,13 @@ export function currentRetryScope(explicitWorkspaceID = "") {
   return { key: workspaceID, legacyKey: `${legacyStoragePrefix}${workspaceID}` };
 }
 
-export function assertNoLegacyLedger(scope) {
+export function assertNoLegacyLedger(scope: LegacyScope) {
   if (readLegacyLedger(scope)) {
     throw new Error("An earlier retry ledger requires manual reconciliation in Settings before connector actions can run.");
   }
 }
 
-export function readLegacyLedger(scope) {
+export function readLegacyLedger(scope: LegacyScope) {
   try {
     return globalThis.window?.localStorage?.getItem(scope.legacyKey) || "";
   } catch {
@@ -27,7 +44,7 @@ export function readLegacyLedger(scope) {
   }
 }
 
-export function removeLegacyLedger(scope) {
+export function removeLegacyLedger(scope: LegacyScope) {
   try {
     globalThis.window?.localStorage?.removeItem(scope.legacyKey);
   } catch {
@@ -55,21 +72,21 @@ export function notifyChanged() {
   }
 }
 
-export function requestReconciliation(entry) {
+export function requestReconciliation(entry: ReconciliationEntry): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
-  return new Promise((resolve) => {
+  return new Promise<boolean>((resolve) => {
     let settled = false;
-    const finish = (value) => {
+    const finish = (value: boolean) => {
       if (settled) return;
       settled = true;
       resolve(Boolean(value));
     };
-    const event = new CustomEvent(localActionReconciliationEvent, {
+    const event = new CustomEvent<ReconciliationDetail>(localActionReconciliationEvent, {
       cancelable: true,
       detail: {
-        requestID: entry.request_id || null,
-        operationRef: entry.operation_ref || "",
-        assistantHint: entry.assistant_hint || "",
+        requestID: typeof entry.request_id === "number" && Number.isSafeInteger(entry.request_id) && entry.request_id > 0 ? entry.request_id : null,
+        operationRef: typeof entry.operation_ref === "string" ? entry.operation_ref : "",
+        assistantHint: typeof entry.assistant_hint === "string" ? entry.assistant_hint : "",
         createdAt: entry.created_at,
         resolve: finish,
       },
@@ -78,7 +95,7 @@ export function requestReconciliation(entry) {
   });
 }
 
-function readCookie(name) {
+function readCookie(name: string) {
   if (typeof document === "undefined") return "non-browser";
   const prefix = `${name}=`;
   return (

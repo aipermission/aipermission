@@ -15,8 +15,8 @@ import {
 } from "./local-action-retry.js";
 import { legacyStoragePrefix, localActionReconciliationEvent } from "./local-action-retry/constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./local-action-retry/errors.ts";
-import { requestReconciliation } from "./local-action-retry/runtime.js";
-import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.js";
+import { requestReconciliation } from "./local-action-retry/runtime.ts";
+import { resetRetryStorage, transactionPromise } from "./local-action-retry/storage.ts";
 
 const fakeRetryIndexedDB = new IDBFactory();
 

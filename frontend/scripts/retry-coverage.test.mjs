@@ -6,7 +6,7 @@ import { retryCoverageFiles, runRetryCoverage } from "./retry-coverage.mjs";
 test("discovers every retry production module", () => {
   assert.deepEqual(
     retryCoverageFiles().map((file) => file.split("/").at(-1)),
-    ["local-action-retry.js", "constants.ts", "entries.js", "errors.ts", "records.js", "runtime.js", "signing.js", "storage.js"],
+    ["local-action-retry.js", "constants.ts", "entries.ts", "errors.ts", "records.ts", "runtime.ts", "signing.ts", "storage.ts"],
   );
 });
 
@@ -17,7 +17,7 @@ test("checks retry coverage one production file at a time", () => {
     spawn: (_command, args) => {
       const include = args.find((argument) => argument.startsWith("--test-coverage-include="));
       checked.push(include);
-      assert.deepEqual(args.slice(-2), ["src/lib/api.test.js", "src/lib/api-backup-retry.test.js"]);
+      assert.deepEqual(args.slice(-3), ["src/lib/api.test.js", "src/lib/api-backup-retry.test.js", "src/lib/local-action-retry/records.test.ts"]);
       return { status: include.endsWith("errors.ts") ? 1 : 0, stdout: "", stderr: "" };
     },
   });
