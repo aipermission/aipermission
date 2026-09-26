@@ -4,8 +4,10 @@ import { Button } from "../../../components/ui/button";
 import { Checkbox, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
+import type { RedisBrowser } from "./use-redis-browser";
+import type { RedisStyles } from "./browser-types";
 
-export function RedisKeyBrowser({ browser, styles }) {
+export function RedisKeyBrowser({ browser, styles }: { browser: RedisBrowser; styles: RedisStyles }) {
   const allSelected = browser.selectedKeys.length === browser.keys.length && browser.keys.length > 0;
   return (
     <section
@@ -105,7 +107,7 @@ export function RedisKeyBrowser({ browser, styles }) {
   );
 }
 
-function RedisKeyRow({ value, browser, styles }) {
+function RedisKeyRow({ value, browser, styles }: { value: string; browser: RedisBrowser; styles: RedisStyles }) {
   return (
     <button
       type="button"
@@ -126,7 +128,7 @@ function RedisKeyRow({ value, browser, styles }) {
   );
 }
 
-function actionTone(status) {
+function actionTone(status?: string): "bad" | "good" | "warn" {
   if (status === "failed") return "bad";
   if (status === "completed") return "good";
   return "warn";

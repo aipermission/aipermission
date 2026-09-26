@@ -270,7 +270,7 @@ Expected files are:
 The page-level UI renders through the template registry instead of adding
 connector-specific branches to route components. `metadata.json` and
 `index.ts` are auto-discovered with Vite `import.meta.glob`; normal
-structured connectors do not manually edit `registry.jsx` or `catalog.js`.
+structured connectors do not manually edit `registry.jsx` or `catalog.ts`.
 The registry validates required template slots, model exports, and supported
 metadata icons during frontend tests.
 

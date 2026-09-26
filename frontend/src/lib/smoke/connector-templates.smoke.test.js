@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
+import ts from "typescript";
 import {
   backendConnectorKinds,
   connectorTemplateCatalogSource,
@@ -17,7 +18,10 @@ test("frontend templates exactly match the built-in backend connector catalog", 
 
 test("connector templates are discovered dynamically", () => {
   assert.match(connectorTemplateRegistrySource, /import\.meta\.glob\("\.\/\*\/index\.ts"/);
-  assert.match(connectorTemplateCatalogSource, /import\.meta\.glob\("\.\/\*\/metadata\.json"/);
+  const catalogSource = ts.transpileModule(connectorTemplateCatalogSource, {
+    compilerOptions: { module: ts.ModuleKind.ESNext },
+  }).outputText;
+  assert.match(catalogSource, /import\.meta\.glob\("\.\/\*\/metadata\.json"/);
   assert.doesNotMatch(connectorTemplateRegistrySource, /from "\.\/(ssh|postgres|redis|rabbitmq|kafka|mail|s3|docker|kubernetes)/);
 });
 

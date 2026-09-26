@@ -4,6 +4,7 @@ import { Notice } from "../../../components/ui/notice";
 import { HostPingButton } from "../host-ping-button";
 import { connectorTemplateMetadata, getConnectorMetadata } from "../catalog";
 import { publicEndpointValue, uniqueNetworkTransportDescriptors } from "./network-transport-contract";
+import type { NetworkTransportDescriptor } from "./network-transport-contract";
 
 type TransportSelectionForm = {
   connection_mode: string;
@@ -215,7 +216,7 @@ export function NetworkEndpointFields({
 function transportProfileOptionLabel(
   target: NetworkTarget,
   profile: NonNullable<NetworkTarget["profiles"]>[number],
-  transport: { profile_endpoint?: { fields?: { path: string; fallback?: string }[]; separator?: string } },
+  transport: Pick<NetworkTransportDescriptor, "profile_endpoint">,
 ) {
   const endpoint = (transport.profile_endpoint?.fields || [])
     .map((field) => publicEndpointValue({ target, profile }, field.path) ?? field.fallback)

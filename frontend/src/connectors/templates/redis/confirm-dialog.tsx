@@ -1,8 +1,21 @@
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
+import type { RedisConfirmState } from "./browser-types";
 
-export function RedisConfirmDialog({ value, theme, product, onClose, onConfirm }) {
+export function RedisConfirmDialog({
+  value,
+  theme,
+  product,
+  onClose,
+  onConfirm,
+}: {
+  value: RedisConfirmState;
+  theme: string;
+  product: string;
+  onClose: () => void;
+  onConfirm: () => unknown;
+}) {
   const danger = value.tone === "bad";
   const detailClass = theme === "light" ? "bg-stone-50" : "bg-stone-900/70 text-stone-100";
   return (

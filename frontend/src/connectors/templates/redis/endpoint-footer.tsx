@@ -1,17 +1,14 @@
 import { ConnectorEndpointFooter } from "../_shared/endpoint-footer";
 import { serverProductLabel } from "./model";
 
-type RedisTarget = {
-  ref: string;
-  config?: { host?: string; port?: number; database?: number; server_family?: string };
-};
+import type { RedisBrowserProps } from "./browser-types";
 
 export function RedisEndpointFooter({
   target,
   borderClass,
   mutedClass,
 }: {
-  target: RedisTarget;
+  target: RedisBrowserProps["target"];
   borderClass?: string;
   mutedClass?: string;
 }) {

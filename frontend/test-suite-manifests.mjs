@@ -41,7 +41,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/_shared/action-runner.ts": ["src/connectors/templates/_shared/action-runner.component.test.tsx"],
   "src/connectors/templates/_shared/use-sql-metadata.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
   "src/connectors/templates/_shared/use-sql-console.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
-  "src/connectors/templates/host-ping-button.jsx": ["src/connectors/templates/host-ping-button.component.test.jsx"],
+  "src/connectors/templates/host-ping-button.tsx": ["src/connectors/templates/host-ping-button.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-browser.js": ["src/connectors/templates/docker/use-docker-browser.component.test.jsx"],
   "src/connectors/templates/kafka/use-kafka-browser.js": ["src/connectors/templates/kafka/use-kafka-browser.component.test.jsx"],
   "src/connectors/templates/kubernetes/use-kubernetes-browser.js": [
@@ -60,7 +60,8 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.ts": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.component.test.tsx",
   ],
-  "src/connectors/templates/redis/use-redis-browser.js": ["src/connectors/templates/redis/use-redis-browser.component.test.jsx"],
+  "src/connectors/templates/redis/use-redis-browser.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
+  "src/connectors/templates/redis/use-redis-mutations.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
   "src/connectors/templates/s3/use-s3-browser.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
   "src/connectors/templates/s3/lifecycle-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/presign-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],

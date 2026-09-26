@@ -1,14 +1,42 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { RedisValueWorkspace } from "./value-workspace";
+import { RedisValueWorkspace, type RedisValueBrowser } from "./value-workspace";
+import { connectorConsoleTheme } from "../_shared/console-theme";
+
+function valueBrowser(overrides: Partial<RedisValueBrowser> = {}): RedisValueBrowser {
+  return {
+    activeKey: "",
+    keyResult: null,
+    product: "Redis",
+    creatingKey: true,
+    resultMode: "value",
+    setResultMode: vi.fn(),
+    loadKey: vi.fn(async () => {}),
+    state: { state: "idle", error: "", message: "" },
+    ttlDraft: "",
+    setTTLDraft: vi.fn(),
+    canUpdateTTL: false,
+    updateTTL: vi.fn(),
+    canSaveString: true,
+    editableString: true,
+    saveStringValue: vi.fn(),
+    newKey: "",
+    setNewKey: vi.fn(),
+    newValue: "",
+    setNewValue: vi.fn(),
+    valueDraft: "",
+    setValueDraft: vi.fn(),
+    ...overrides,
+  };
+}
 
 describe("RedisValueWorkspace", () => {
   it("renders truncated string values as a read-only bounded preview", () => {
     render(
       <RedisValueWorkspace
-        styles={{ border: "", subtlePanel: "", muted: "", input: "" }}
-        browser={{
+        styles={connectorConsoleTheme("light")}
+        browser={valueBrowser({
           activeKey: "large-json",
           keyResult: {
             key: "large-json",
@@ -30,7 +58,7 @@ describe("RedisValueWorkspace", () => {
           canSaveString: false,
           editableString: false,
           saveStringValue: vi.fn(),
-        }}
+        })}
       />,
     );
 
@@ -42,7 +70,7 @@ describe("RedisValueWorkspace", () => {
 
   it("routes editable new-key controls to the browser owner", async () => {
     const user = userEvent.setup();
-    const browser = {
+    const browser = valueBrowser({
       activeKey: "",
       keyResult: null,
       product: "Redis",
@@ -61,8 +89,8 @@ describe("RedisValueWorkspace", () => {
       canSaveString: true,
       editableString: true,
       saveStringValue: vi.fn(),
-    };
-    render(<RedisValueWorkspace styles={{ border: "", subtlePanel: "", muted: "", input: "" }} browser={browser} />);
+    });
+    render(<RedisValueWorkspace styles={connectorConsoleTheme("light")} browser={browser} />);
 
     await user.type(screen.getByLabelText("New key name"), "cache:key");
     await user.type(screen.getByLabelText("String value"), "value");

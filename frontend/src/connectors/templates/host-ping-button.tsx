@@ -1,28 +1,55 @@
 import { Activity, CheckCircle2, Loader2, XCircle } from "lucide-react";
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Dialog } from "../../components/ui/dialog";
 import { Notice } from "../../components/ui/notice";
 import { apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { errorMessage } from "../../lib/errors";
 import { connectorTemplateMetadata } from "./catalog";
 
-export function HostPingButton({ host, port, mode = "direct", transportTargetRef = "", projectID = 0, label = "Ping host" }) {
-  const [dialog, setDialog] = useState({ open: false, state: "idle", result: null, error: "" });
+type HostPingProps = {
+  host?: string;
+  port?: string | number;
+  mode?: string;
+  transportTargetRef?: string;
+  projectID?: string | number;
+  label?: string;
+};
+type PingResult = {
+  ok: boolean;
+  received: number;
+  sent: number;
+  duration_ms: number;
+  mode: string;
+  message?: string;
+  attempts?: { attempt: number; ok: boolean; duration_ms: number; error?: string }[];
+};
+type PingDialog = { open: boolean; state: string; result: PingResult | null; error: string };
+
+export function HostPingButton({
+  host,
+  port,
+  mode = "direct",
+  transportTargetRef = "",
+  projectID = 0,
+  label = "Ping host",
+}: HostPingProps) {
+  const [dialog, setDialog] = useState<PingDialog>({ open: false, state: "idle", result: null, error: "" });
   const normalizedMode = mode || "direct";
   const numericPort = Number(port);
   const disabledReason = pingDisabledReason({ host, port: numericPort, mode: normalizedMode, transportTargetRef, projectID });
   const requests = useRequestGuard(`${host}:${numericPort}:${normalizedMode}:${transportTargetRef}:${projectID}`);
 
-  async function runPing(event) {
+  async function runPing(event: MouseEvent<HTMLButtonElement>) {
     event.preventDefault();
     event.stopPropagation();
     if (disabledReason) return;
     const request = requests.begin("ping");
     setDialog({ open: true, state: "running", result: null, error: "" });
     try {
-      const result = await apiPost(
+      const result: PingResult = await apiPost(
         "/api/connector-targets/ping",
         {
           project_id: Number(projectID) || 0,
@@ -36,7 +63,7 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
       );
       if (request.isCurrent()) setDialog({ open: true, state: "done", result, error: "" });
     } catch (error) {
-      if (request.isCurrent()) setDialog({ open: true, state: "error", result: null, error: error.message || "Ping failed." });
+      if (request.isCurrent()) setDialog({ open: true, state: "error", result: null, error: errorMessage(error, "Ping failed.") });
     } finally {
       request.complete();
     }
@@ -123,7 +150,7 @@ export function HostPingButton({ host, port, mode = "direct", transportTargetRef
   );
 }
 
-function pingDisabledReason({ host, port, mode, transportTargetRef, projectID }) {
+function pingDisabledReason({ host, port, mode, transportTargetRef, projectID }: Omit<HostPingProps, "port"> & { port: number }): string {
   if (!String(host || "").trim()) return "Enter a host first.";
   if (!Number.isInteger(port) || port < 1 || port > 65535) return "Enter a valid port first.";
   if (mode !== "direct" && !String(transportTargetRef || "").trim()) return "Select a transport profile first.";
@@ -132,7 +159,7 @@ function pingDisabledReason({ host, port, mode, transportTargetRef, projectID })
   return "";
 }
 
-function modeLabel(mode) {
+function modeLabel(mode: string): string {
   if (mode === "direct") return "Direct";
   return (
     Object.values(connectorTemplateMetadata).find((metadata) => metadata.network_transport?.mode === mode)?.network_transport?.label ||

@@ -7,8 +7,36 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { connectorActionBusy } from "../_shared/action-state";
 import { formatRedisValue, keyMetaText } from "./browser-helpers";
+import type { RedisBrowser } from "./use-redis-browser";
+import type { RedisStyles } from "./browser-types";
 
-export function RedisValueWorkspace({ browser, styles }) {
+export type RedisValueBrowser = Pick<
+  RedisBrowser,
+  | "activeKey"
+  | "keyResult"
+  | "product"
+  | "creatingKey"
+  | "resultMode"
+  | "setResultMode"
+  | "loadKey"
+  | "state"
+  | "ttlDraft"
+  | "setTTLDraft"
+  | "canUpdateTTL"
+  | "updateTTL"
+  | "canSaveString"
+  | "editableString"
+  | "saveStringValue"
+  | "newKey"
+  | "setNewKey"
+  | "newValue"
+  | "setNewValue"
+  | "valueDraft"
+  | "setValueDraft"
+>;
+type ValueProps = { browser: RedisValueBrowser; styles: RedisStyles };
+
+export function RedisValueWorkspace({ browser, styles }: ValueProps) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border ${styles.border}`}>
       <ValueHeader browser={browser} styles={styles} />
@@ -29,7 +57,7 @@ export function RedisValueWorkspace({ browser, styles }) {
   );
 }
 
-function ValueHeader({ browser, styles }) {
+function ValueHeader({ browser, styles }: ValueProps) {
   return (
     <header className={`flex flex-wrap items-center justify-between gap-3 border-b p-3 ${styles.border} ${styles.subtlePanel}`}>
       <div className="min-w-0">
@@ -61,7 +89,7 @@ function ValueHeader({ browser, styles }) {
   );
 }
 
-function ValueToolbar({ browser, styles }) {
+function ValueToolbar({ browser, styles }: ValueProps) {
   return (
     <div className={`flex flex-wrap items-center justify-between gap-2 border-b p-3 ${styles.border}`}>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -140,7 +168,7 @@ function ValueToolbar({ browser, styles }) {
   );
 }
 
-function ValueContent({ browser, inputClass }) {
+function ValueContent({ browser, inputClass }: { browser: RedisValueBrowser; inputClass: string }) {
   if (browser.resultMode === "json")
     return (
       <TerminalBlock surface="log" className="h-full min-h-0 text-xs">
