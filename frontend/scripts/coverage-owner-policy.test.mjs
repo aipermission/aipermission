@@ -7,7 +7,7 @@ test("treats production modules as owners by default", () => {
   const owners = [
     "src/pages/history.jsx",
     "src/components/console/use-console-session-coordinator.js",
-    "src/components/console/connector-action-approval-dialog.jsx",
+    "src/components/console/connector-action-approval-dialog.tsx",
     "src/components/file-transfer/file-transfer-actions.ts",
     "src/connectors/templates/redis/console.jsx",
     "src/connectors/templates/redis/key-browser.jsx",

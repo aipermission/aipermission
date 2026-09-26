@@ -2,9 +2,16 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConnectorActionApprovalDialog } from "./connector-action-approval-dialog";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import type { ApprovalDialogAction } from "./use-connector-approval-dialog.ts";
 
-const approval = {
+const approval: ConnectorApproval = {
   id: 42,
+  target_id: 7,
+  profile_id: 11,
+  status: "approval_pending",
+  approval_context_hash: "reviewed-context",
+  retry_policy: { class: "read_only", guidance: "Read only query" },
   connector_kind: "postgres",
   target_name: "Application database",
   profile_label: "Read only",
@@ -17,7 +24,7 @@ const approval = {
   created_at: "2026-08-11T00:00:00Z",
 };
 
-function renderDialog(action = { state: "idle", error: "" }) {
+function renderDialog(action: ApprovalDialogAction = { state: "idle", error: "" }) {
   const handlers = {
     onNoteChange: vi.fn(),
     onRun: vi.fn(),
@@ -33,8 +40,8 @@ describe("ConnectorActionApprovalDialog", () => {
     const user = userEvent.setup();
     const handlers = renderDialog();
 
-    await user.click(screen.getByRole("button", { name: "Run", exact: true }));
-    await user.click(screen.getByRole("button", { name: "Decline", exact: true }));
+    await user.click(screen.getByRole("button", { name: "Run" }));
+    await user.click(screen.getByRole("button", { name: "Decline" }));
 
     expect(handlers.onRun).toHaveBeenCalledOnce();
     expect(handlers.onDecline).toHaveBeenCalledOnce();
@@ -44,10 +51,10 @@ describe("ConnectorActionApprovalDialog", () => {
     const user = userEvent.setup();
     const handlers = renderDialog({ state: "stale", error: "Approval context changed. Review a fresh request." });
 
-    expect(screen.queryByRole("button", { name: "Run", exact: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Decline", exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decline" })).not.toBeInTheDocument();
     expect(screen.getByText("Approval context changed. Review a fresh request.")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "OK", exact: true }));
+    await user.click(screen.getByRole("button", { name: "OK" }));
     expect(handlers.onClose).toHaveBeenCalledOnce();
   });
 
