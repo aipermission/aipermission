@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "../../lib/errors";
+import { useRequestGuard } from "../../lib/request-guard";
 
 type TargetIdentity = { id: number; connector_kind: string };
 type ProfileIdentity = { id: number };
@@ -32,6 +33,8 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
 }: Props<Target, Profile>) {
   const [tests, setTests] = useState<Record<string, ConnectorTestState>>({});
   const cooldownTimers = useRef(new Map<string, number>());
+  const pendingTests = useRef(new Set<string>());
+  const requests = useRequestGuard("connector-connection-tests");
 
   useEffect(() => {
     const timers = cooldownTimers.current;
@@ -57,6 +60,7 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
 
   async function run(target: Target, profile: Profile | null | undefined) {
     const testKey = connectorTestKey(target, profile);
+    if (pendingTests.current.has(testKey)) return false;
     const model = modelForKind(target.connector_kind);
     if (!model?.test) {
       setTests((current) => ({
@@ -72,12 +76,16 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
       }));
       return false;
     }
+    const request = requests.begin(testKey);
+    pendingTests.current.add(testKey);
     setTests((current) => ({ ...current, [testKey]: { state: "testing", error: null, data: null } }));
     try {
       const result = await model.test({ target, profile });
+      if (!request.isCurrent()) return false;
       setResult(testKey, { state: result.ok ? "ok" : "error", error: result.error ?? null, data: result.data ?? null });
       return Boolean(result.ok);
     } catch (error) {
+      if (!request.isCurrent()) return false;
       const operation = model.operationFromError?.(error, { operation: "test", target, profile, testKey });
       if (operation?.open && onOperation?.(operation)) {
         setTests((current) => ({ ...current, [testKey]: { state: "idle", error: null, data: null } }));
@@ -85,6 +93,9 @@ export function useConnectorConnectionTests<Target extends TargetIdentity, Profi
       }
       setResult(testKey, { state: "error", error: errorMessage(error), data: null });
       return false;
+    } finally {
+      pendingTests.current.delete(testKey);
+      request.complete();
     }
   }
 
