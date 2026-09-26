@@ -13,7 +13,7 @@ describe("DiagnosticsPanel", () => {
 
   it("downloads the authenticated redacted report", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiDownload).mockResolvedValue({ saved: true });
+    vi.mocked(apiDownload).mockResolvedValue({ saved: true, method: "picker" });
     render(<DiagnosticsPanel />);
 
     await user.click(screen.getByRole("button", { name: "Download diagnostics" }));
@@ -33,7 +33,7 @@ describe("DiagnosticsPanel", () => {
 
   it("keeps non-Error failures recoverable with the diagnostics fallback", async () => {
     const user = userEvent.setup();
-    vi.mocked(apiDownload).mockRejectedValueOnce(null).mockResolvedValueOnce({ saved: true });
+    vi.mocked(apiDownload).mockRejectedValueOnce(null).mockResolvedValueOnce({ saved: true, method: "picker" });
     render(<DiagnosticsPanel />);
     await user.click(screen.getByRole("button", { name: "Download diagnostics" }));
     expect(await screen.findByText("Could not download diagnostics.")).toBeVisible();
@@ -44,7 +44,7 @@ describe("DiagnosticsPanel", () => {
 
   it("disables repeated downloads while pending and ignores completion after unmount", async () => {
     const user = userEvent.setup();
-    let resolve!: (_value: { saved: boolean }) => void;
+    let resolve!: (_value: Awaited<ReturnType<typeof apiDownload>>) => void;
     vi.mocked(apiDownload).mockReturnValue(new Promise((done) => { resolve = done; }));
     const { unmount } = render(<DiagnosticsPanel />);
     await user.click(screen.getByRole("button", { name: "Download diagnostics" }));
@@ -52,6 +52,6 @@ describe("DiagnosticsPanel", () => {
     await user.click(screen.getByRole("button", { name: "Preparing diagnostics..." }));
     expect(apiDownload).toHaveBeenCalledTimes(1);
     unmount();
-    await act(async () => resolve({ saved: true }));
+    await act(async () => resolve({ saved: true, method: "picker" }));
   });
 });

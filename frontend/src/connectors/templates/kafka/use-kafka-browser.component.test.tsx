@@ -1,13 +1,14 @@
+import { connectorActionRequest } from "../../../test/connector-action-fixtures";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api.js";
+import { apiPost } from "../../../lib/api.ts";
 import { useKafkaBrowser } from "./use-kafka-browser";
 import { useKafkaWrites } from "./use-kafka-writes";
 import { connectorActionFixture } from "../../../test/connector-action-fixtures";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import type { KafkaBrowserProps } from "./console-types";
 
-vi.mock("../../../lib/api.js", () => ({ apiPost: vi.fn() }));
+vi.mock("../../../lib/api.ts", () => ({ apiPost: vi.fn() }));
 
 const topics = [
   { name: "orders", partition_count: 2 },
@@ -17,7 +18,7 @@ const topics = [
 beforeEach(() => {
   vi.mocked(apiPost).mockReset();
   vi.mocked(apiPost).mockImplementation(async (_path, payload) =>
-    completed(payload.action_name, responseFor(payload.action_name, payload.input)),
+    completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)),
   );
 });
 
@@ -35,9 +36,9 @@ function useHarness(overrides: Partial<KafkaBrowserProps> = {}) {
 it("loads Kafka topics and ignores detail from a superseded selection", async () => {
   const pending = new Map<string, (_response: ConnectorActionResponse) => void>();
   vi.mocked(apiPost).mockImplementation((_path, payload) => {
-    if (payload.action_name !== "describe_topic")
-      return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
-    return new Promise((resolve) => pending.set(payload.input.topic, resolve));
+    if (connectorActionRequest(payload).action_name !== "describe_topic")
+      return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
+    return new Promise((resolve) => pending.set(String(connectorActionRequest(payload).input.topic), resolve));
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -55,12 +56,12 @@ it("loads Kafka topics and ignores detail from a superseded selection", async ()
 it("does not commit messages after the selected topic changes", async () => {
   let resolveMessages: ((_response: ConnectorActionResponse) => void) | undefined;
   vi.mocked(apiPost).mockImplementation((_path, payload) => {
-    if (payload.action_name === "read_messages") {
+    if (connectorActionRequest(payload).action_name === "read_messages") {
       return new Promise((resolve) => {
         resolveMessages = resolve;
       });
     }
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -78,12 +79,12 @@ it("does not commit messages after the selected topic changes", async () => {
 it("does not commit messages after the selected topic is cleared", async () => {
   let resolveMessages: ((_response: ConnectorActionResponse) => void) | undefined;
   vi.mocked(apiPost).mockImplementation((_path, payload) => {
-    if (payload.action_name === "read_messages") {
+    if (connectorActionRequest(payload).action_name === "read_messages") {
       return new Promise((resolve) => {
         resolveMessages = resolve;
       });
     }
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -159,7 +160,7 @@ it("holds a Kafka publish lock until delayed activity refresh completes", async 
   expect(result.current.browser.state.state).toBe("idle");
   expect(result.current.writes.publishPending).toBe(true);
   await act(async () => result.current.writes.publishMessage());
-  expect(vi.mocked(apiPost).mock.calls.filter(([, payload]) => payload.action_name === "publish_message")).toHaveLength(1);
+  expect(vi.mocked(apiPost).mock.calls.filter(([, payload]) => connectorActionRequest(payload).action_name === "publish_message")).toHaveLength(1);
   hold = false;
   await act(async () => {
     finishRefresh?.();
@@ -172,11 +173,11 @@ it("holds a Kafka publish lock until delayed activity refresh completes", async 
 it("does not close a new topic dialog or overwrite detail after an older publish", async () => {
   let finishPublish: ((_value: ConnectorActionResponse) => void) | undefined;
   vi.mocked(apiPost).mockImplementation((_path, payload) => {
-    if (payload.action_name === "publish_message")
+    if (connectorActionRequest(payload).action_name === "publish_message")
       return new Promise((resolve) => {
         finishPublish = resolve;
       });
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -200,15 +201,15 @@ it("does not close a new topic dialog or overwrite detail after an older publish
 it("dispatches exact offset strings through the shared Kafka runner", async () => {
   vi.mocked(apiPost).mockImplementation(async (_path, payload) => {
     const output =
-      payload.action_name === "list_consumer_groups"
+      connectorActionRequest(payload).action_name === "list_consumer_groups"
         ? { consumer_groups: [{ name: "reader", state: "Empty" }] }
-        : payload.action_name === "describe_consumer_group"
+        : connectorActionRequest(payload).action_name === "describe_consumer_group"
           ? {
               name: "reader",
               partitions: [{ topic: "orders", partition: 0, committed_offset: "9007199254740993", end_offset: "9223372036854775807" }],
             }
-          : responseFor(payload.action_name, payload.input);
-    return completed(payload.action_name, output);
+          : responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input);
+    return completed(connectorActionRequest(payload).action_name, output);
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -232,11 +233,11 @@ it("dispatches exact offset strings through the shared Kafka runner", async () =
 it("does not update partition controls after a pending Kafka selection is cleared", async () => {
   let finish: ((_response: ConnectorActionResponse) => void) | undefined;
   vi.mocked(apiPost).mockImplementation((_path, payload) =>
-    payload.action_name === "describe_topic"
+    connectorActionRequest(payload).action_name === "describe_topic"
       ? new Promise((resolve) => {
           finish = resolve;
         })
-      : Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input))),
+      : Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input))),
   );
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -258,11 +259,11 @@ it("does not update partition controls after a pending Kafka selection is cleare
 it.each(["target", "session", "unmount"])("does not resume a Kafka write continuation after %s changes", async (change) => {
   let finish: ((_response: ConnectorActionResponse) => void) | undefined;
   vi.mocked(apiPost).mockImplementation((_path, payload) =>
-    payload.action_name === "publish_message"
+    connectorActionRequest(payload).action_name === "publish_message"
       ? new Promise((resolve) => {
           finish = resolve;
         })
-      : Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input))),
+      : Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input))),
   );
   const initialProps: Partial<KafkaBrowserProps> = {};
   const { result, rerender, unmount } = renderHook((props) => useHarness(props), { initialProps });
@@ -276,7 +277,7 @@ it.each(["target", "session", "unmount"])("does not resume a Kafka write continu
   if (change === "target") rerender({ target: { ref: "kafka:2:2" } });
   else if (change === "session") rerender({ session: { active: true, startedAt: "later" } });
   else unmount();
-  const detailCount = () => vi.mocked(apiPost).mock.calls.filter(([, payload]) => payload.action_name === "describe_topic").length;
+  const detailCount = () => vi.mocked(apiPost).mock.calls.filter(([, payload]) => connectorActionRequest(payload).action_name === "describe_topic").length;
   const before = detailCount();
   await act(async () => {
     finish?.(completed("publish_message", { published: true }));
@@ -292,8 +293,8 @@ it.each(["target", "session", "unmount"])("does not resume a Kafka write continu
 it("releases the Kafka write lock after failure so the same dialog can retry", async () => {
   let fail = true;
   vi.mocked(apiPost).mockImplementation(async (_path, payload) => {
-    if (payload.action_name === "publish_message" && fail) throw new Error("publish denied");
-    return completed(payload.action_name, responseFor(payload.action_name, payload.input));
+    if (connectorActionRequest(payload).action_name === "publish_message" && fail) throw new Error("publish denied");
+    return completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input));
   });
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
@@ -306,5 +307,5 @@ it("releases the Kafka write lock after failure so the same dialog can retry", a
   fail = false;
   await act(async () => result.current.writes.publishMessage());
   expect(result.current.writes.publishDialog.open).toBe(false);
-  expect(vi.mocked(apiPost).mock.calls.filter(([, payload]) => payload.action_name === "publish_message")).toHaveLength(2);
+  expect(vi.mocked(apiPost).mock.calls.filter(([, payload]) => connectorActionRequest(payload).action_name === "publish_message")).toHaveLength(2);
 });

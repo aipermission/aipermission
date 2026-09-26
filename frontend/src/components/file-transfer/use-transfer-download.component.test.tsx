@@ -4,16 +4,20 @@ import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiDownload } from "../../lib/api";
 import { useTransferDownload } from "./use-transfer-download";
+import type { TransferBatchState } from "./transfer-contracts";
 
 vi.mock("../../lib/api", () => ({ apiDownload: vi.fn() }));
 
-const completedBatch = {
+const completedBatch: TransferBatchState = {
   state: "ready",
   item: { id: 12, status: "completed", direction: "download", archive_name: "reports.zip" },
   error: null,
 };
 
-function DownloadHarness({ onNotice = vi.fn(), onClose = vi.fn(), clearBatch = vi.fn(), clearQueue = vi.fn() }) {
+type HarnessProps = Partial<Pick<Parameters<typeof useTransferDownload>[0], "onNotice" | "onClose" | "clearBatch" | "clearQueue">>;
+const downloadMock = vi.mocked(apiDownload);
+
+function DownloadHarness({ onNotice = vi.fn(), onClose = vi.fn(), clearBatch = vi.fn(), clearQueue = vi.fn() }: HarnessProps) {
   const [batch, setBatch] = useState(completedBatch);
   const download = useTransferDownload({ batch, setBatch, mode: "download", clearBatch, clearQueue, onNotice, onClose });
   return (
@@ -21,7 +25,7 @@ function DownloadHarness({ onNotice = vi.fn(), onClose = vi.fn(), clearBatch = v
       <button type="button" onClick={() => void download.saveDownloadBatch()}>
         Save
       </button>
-      <button type="button" onClick={download.clearFinishedQueue}>
+      <button type="button" onClick={() => download.clearFinishedQueue()}>
         Clear
       </button>
       <button type="button" onClick={download.requestClose}>
@@ -44,13 +48,13 @@ function DownloadHarness({ onNotice = vi.fn(), onClose = vi.fn(), clearBatch = v
 }
 
 beforeEach(() => {
-  apiDownload.mockReset();
+  downloadMock.mockReset();
 });
 
 it("owns completed download notices and allows retry after picker cancellation", async () => {
   const user = userEvent.setup();
   const onNotice = vi.fn();
-  apiDownload.mockResolvedValueOnce({ canceled: true }).mockResolvedValueOnce({ saved: true });
+  downloadMock.mockResolvedValueOnce({ saved: false, method: "picker", canceled: true }).mockResolvedValueOnce({ saved: true, method: "picker" });
   render(<DownloadHarness onNotice={onNotice} />);
 
   await waitFor(() =>
@@ -104,23 +108,25 @@ it("saves before clearing and aborts an unfinished save when unmounted", async (
   const user = userEvent.setup();
   const clearBatch = vi.fn();
   const clearQueue = vi.fn();
-  apiDownload.mockResolvedValueOnce({ saved: true });
+  downloadMock.mockResolvedValueOnce({ saved: true, method: "picker" });
   const view = render(<DownloadHarness clearBatch={clearBatch} clearQueue={clearQueue} />);
 
   await user.click(screen.getByRole("button", { name: "Save then clear" }));
   expect(clearQueue).toHaveBeenCalledWith("download");
   expect(clearBatch).toHaveBeenCalledOnce();
 
-  let resolveDownload;
-  apiDownload.mockImplementationOnce(
+  let resolveDownload!: (_value: Awaited<ReturnType<typeof apiDownload>>) => void;
+  downloadMock.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         resolveDownload = resolve;
       }),
   );
   await user.click(screen.getByRole("button", { name: "Save" }));
-  const signal = apiDownload.mock.calls.at(-1)[2].signal;
+  const signal = downloadMock.mock.calls.at(-1)?.[2]?.signal;
+  expect(signal).toBeInstanceOf(AbortSignal);
+  if (!signal) throw new Error("Download did not receive its cancellation signal");
   view.unmount();
   expect(signal.aborted).toBe(true);
-  resolveDownload({ saved: true });
+  resolveDownload({ saved: true, method: "picker" });
 });

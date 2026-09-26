@@ -87,7 +87,6 @@ export function usePostgresBackupRestore(value: PostgresOperation) {
       formData.append("idempotency_key", retry.idempotencyKey);
       const response = await apiPostForm(`${endpoint}/restore`, formData, {
         signal: request.signal,
-        requireJSON: true,
         workspaceBinding: workspaceID,
       });
       requireCompletedRestoreResponse(response);

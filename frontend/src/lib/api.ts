@@ -10,17 +10,20 @@ import { APIError } from "./errors.ts";
 import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.ts";
 import { scopedUICookieName } from "./ui-cookie.ts";
 import { readBufferedDownload } from "./downloads/download-buffer.ts";
+import { nativeSaveFilePicker, objectRecord } from "./api-types.ts";
+import type { APIOptions, DownloadOptions, DownloadResult, NativeFileWriter, NativeSaveHandle, PostPolicy, PreparedPost } from "./api-types";
+import type { PreparedRetry } from "./local-action-retry/records";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
 const workspaceChangedHeaderName = "X-AIPermission-Workspace-Changed";
 let workspaceBinding = "";
-let workspaceBindingOwner = null;
+let workspaceBindingOwner: Window | null = null;
 
 export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
-export async function apiGet(path, options = {}) {
+export async function apiGet(path: string, options: APIOptions = {}): Promise<unknown> {
   const request = boundedReadSignal(options.signal, options.timeoutMs);
   try {
     const response = await fetch(`${apiUrl}${path}`, { signal: request.signal, credentials: "include" });
@@ -33,7 +36,7 @@ export async function apiGet(path, options = {}) {
   }
 }
 
-export async function apiPost(path, body, options = {}) {
+export async function apiPost(path: string, body: Record<string, unknown>, options: APIOptions = {}): Promise<unknown> {
   const requestWorkspace = currentWorkspaceBinding();
   const prepared = await preparePostBody(path, body, requestWorkspace);
   let finalized = false;
@@ -45,7 +48,7 @@ export async function apiPost(path, body, options = {}) {
       signal: options.signal,
       credentials: "include",
     });
-    let data;
+    let data: unknown;
     try {
       data = await readResponse(response);
     } catch (error) {
@@ -55,11 +58,11 @@ export async function apiPost(path, body, options = {}) {
     if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
       throw new Error(prepared.invalidResponseMessage);
     }
-    if (prepared.retry && response.ok && data.status !== "outcome_unknown") {
+    if (prepared.retry && response.ok && objectRecord(data)?.status !== "outcome_unknown") {
       await completeLocalActionRetry(prepared.retry);
       finalized = true;
     }
-    if (prepared.retry && response.ok && data.status === "outcome_unknown") {
+    if (prepared.retry && response.ok && objectRecord(data)?.status === "outcome_unknown") {
       await markLocalActionRetryOutcome(prepared.retry, data);
       finalized = true;
     }
@@ -72,14 +75,14 @@ export async function apiPost(path, body, options = {}) {
   }
 }
 
-async function finalizePostError(prepared, error, response) {
+async function finalizePostError(prepared: PreparedPost, error: unknown, response: Response) {
   const retry = prepared.retry;
   if (!retry) return false;
   if (prepared.retireOnError?.(error)) {
     await retireLocalActionRetryAttempt(retry);
     return true;
   }
-  if (error?.data?.status === "outcome_unknown") {
+  if (error instanceof APIError && objectRecord(error.data)?.status === "outcome_unknown") {
     await markLocalActionRetryOutcome(retry, error.data);
     return true;
   }
@@ -91,30 +94,34 @@ async function finalizePostError(prepared, error, response) {
   return false;
 }
 
-async function preserveRetryAfterFailure(retry, finalized) {
+async function preserveRetryAfterFailure(retry: PreparedRetry | null, finalized: boolean) {
   if (!retry || finalized) return finalized;
   await preserveLocalActionRetryAttempt(retry);
   return true;
 }
 
-function isAcknowledgedLocalActionResponse(data, body) {
+function isAcknowledgedLocalActionResponse(data: unknown, body: unknown) {
   try {
-    assertConnectorActionResponse(data, { targetRef: body?.target_ref, actionName: body?.action_name });
+    const request = objectRecord(body);
+    assertConnectorActionResponse(data, {
+      targetRef: typeof request?.target_ref === "string" ? request.target_ref : "",
+      actionName: typeof request?.action_name === "string" ? request.action_name : "",
+    });
     return true;
   } catch {
     return false;
   }
 }
 
-async function preparePostBody(path, body, workspaceID) {
+async function preparePostBody(path: string, body: unknown, workspaceID: string): Promise<PreparedPost> {
   const policy = idempotentPostPolicy(path, body);
-  if (!policy) return { body, retry: null, acknowledged: null, retireOnError: null, invalidResponseMessage: "" };
-  if (body?.idempotency_key) return { body, retry: null, ...policy };
+  if (!policy) return { body, retry: null, invalidResponseMessage: "" };
+  if (objectRecord(body)?.idempotency_key) return { body, retry: null, ...policy };
   const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID });
-  return { body: { ...body, idempotency_key: retry.idempotencyKey }, retry, ...policy };
+  return { body: { ...objectRecord(body), idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 
-function idempotentPostPolicy(path, body) {
+function idempotentPostPolicy(path: string, body: unknown): PostPolicy | null {
   if (path === "/api/connector-actions/local-run") {
     return {
       acknowledged: (data) => isAcknowledgedLocalActionResponse(data, body),
@@ -127,37 +134,42 @@ function idempotentPostPolicy(path, body) {
   if (/^\/api\/backup\/providers\/\d+\/upload$/.test(path)) {
     return {
       acknowledged: isAcknowledgedBackupUploadResponse,
-      retireOnError: (error) => error?.status === 410 && error?.code === "operation_expired",
+      retireOnError: (error) => error instanceof APIError && error.status === 410 && error.code === "operation_expired",
       invalidResponseMessage: "Invalid backup upload response from gateway.",
     };
   }
   return null;
 }
 
-function isAcknowledgedBackupUploadResponse(data) {
+function isAcknowledgedBackupUploadResponse(value: unknown) {
+  const data = objectRecord(value);
   return (
     data !== null &&
     typeof data === "object" &&
-    Number.isSafeInteger(data.id) &&
+    typeof data.id === "number" && Number.isSafeInteger(data.id) &&
     data.id > 0 &&
     typeof data.provider_file_id === "string" &&
     data.provider_file_id.length > 0
   );
 }
 
-function isAcknowledgedBulkCommandResponse(data) {
+function isAcknowledgedBulkCommandResponse(value: unknown) {
+  const data = objectRecord(value);
   return (
     data !== null &&
     typeof data === "object" &&
-    Number.isSafeInteger(data.parallelism) &&
+    typeof data.parallelism === "number" && Number.isSafeInteger(data.parallelism) &&
     data.parallelism > 0 &&
     Array.isArray(data.items) &&
     data.items.length > 0 &&
-    data.items.every((item) => Number.isSafeInteger(item?.request_id) && item.request_id > 0)
+    data.items.every((item: unknown) => {
+      const request = objectRecord(item);
+      return typeof request?.request_id === "number" && Number.isSafeInteger(request.request_id) && request.request_id > 0;
+    })
   );
 }
 
-export async function apiPostForm(path, formData, options = {}) {
+export async function apiPostForm(path: string, formData: FormData, options: APIOptions = {}): Promise<unknown> {
   const requestWorkspace = options.workspaceBinding || currentWorkspaceBinding();
   const response = await fetch(`${apiUrl}${path}`, {
     method: "POST",
@@ -169,7 +181,7 @@ export async function apiPostForm(path, formData, options = {}) {
   return readResponse(response);
 }
 
-export async function apiPut(path, body, options = {}) {
+export async function apiPut(path: string, body: unknown, options: APIOptions = {}): Promise<unknown> {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "PUT",
     headers: mutationHeaders({ "Content-Type": "application/json" }),
@@ -180,7 +192,7 @@ export async function apiPut(path, body, options = {}) {
   return readResponse(response);
 }
 
-export async function apiDelete(path, options = {}) {
+export async function apiDelete(path: string, options: APIOptions = {}): Promise<unknown> {
   const response = await fetch(`${apiUrl}${path}`, {
     method: "DELETE",
     headers: mutationHeaders(),
@@ -193,19 +205,20 @@ export async function apiDelete(path, options = {}) {
   return readResponse(response);
 }
 
-export async function apiDownload(path, filename, options = {}) {
+export async function apiDownload(path: string, filename: string, options: DownloadOptions = {}): Promise<DownloadResult> {
   const requestWorkspace = currentWorkspaceBinding();
   const safeFilename = filename.replaceAll(":", "-");
-  let saveHandle = null;
-  const pickerAvailable = typeof window !== "undefined" && typeof window.showSaveFilePicker === "function";
+  let saveHandle: NativeSaveHandle | null = null;
+  const picker = nativeSaveFilePicker();
+  const pickerAvailable = picker !== null;
   if (options.requireStreaming && !pickerAvailable) {
     throw new Error("This download requires a browser with a streaming Save dialog.");
   }
   if ((options.picker || options.requireStreaming) && pickerAvailable) {
     try {
-      saveHandle = await window.showSaveFilePicker({ suggestedName: safeFilename });
+      saveHandle = await picker({ suggestedName: safeFilename });
     } catch (error) {
-      if (error?.name === "AbortError") {
+      if (objectRecord(error)?.name === "AbortError") {
         return { saved: false, canceled: true, method: "picker" };
       }
       throw error;
@@ -217,11 +230,12 @@ export async function apiDownload(path, filename, options = {}) {
     credentials: "include",
   });
   if (!response.ok) {
-    return readResponse(response, { captureWorkspace: false });
+    await readResponse(response, { captureWorkspace: false });
+    throw new Error("Download failed.");
   }
   captureWorkspaceBinding(response);
   if (saveHandle && response.body && typeof response.body.pipeTo === "function") {
-    let writable = null;
+    let writable: NativeFileWriter | null = null;
     try {
       writable = await saveHandle.createWritable();
       await response.body.pipeTo(writable, { signal: options.signal });
@@ -241,7 +255,7 @@ export async function apiDownload(path, filename, options = {}) {
   }
   const blob = await readBufferedDownload(response);
   if (saveHandle) {
-    let writable = null;
+    let writable: NativeFileWriter | null = null;
     try {
       writable = await saveHandle.createWritable();
       await writable.write(blob);
@@ -255,7 +269,7 @@ export async function apiDownload(path, filename, options = {}) {
   return saveBlob(blob, safeFilename, { ...options, picker: false });
 }
 
-async function abortDownloadResources(body, writable, reason) {
+async function abortDownloadResources(body: ReadableStream<Uint8Array> | null, writable: NativeFileWriter | null, reason: unknown) {
   try {
     await writable?.abort?.(reason);
   } catch {
@@ -268,32 +282,33 @@ async function abortDownloadResources(body, writable, reason) {
   }
 }
 
-async function readResponse(response, options = {}) {
+async function readResponse(response: Response, options: { captureWorkspace?: boolean } = {}): Promise<unknown> {
   const text = await response.text();
   if (!response.ok) {
-    let data = null;
-    let parseError = null;
+    let data: unknown = null;
+    let parseError: unknown = null;
     try {
-      data = parseResponseBody(text, options);
+      data = parseResponseBody(text);
     } catch (error) {
       parseError = error;
     }
-    if (response.status === 401 && data?.error === "ui session required" && typeof window !== "undefined") {
+    const failure = objectRecord(data);
+    if (response.status === 401 && failure?.error === "ui session required" && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
     }
-    throw new APIError(data?.error || parseError?.message || `Request failed with ${response.status}`, {
+    throw new APIError(typeof failure?.error === "string" && failure.error ? failure.error : parseError instanceof Error ? parseError.message : `Request failed with ${response.status}`, {
       status: response.status,
-      code: data?.code || data?.status || "",
-      details: data?.details || null,
+      code: typeof failure?.code === "string" ? failure.code : typeof failure?.status === "string" ? failure.status : "",
+      details: failure?.details || null,
       data,
     });
   }
-  const data = parseResponseBody(text, options);
+  const data = parseResponseBody(text);
   if (options.captureWorkspace !== false) captureWorkspaceBinding(response);
   return data;
 }
 
-function parseResponseBody(text) {
+function parseResponseBody(text: string): unknown {
   if (!text) {
     throw new Error("Empty JSON response from gateway.");
   }
@@ -305,11 +320,11 @@ function parseResponseBody(text) {
   }
 }
 
-function looksLikeHTML(text) {
+function looksLikeHTML(text: string) {
   return text.trimStart().startsWith("<");
 }
 
-function normalizeApiUrl(value) {
+function normalizeApiUrl(value: unknown) {
   const trimmed = String(value || "").replace(/\/+$/, "");
   return trimmed;
 }
@@ -321,8 +336,8 @@ function browserOrigin() {
   return "http://localhost:3210";
 }
 
-function boundedReadSignal(parent, timeoutMs) {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return { signal: parent, timedOut: () => false, cleanup: () => {} };
+function boundedReadSignal(parent: AbortSignal | undefined, timeoutMs: number | undefined) {
+  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0) return { signal: parent, timedOut: () => false, cleanup: () => {} };
   const controller = new AbortController();
   let timeoutReached = false;
   const abortFromParent = () => controller.abort(parent?.reason);
@@ -342,17 +357,17 @@ function boundedReadSignal(parent, timeoutMs) {
   };
 }
 
-function csrfHeaders(base = {}) {
+function csrfHeaders(base: Record<string, string> = {}) {
   const token = readCookie(scopedUICookieName("aipermission_csrf"));
   if (!token) return base;
   return { ...base, "X-AIPermission-CSRF": token };
 }
 
-function mutationHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+function mutationHeaders(base: Record<string, string> = {}, requestWorkspace = currentWorkspaceBinding()) {
   return workspaceHeaders(csrfHeaders(base), requestWorkspace);
 }
 
-function workspaceHeaders(base = {}, requestWorkspace = currentWorkspaceBinding()) {
+function workspaceHeaders(base: Record<string, string> = {}, requestWorkspace = currentWorkspaceBinding()) {
   const headers = base;
   if (!requestWorkspace) return headers;
   return { ...headers, [workspaceHeaderName]: requestWorkspace };
@@ -364,7 +379,7 @@ export function currentWorkspaceBinding() {
   return workspaceBinding;
 }
 
-function captureWorkspaceBinding(response) {
+function captureWorkspaceBinding(response: Response) {
   synchronizeWorkspaceBindingOwner();
   if (!response?.headers?.has?.(workspaceHeaderName)) return;
   const changed = response.headers.get(workspaceChangedHeaderName) === "true";
@@ -380,7 +395,7 @@ function synchronizeWorkspaceBindingOwner() {
   workspaceBinding = "";
 }
 
-function readCookie(name) {
+function readCookie(name: string) {
   if (typeof document === "undefined") return "";
   const prefix = `${name}=`;
   return (
@@ -392,7 +407,7 @@ function readCookie(name) {
   );
 }
 
-export function downloadBlob(blob, filename) {
+export function downloadBlob(blob: Blob, filename: string): DownloadResult {
   const safeFilename = filename.replaceAll(":", "-");
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -403,17 +418,18 @@ export function downloadBlob(blob, filename) {
   return { saved: true, method: "anchor" };
 }
 
-export async function saveBlob(blob, filename, options = {}) {
+export async function saveBlob(blob: Blob, filename: string, options: DownloadOptions = {}): Promise<DownloadResult> {
   const safeFilename = filename.replaceAll(":", "-");
-  if (options.picker && typeof window !== "undefined" && typeof window.showSaveFilePicker === "function") {
+  const picker = nativeSaveFilePicker();
+  if (options.picker && picker) {
     try {
-      const handle = await window.showSaveFilePicker({ suggestedName: safeFilename });
+      const handle = await picker({ suggestedName: safeFilename });
       const writable = await handle.createWritable();
       await writable.write(blob);
       await writable.close();
       return { saved: true, method: "picker" };
     } catch (error) {
-      if (error?.name === "AbortError") {
+      if (objectRecord(error)?.name === "AbortError") {
         return { saved: false, canceled: true, method: "picker" };
       }
       throw error;
@@ -422,7 +438,7 @@ export async function saveBlob(blob, filename, options = {}) {
   return downloadBlob(blob, safeFilename);
 }
 
-export function downloadJSON(value, filename) {
+export function downloadJSON(value: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
   downloadBlob(blob, filename);
 }

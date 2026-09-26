@@ -1,3 +1,4 @@
+import { backupCountResponse } from "./backup-contracts";
 import { useRef, useState, type FormEvent } from "react";
 import { apiDownload, apiGet, apiPost } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -92,10 +93,10 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
     const result = await runBackupProviderAction<CountResult>({
       pending: "deleting-records",
       successMessage: (response) => `Deleted ${response.deleted_count} backup version${response.deleted_count === 1 ? "" : "s"}.`,
-      action: () =>
-        apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
+      action: async () =>
+        backupCountResponse(await apiPost(`/api/backup/providers/${provider.id}/records/delete`, {
           record_ids: backupDeleteRecords.map((record) => record.id),
-        }),
+        })),
     });
     if (result === undefined) return;
     setBackupDeleteRecords([]);
@@ -125,7 +126,7 @@ export function useBackupRecordState({ backupProviderState, runBackupProviderAct
         response.deleted_count > 0
           ? `Deleted ${response.deleted_count} old backup version${response.deleted_count === 1 ? "" : "s"}.`
           : `No backups were older than the latest ${response.keep_latest}.`,
-      action: () => apiPost(`/api/backup/providers/${provider.id}/prune`, { keep_latest: keepLatest }),
+      action: async () => backupCountResponse(await apiPost(`/api/backup/providers/${provider.id}/prune`, { keep_latest: keepLatest })),
     });
     if (result === undefined) return;
     setBackupPruneTarget(null);

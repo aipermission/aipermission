@@ -12,10 +12,10 @@ function downloadSignal(options: unknown): AbortSignal {
   return options.signal;
 }
 
-function deferred() {
-  let resolve!: (_value?: unknown) => void;
+function deferred<T = void>() {
+  let resolve!: (_value: T) => void;
   let reject!: (_reason: unknown) => void;
-  const promise = new Promise<unknown>((resolvePromise, rejectPromise) => {
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
     reject = rejectPromise;
   });
@@ -302,7 +302,7 @@ it("surfaces a current History download failure and allows another attempt", asy
 
 it("keeps label and download busy states independent", async () => {
   const label = deferred();
-  const download = deferred();
+  const download = deferred<Awaited<ReturnType<typeof realDownload>>>();
   apiDownload.mockReturnValueOnce(download.promise);
   render(
     <HistoryDialog
@@ -329,7 +329,7 @@ it("keeps label and download busy states independent", async () => {
   expect(input).toBeDisabled();
 
   fireEvent.click(screen.getByRole("button", { name: "Save download" }));
-  await download.resolve({ saved: true });
+  await download.resolve({ saved: true, method: "picker" });
   await waitFor(() => expect(screen.getByRole("button", { name: "Save download" })).toBeEnabled());
   expect(input).toBeDisabled();
 

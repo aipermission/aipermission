@@ -4,7 +4,7 @@ import { apiDelete, apiDownload, apiGet, downloadJSON, saveBlob } from "../api";
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
-  delete window.showSaveFilePicker;
+  Reflect.deleteProperty(window, "showSaveFilePicker");
 });
 
 it("distinguishes a bounded read deadline from caller cancellation", async () => {
@@ -12,7 +12,7 @@ it("distinguishes a bounded read deadline from caller cancellation", async () =>
   vi.stubGlobal(
     "fetch",
     vi.fn(
-      (_url, { signal }) =>
+      (_url: unknown, { signal }: { signal: AbortSignal }) =>
         new Promise((_resolve, reject) =>
           signal.addEventListener("abort", () => reject(signal.reason || new DOMException("Aborted", "AbortError")), { once: true }),
         ),
@@ -45,13 +45,13 @@ it("streams required downloads to a native picker when the response supports pip
   const pipeTo = vi.fn().mockResolvedValue(undefined);
   const writable = { write: vi.fn(), close: vi.fn() };
   const handle = { createWritable: vi.fn().mockResolvedValue(writable) };
-  window.showSaveFilePicker = vi.fn().mockResolvedValue(handle);
+  Reflect.set(window, "showSaveFilePicker", vi.fn().mockResolvedValue(handle));
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: { pipeTo }, blob: vi.fn() }));
   await expect(apiDownload("/api/export", "a:b.sql", { requireStreaming: true })).resolves.toEqual({
     saved: true,
     method: "picker",
   });
-  expect(window.showSaveFilePicker).toHaveBeenCalledWith({ suggestedName: "a-b.sql" });
+  expect(Reflect.get(window, "showSaveFilePicker")).toHaveBeenCalledWith({ suggestedName: "a-b.sql" });
   expect(pipeTo).toHaveBeenCalledWith(writable, { signal: undefined });
 });
 
@@ -67,7 +67,7 @@ it("rejects required streaming before dispatch when the native picker is unavail
 
 it("keeps the streaming compatibility error when response cancellation fails", async () => {
   const cancel = vi.fn().mockRejectedValue(new Error("cancel failed"));
-  window.showSaveFilePicker = vi.fn().mockResolvedValue({ createWritable: vi.fn() });
+  Reflect.set(window, "showSaveFilePicker", vi.fn().mockResolvedValue({ createWritable: vi.fn() }));
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: { cancel } }));
 
   await expect(apiDownload("/api/export", "backup.aipdb", { requireStreaming: true })).rejects.toThrow("cannot stream this download");
@@ -76,9 +76,9 @@ it("keeps the streaming compatibility error when response cancellation fails", a
 
 it("closes response resources when the streaming destination cannot be opened", async () => {
   const cancel = vi.fn().mockResolvedValue(undefined);
-  window.showSaveFilePicker = vi.fn().mockResolvedValue({
+  Reflect.set(window, "showSaveFilePicker", vi.fn().mockResolvedValue({
     createWritable: vi.fn().mockRejectedValue(new Error("destination unavailable")),
-  });
+  }));
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, body: { pipeTo: vi.fn(), cancel } }));
 
   await expect(apiDownload("/api/export", "backup.aipdb", { requireStreaming: true })).rejects.toThrow("destination unavailable");
@@ -89,9 +89,9 @@ it("aborts both streaming resources after a destination write failure", async ()
   const failure = new Error("stream write failed");
   const abort = vi.fn().mockRejectedValue(new Error("abort already completed"));
   const cancel = vi.fn().mockRejectedValue(new Error("stream already closed"));
-  window.showSaveFilePicker = vi.fn().mockResolvedValue({
+  Reflect.set(window, "showSaveFilePicker", vi.fn().mockResolvedValue({
     createWritable: vi.fn().mockResolvedValue({ abort }),
-  });
+  }));
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -110,9 +110,9 @@ it("buffers an ordinary picker download when direct stream piping is unavailable
   const read = vi.fn().mockResolvedValueOnce({ done: false, value: payload }).mockResolvedValueOnce({ done: true });
   const releaseLock = vi.fn();
   const writable = { write: vi.fn(), close: vi.fn() };
-  window.showSaveFilePicker = vi.fn().mockResolvedValue({
+  Reflect.set(window, "showSaveFilePicker", vi.fn().mockResolvedValue({
     createWritable: vi.fn().mockResolvedValue(writable),
-  });
+  }));
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -130,10 +130,10 @@ it("buffers an ordinary picker download when direct stream piping is unavailable
 
 it("writes picker blobs, handles cancellation, and creates JSON downloads", async () => {
   const writable = { write: vi.fn(), close: vi.fn() };
-  window.showSaveFilePicker = vi
+  Reflect.set(window, "showSaveFilePicker", vi
     .fn()
     .mockResolvedValueOnce({ createWritable: async () => writable })
-    .mockRejectedValueOnce(new DOMException("Canceled", "AbortError"));
+    .mockRejectedValueOnce(new DOMException("Canceled", "AbortError")));
   const blob = new Blob(["payload"]);
   await expect(saveBlob(blob, "a:b.txt", { picker: true })).resolves.toEqual({ saved: true, method: "picker" });
   expect(writable.write).toHaveBeenCalledWith(blob);

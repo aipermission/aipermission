@@ -1,13 +1,14 @@
+import { connectorActionRequest } from "../../../test/connector-action-fixtures";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api.js";
+import { apiPost } from "../../../lib/api.ts";
 import { useKubernetesBrowser } from "./use-kubernetes-browser";
 import { useRolloutRestart } from "./use-rollout-restart";
 import type { KubernetesBrowserProps } from "./use-kubernetes-browser";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { kubernetesOutputField } from "./resource-output";
 
-vi.mock("../../../lib/api.js", () => ({ apiPost: vi.fn() }));
+vi.mock("../../../lib/api.ts", () => ({ apiPost: vi.fn() }));
 
 const pods = [
   { namespace: "default", name: "api-a", node: "worker-1", phase: "Running" },
@@ -16,7 +17,7 @@ const pods = [
 
 beforeEach(() => {
   vi.mocked(apiPost).mockReset();
-  vi.mocked(apiPost).mockImplementation(async (_path, payload: { action_name: string; input: Record<string, unknown> }) => completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  vi.mocked(apiPost).mockImplementation(async (_path, payload: Record<string, unknown>) => completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
 });
 
 function renderBrowser(overrides: Partial<KubernetesBrowserProps> = {}) {
@@ -35,11 +36,11 @@ function renderBrowser(overrides: Partial<KubernetesBrowserProps> = {}) {
 
 it("loads resources and ignores detail from a superseded pod selection", async () => {
   const pending = new Map<string, (_value: ConnectorActionResponse) => void>();
-  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
-    if (payload.action_name !== "describe_resource") {
-      return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  vi.mocked(apiPost).mockImplementation((_path, payload: Record<string, unknown>) => {
+    if (connectorActionRequest(payload).action_name !== "describe_resource") {
+      return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
     }
-    return new Promise((resolve) => pending.set(String(payload.input.name), resolve));
+    return new Promise((resolve) => pending.set(String(connectorActionRequest(payload).input.name), resolve));
   });
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.activeResources).toEqual([]));
@@ -78,11 +79,11 @@ it("keeps pod console identity and params bound to the selected pod", async () =
 
 it("discards resource lists that arrive after the connector target changes", async () => {
   const pending = new Map<string, (_value: ConnectorActionResponse) => void>();
-  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown>; target_ref: string }) => {
-    if (payload.action_name !== "list_workloads") {
-      return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  vi.mocked(apiPost).mockImplementation((_path, payload: Record<string, unknown>) => {
+    if (connectorActionRequest(payload).action_name !== "list_workloads") {
+      return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
     }
-    return new Promise((resolve) => pending.set(payload.target_ref, resolve));
+    return new Promise((resolve) => pending.set(connectorActionRequest(payload).target_ref, resolve));
   });
   const { result, rerender, props } = renderBrowser();
   await waitFor(() => expect(pending.has("kubernetes:1:1")).toBe(true));
@@ -99,13 +100,13 @@ it("discards resource lists that arrive after the connector target changes", asy
 
 it("does not let an older tab list clear the current pod selection", async () => {
   let resolveWorkloads: ((_value: ConnectorActionResponse) => void) | undefined;
-  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
-    if (payload.action_name === "list_workloads") {
+  vi.mocked(apiPost).mockImplementation((_path, payload: Record<string, unknown>) => {
+    if (connectorActionRequest(payload).action_name === "list_workloads") {
       return new Promise((resolve) => {
         resolveWorkloads = resolve;
       });
     }
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderBrowser();
   await waitFor(() => expect(resolveWorkloads).toBeTypeOf("function"));
@@ -122,14 +123,14 @@ it("does not let an older tab list clear the current pod selection", async () =>
 it("does not let old pod detail replace a synchronously selected event", async () => {
   let resolvePodDetail: ((_value: ConnectorActionResponse) => void) | undefined;
   const event = { namespace: "default", object: "pod/api-b", reason: "Scheduled", last_timestamp: "now", message: "placed" };
-  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
-    if (payload.action_name === "describe_resource" && payload.input.resource_type === "pod") {
+  vi.mocked(apiPost).mockImplementation((_path, payload: Record<string, unknown>) => {
+    if (connectorActionRequest(payload).action_name === "describe_resource" && connectorActionRequest(payload).input.resource_type === "pod") {
       return new Promise((resolve) => {
         resolvePodDetail = resolve;
       });
     }
-    if (payload.action_name === "list_events") return Promise.resolve(completed("list_events", { events: [event] }));
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+    if (connectorActionRequest(payload).action_name === "list_events") return Promise.resolve(completed("list_events", { events: [event] }));
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderBrowser();
   act(() => result.current.switchTab("pods"));
@@ -189,9 +190,9 @@ function responseFor(actionName: string, input: Record<string, unknown>) {
 
 it("does not replace an opened console with delayed pod logs", async () => {
   let resolveLogs: ((_value: ConnectorActionResponse) => void) | undefined;
-  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
-    if (payload.action_name === "get_logs") return new Promise((resolve) => { resolveLogs = resolve; });
-    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  vi.mocked(apiPost).mockImplementation((_path, payload: Record<string, unknown>) => {
+    if (connectorActionRequest(payload).action_name === "get_logs") return new Promise((resolve) => { resolveLogs = resolve; });
+    return Promise.resolve(completed(connectorActionRequest(payload).action_name, responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input)));
   });
   const { result } = renderBrowser();
   act(() => result.current.switchTab("pods"));
@@ -233,10 +234,10 @@ it("does not carry the previous target namespace into initial workload refresh",
   const { result, rerender, props } = renderBrowser();
   await waitFor(() => expect(result.current.namespaces).toEqual([{ name: "default" }]));
   act(() => result.current.changeNamespace("default"));
-  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => payload.target_ref === "kubernetes:1:1" && payload.input.namespace === "default")).toBe(true));
+  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => connectorActionRequest(payload).target_ref === "kubernetes:1:1" && connectorActionRequest(payload).input.namespace === "default")).toBe(true));
   rerender({ ...props, target: { ref: "kubernetes:2:2" } });
-  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => payload.target_ref === "kubernetes:2:2" && payload.action_name === "list_workloads")).toBe(true));
-  const newRequests = vi.mocked(apiPost).mock.calls.filter(([, payload]) => payload.target_ref === "kubernetes:2:2" && payload.action_name === "list_workloads");
+  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => connectorActionRequest(payload).target_ref === "kubernetes:2:2" && connectorActionRequest(payload).action_name === "list_workloads")).toBe(true));
+  const newRequests = vi.mocked(apiPost).mock.calls.filter(([, payload]) => connectorActionRequest(payload).target_ref === "kubernetes:2:2" && connectorActionRequest(payload).action_name === "list_workloads");
   expect(newRequests).toHaveLength(1);
   expect(newRequests[0][1].input).toEqual({});
 });

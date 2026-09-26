@@ -1,3 +1,4 @@
+import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
 import { defaultTargetProfile } from "../_shared/target-profile-lifecycle";
 import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
@@ -227,7 +228,7 @@ export function credentialRows({ credentials, targets = [] }: { credentials: SSH
 export async function test({ target, profile }: { target?: SSHModelTarget | null; profile?: SSHProfile | null }) {
   const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
   if (!target || !selectedProfile) throw new Error("SSH connector profile is not loaded.");
-  const data = await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {});
+  const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {}));
   return { ok: data.ok, error: data.message || data.stderr || null, data };
 }
 
@@ -392,7 +393,7 @@ export async function resumeHostKeyAction(action: SSHHostKeyAction) {
   if (action.type === "test") {
     const profile = action.profile || (action.target?.profiles?.length === 1 ? action.target.profiles[0] : null);
     if (!action.target || !profile) throw new Error("SSH connector profile is not loaded.");
-    const data = await apiPost(`/api/connector-targets/${action.target.id}/profiles/${profile.id}/test`, {});
+    const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${action.target.id}/profiles/${profile.id}/test`, {}));
     return { testKey: action.testKey, test: { ok: data.ok, error: data.stderr || null, data } };
   }
   if (action.type === "new-session") {
@@ -411,12 +412,12 @@ async function createFromPayload({
   setupLater: boolean;
 }) {
   if (!setupLater) {
-    const testResult = await apiPost("/api/connector-targets/test", {
+    const testResult = connectorConnectionTestResponse(await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
       name: payload.name,
       config: targetConfigFromPayload(payload),
       profile: profilePublicFromPayload(payload),
-    });
+    }));
     if (!testResult.ok) {
       throw new Error(
         testResult.stderr ||
@@ -454,12 +455,12 @@ async function saveFromPayload({
   previousTarget: SSHModelTarget;
 }) {
   if (!setupLater) {
-    const testResult = await apiPost("/api/connector-targets/test", {
+    const testResult = connectorConnectionTestResponse(await apiPost("/api/connector-targets/test", {
       connector_kind: "ssh",
       name: payload.name,
       config: targetConfigFromPayload(payload),
       profile: profilePublicFromPayload(payload),
-    });
+    }));
     if (!testResult.ok) {
       throw new Error(
         testResult.stderr ||

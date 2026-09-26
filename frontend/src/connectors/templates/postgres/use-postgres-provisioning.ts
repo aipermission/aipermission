@@ -1,9 +1,10 @@
+import { provisionResultResponse } from "./provision-result-contract";
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
-import { requireCompletedConnectorAction } from "../_shared/action-result";
+import { connectorActionResultResponse, requireCompletedConnectorAction } from "../_shared/action-result";
 import { normalizeConnectorOutput } from "../_shared/sql-console-data";
 import {
   buildProvisionScope,
@@ -63,7 +64,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
     const request = requestGuard.begin("metadata");
     setMetadata({ state: "loading", error: "", schemas: [] });
     try {
-      const response: ActionResponse = await apiPost(
+      const response: ActionResponse = connectorActionResultResponse(await apiPost(
         "/api/connector-actions/local-run",
         {
           target_ref: targetRef,
@@ -72,7 +73,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
           reason: "load Postgres schema metadata for managed credential provisioning",
         },
         { signal: request.signal },
-      );
+      ));
       if (!request.isCurrent()) return;
       const item = requireCompletedConnectorAction(response, "Could not load schema metadata.");
       if (!item) {
@@ -93,7 +94,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
     const request = requestGuard.begin("provision");
     setState({ state: "running", error: "", result: null });
     try {
-      const result: ProvisionResult = await apiPost(
+      const result: ProvisionResult = provisionResultResponse(await apiPost(
         `/api/connector-targets/${targetID}/profiles/${profileID}/provision`,
         {
           input: {
@@ -104,7 +105,7 @@ export function usePostgresProvisioning({ value, onOperationComplete }: Provisio
           },
         },
         { signal: request.signal },
-      );
+      ));
       if (!request.isCurrent()) return;
       setState({ state: "ready", error: "", result });
       try {

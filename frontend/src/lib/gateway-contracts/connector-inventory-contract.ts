@@ -37,6 +37,18 @@ export function connectorInventoryResponse(value: unknown): InventoryTarget[] {
   });
 }
 
+export function permissionInventoryResponse(value: unknown) {
+  return connectorInventoryResponse(value).map((target) => ({
+    ...target,
+    profiles: (target.profiles || []).map((profile) => ({
+      ...profile,
+      actions: (profile.actions || []).map((action) => ({
+        name: action.name, description: action.description || "", risk: action.risk || "",
+      })),
+    })),
+  }));
+}
+
 function inventoryProfileResponse(value: unknown, targetID: unknown, connectorKind: unknown): InventoryProfile {
   const profile = record(value);
   if (

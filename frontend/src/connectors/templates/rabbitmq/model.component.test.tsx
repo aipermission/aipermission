@@ -13,13 +13,13 @@ import {
 import type { RabbitMQTarget } from "./form-types";
 
 const api = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
-vi.mock("../../../lib/api.js", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
+vi.mock("../../../lib/api.ts", () => ({ apiPost: api.post, apiPut: api.put, apiDelete: vi.fn() }));
 
 describe("RabbitMQ credential lifecycle model", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    api.post.mockResolvedValue({ profiles: [] });
-    api.put.mockResolvedValue({ profiles: [] });
+    api.post.mockResolvedValue({ id: 3, profiles: [] });
+    api.put.mockResolvedValue({ id: 3, profiles: [] });
   });
 
   it("uses the shared atomic lifecycle and normalizes management connection fields", async () => {

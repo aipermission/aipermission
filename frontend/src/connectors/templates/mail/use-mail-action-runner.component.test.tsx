@@ -1,3 +1,4 @@
+import { connectorActionRequest } from "../../../test/connector-action-fixtures";
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api";
@@ -29,7 +30,7 @@ it("does not let an old activity refresh failure replace a newer target result",
     onRefreshActivity: vi.fn(() => refreshes.shift()?.()),
     onResolution: vi.fn(),
   };
-  vi.mocked(apiPost).mockImplementation(async (_path, payload) => connectorActionFixture({ target_ref: payload.target_ref, action_name: payload.action_name, output: {} }));
+  vi.mocked(apiPost).mockImplementation(async (_path, payload) => connectorActionFixture({ target_ref: connectorActionRequest(payload).target_ref, action_name: connectorActionRequest(payload).action_name, output: {} }));
   const { result, rerender } = renderHook((value) => useMailActionRunner(value), { initialProps: props });
 
   await act(async () => result.current.runMailAction("send_message", {}, "first send"));

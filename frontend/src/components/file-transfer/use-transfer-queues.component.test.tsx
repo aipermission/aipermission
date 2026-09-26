@@ -18,8 +18,10 @@ import { useTransferQueues } from "./use-transfer-queues";
 
 vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
 
-function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }) {
-  const [notice, setNotice] = useState(null);
+type QueueProps = Partial<Pick<Parameters<typeof useTransferQueues>[0], "recursive" | "runtimeTarget">>;
+
+function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }: QueueProps) {
+  const [notice, setNotice] = useState<Parameters<Parameters<typeof useTransferQueues>[0]["onNotice"]>[0]>(null);
   const queues = useTransferQueues({
     runtimeTarget,
     defaultRemoteDir: "/tmp",
@@ -30,10 +32,10 @@ function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }) {
   return (
     <div>
       <input aria-label="files" type="file" multiple onChange={queues.handleLocalFileChange} />
-      <button type="button" onClick={() => queues.moveQueueItem(queues.uploadQueue[1]?.id, -1)}>
+      <button type="button" onClick={() => queues.moveQueueItem(queues.uploadQueue[1]?.id || "", -1)}>
         Move
       </button>
-      <button type="button" onClick={() => queues.removeQueueItem(queues.uploadQueue[0]?.id)}>
+      <button type="button" onClick={() => queues.removeQueueItem(queues.uploadQueue[0]?.id || "")}>
         Remove
       </button>
       <button type="button" onClick={() => void queues.addRemoteFiles([{ type: "directory", path: "/remote", name: "remote" }])}>
@@ -58,13 +60,13 @@ function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }) {
       <p data-testid="upload-paths">{queues.uploadQueue.map((item) => item.remote_path).join(",")}</p>
       <p data-testid="upload-count">{queues.uploadQueue.length}</p>
       <p data-testid="upload-sizes">{queues.uploadQueue.map((item) => item.size).join(",")}</p>
-      <p data-testid="upload-markers">{queues.uploadQueue.map((item) => item.file.marker || "").join(",")}</p>
+      <p data-testid="upload-markers">{queues.uploadQueue.map((item) => Reflect.get(item.file, "marker") || "").join(",")}</p>
       <p data-testid="downloads">{queues.downloadQueue.map((item) => item.path).join(",")}</p>
     </div>
   );
 }
 
-beforeEach(() => apiPost.mockReset());
+beforeEach(() => vi.mocked(apiPost).mockReset());
 
 it("retains queue ownership while moving and removing downloads", async () => {
   const onNotice = vi.fn();
@@ -112,8 +114,8 @@ it("resets both file inputs and clears upload ownership", () => {
 });
 
 function deferred() {
-  let resolve;
-  const promise = new Promise((resolvePromise) => {
+  let resolve!: (_value: unknown) => void;
+  const promise = new Promise<unknown>((resolvePromise) => {
     resolve = resolvePromise;
   });
   return { promise, resolve };
@@ -167,8 +169,8 @@ it("keeps the latest selected bytes when destination metadata is unchanged", asy
   const input = screen.getByLabelText("files");
   const original = new File(["old"], "same.txt", { type: "text/plain", lastModified: 1 });
   const replacement = new File(["new"], "same.txt", { type: "text/plain", lastModified: 1 });
-  original.marker = "old";
-  replacement.marker = "new";
+  Reflect.set(original, "marker", "old");
+  Reflect.set(replacement, "marker", "new");
 
   await user.upload(input, original);
   await user.upload(input, replacement);
@@ -212,7 +214,7 @@ it("keeps transfer progress, failures, paths, and display values bounded", () =>
 
 it("expands recursive remote selections into a deduplicated download queue", async () => {
   const user = userEvent.setup();
-  apiPost.mockResolvedValue({
+  vi.mocked(apiPost).mockResolvedValue({
     entries: [
       { type: "file", path: "/remote/a.txt", name: "a.txt", size: 1 },
       { type: "file", path: "/remote/b.txt", name: "b.txt", size: 2 },
@@ -232,11 +234,12 @@ it("expands recursive remote selections into a deduplicated download queue", asy
 it("cancels recursive expansion when its queue owner unmounts", async () => {
   const user = userEvent.setup();
   const pending = deferred();
-  apiPost.mockReturnValueOnce(pending.promise);
+  vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
   const view = render(<QueueHarness />);
 
   await user.click(screen.getByRole("button", { name: "Expand" }));
-  const signal = apiPost.mock.calls[0][2].signal;
+  const signal = vi.mocked(apiPost).mock.calls[0][2]?.signal;
+  if (!signal) throw new Error("Expansion did not receive a cancellation signal");
   view.unmount();
   expect(signal.aborted).toBe(true);
   pending.resolve({ entries: [{ type: "file", path: "/remote/a.txt", name: "a.txt", size: 1 }] });
@@ -246,11 +249,12 @@ it("cancels recursive expansion when its queue owner unmounts", async () => {
 it("does not add an old expansion to a reset queue on the same target", async () => {
   const user = userEvent.setup();
   const pending = deferred();
-  apiPost.mockReturnValueOnce(pending.promise);
+  vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
   render(<QueueHarness />);
 
   await user.click(screen.getByRole("button", { name: "Expand" }));
-  const signal = apiPost.mock.calls[0][2].signal;
+  const signal = vi.mocked(apiPost).mock.calls[0][2]?.signal;
+  if (!signal) throw new Error("Expansion did not receive a cancellation signal");
   await user.click(screen.getByRole("button", { name: "Reset" }));
   expect(signal.aborted).toBe(true);
   pending.resolve({ entries: [{ type: "file", path: "/remote/old.txt", name: "old.txt", size: 1 }] });
@@ -278,7 +282,7 @@ it("relocates and clears upload queues before clearing download ownership", asyn
 
 it("reports a current recursive expansion failure", async () => {
   const user = userEvent.setup();
-  apiPost.mockRejectedValueOnce(new Error("folder unavailable"));
+  vi.mocked(apiPost).mockRejectedValueOnce(new Error("folder unavailable"));
   render(<QueueHarness />);
 
   await user.click(screen.getByRole("button", { name: "Expand" }));
@@ -288,7 +292,7 @@ it("reports a current recursive expansion failure", async () => {
 
 it("rejects malformed recursive expansion results without queuing remote paths", async () => {
   const user = userEvent.setup();
-  apiPost.mockResolvedValueOnce({ entries: [{ type: "file", path: "relative/path", name: "bad.txt" }] });
+  vi.mocked(apiPost).mockResolvedValueOnce({ entries: [{ type: "file", path: "relative/path", name: "bad.txt" }] });
   render(<QueueHarness />);
 
   await user.click(screen.getByRole("button", { name: "Expand" }));

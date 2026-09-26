@@ -1,3 +1,4 @@
+import { uploadedBackupRecordResponse } from "./backup-contracts";
 import { useEffect, useState, type FormEvent } from "react";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../../lib/api";
 import { errorMessage } from "../../lib/errors";
@@ -230,7 +231,7 @@ export function useBackupProviderState(database: DatabaseState) {
       pending: `uploading-${provider.id}`,
       successMessage: (record: { filename: string }) => `Uploaded ${record.filename} to ${provider.name}.`,
       action: async () => {
-        const record = await apiPost(`/api/backup/providers/${provider.id}/upload`, {});
+        const record = uploadedBackupRecordResponse(await apiPost(`/api/backup/providers/${provider.id}/upload`, {}));
         setBackupUploadTarget(null);
         await loadBackupProviders();
         return record;
