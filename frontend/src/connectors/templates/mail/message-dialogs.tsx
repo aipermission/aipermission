@@ -3,8 +3,25 @@ import { Dialog } from "../../../components/ui/dialog";
 import { Field, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { mailFolderEqual } from "./helpers";
+import type { MailFolder } from "./message-types";
 
-export function MoveMessageDialog({ dialog, folders, busy, onClose, onConfirm, onDestination }) {
+interface ConfirmationProps {
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}
+export interface MailMoveDialog {
+  open: boolean;
+  destination: string;
+  sourceFolder: string;
+}
+export interface MailRetryDialog {
+  open: boolean;
+  draftChanged?: boolean;
+  messageID?: string;
+}
+
+export function MoveMessageDialog({ dialog, folders, busy, onClose, onConfirm, onDestination }: ConfirmationProps & { dialog: MailMoveDialog; folders: MailFolder[]; onDestination: (_folder: string) => void }) {
   return (
     <Dialog
       open={dialog.open}
@@ -44,7 +61,7 @@ export function MoveMessageDialog({ dialog, folders, busy, onClose, onConfirm, o
   );
 }
 
-export function DeleteMessageDialog({ open, trashFolder, busy, onClose, onConfirm }) {
+export function DeleteMessageDialog({ open, trashFolder, busy, onClose, onConfirm }: ConfirmationProps & { open: boolean; trashFolder: string }) {
   return (
     <Dialog
       open={open}
@@ -73,7 +90,7 @@ export function DeleteMessageDialog({ open, trashFolder, busy, onClose, onConfir
   );
 }
 
-export function RetryUnknownSubmissionDialog({ value, busy, onClose, onConfirm }) {
+export function RetryUnknownSubmissionDialog({ value, busy, onClose, onConfirm }: ConfirmationProps & { value: MailRetryDialog | null }) {
   return (
     <Dialog
       open={Boolean(value?.open)}

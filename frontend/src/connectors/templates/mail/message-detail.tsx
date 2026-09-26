@@ -3,6 +3,27 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import { addressLabel, formatMessageDate } from "./helpers";
+import type { ComponentProps } from "react";
+import type { MailAttachment, MailMessage } from "./message-types";
+
+interface MessageDetailProps {
+  message: MailMessage | null;
+  busy: boolean;
+  canReply: boolean;
+  canMove: boolean;
+  canArchive: boolean;
+  canDelete: boolean;
+  onToggleRead: () => void;
+  onReply: () => void;
+  onMove: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  borderClass: string;
+  mutedClass: string;
+  subtlePanelClass: string;
+}
+type MessageHeaderProps = Omit<MessageDetailProps, "message" | "subtlePanelClass"> & { message: MailMessage };
+type MessageActionProps = Omit<MessageHeaderProps, "borderClass" | "mutedClass">;
 
 export function MessageDetail({
   message,
@@ -19,7 +40,7 @@ export function MessageDetail({
   borderClass,
   mutedClass,
   subtlePanelClass,
-}) {
+}: MessageDetailProps) {
   if (!message) {
     return (
       <div className={`grid h-full place-items-center p-8 text-center text-sm ${mutedClass}`}>
@@ -69,7 +90,7 @@ function MessageHeader({
   onDelete,
   borderClass,
   mutedClass,
-}) {
+}: MessageHeaderProps) {
   return (
     <header className={`grid gap-3 border-b p-4 ${borderClass}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -103,7 +124,7 @@ function MessageHeader({
   );
 }
 
-function MessageActions({ message, busy, canReply, canMove, canArchive, canDelete, onToggleRead, onReply, onMove, onArchive, onDelete }) {
+function MessageActions({ message, busy, canReply, canMove, canArchive, canDelete, onToggleRead, onReply, onMove, onArchive, onDelete }: MessageActionProps) {
   return (
     <div className="flex flex-wrap items-center gap-1">
       <ActionIcon title={message.read ? "Mark unread" : "Mark read"} onClick={onToggleRead} disabled={busy}>
@@ -138,7 +159,7 @@ function MessageActions({ message, busy, canReply, canMove, canArchive, canDelet
   );
 }
 
-function MessageBadges({ message }) {
+function MessageBadges({ message }: { message: MailMessage }) {
   return (
     <div className="flex flex-wrap gap-1">
       <Badge tone={message.read ? "neutral" : "warn"}>{message.read ? "read" : "unread"}</Badge>
@@ -149,7 +170,7 @@ function MessageBadges({ message }) {
   );
 }
 
-function AttachmentMetadata({ attachments, mutedClass, borderClass }) {
+function AttachmentMetadata({ attachments, mutedClass, borderClass }: { attachments?: MailAttachment[]; mutedClass: string; borderClass: string }) {
   if (!Array.isArray(attachments) || attachments.length === 0) return null;
   return (
     <div className="mt-4 grid gap-2">
@@ -163,7 +184,7 @@ function AttachmentMetadata({ attachments, mutedClass, borderClass }) {
   );
 }
 
-function ActionIcon({ title, onClick, disabled, danger = false, children }) {
+function ActionIcon({ title, onClick, disabled, danger = false, children }: Pick<ComponentProps<typeof Button>, "title" | "onClick" | "disabled" | "children"> & { danger?: boolean }) {
   return (
     <Button
       type="button"

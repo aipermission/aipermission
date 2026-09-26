@@ -1,8 +1,10 @@
-import test from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { connectorActionCode, connectorActionError, connectorActionPending } from "../_shared/action-result.ts";
 import {
   addressLabel,
+  addressValues,
+  formatMessageDate,
   mailActionResolution,
   mailActionSummary,
   mailFolderAllowed,
@@ -16,7 +18,7 @@ import {
   submissionDraftFingerprint,
   unknownSubmissionRetryDecision,
   validateComposeFields,
-} from "./helpers.js";
+} from "./helpers.ts";
 import { normalizeEditorLink, plainTextToHTML, richTextToPlainText, splitPlainTextLines } from "./rich-text.ts";
 
 test("mail helpers preserve stable message references and explicit read errors", () => {
@@ -53,10 +55,10 @@ test("compose validation mirrors bounded outbound limits before submission", () 
 
 test("pending Mail actions resolve exactly once from connector activity", () => {
   assert.equal(mailActionResolution([], 41), null);
-  assert.equal(mailActionResolution([{ id: 41, status: "approval_pending" }], 41).state, "pending");
-  assert.equal(mailActionResolution([{ id: 41, status: "running" }], 41).state, "pending");
-  assert.equal(mailActionResolution([{ id: 41, status: "completed" }], 41).state, "completed");
-  assert.equal(mailActionResolution([{ id: 41, status: "declined" }], 41).state, "failed");
+  assert.equal(mailActionResolution([{ id: 41, status: "approval_pending" }], 41)?.state, "pending");
+  assert.equal(mailActionResolution([{ id: 41, status: "running" }], 41)?.state, "pending");
+  assert.equal(mailActionResolution([{ id: 41, status: "completed" }], 41)?.state, "completed");
+  assert.equal(mailActionResolution([{ id: 41, status: "declined" }], 41)?.state, "failed");
 });
 
 test("mail helpers normalize recipients and reply labels", () => {
@@ -111,24 +113,49 @@ test("mail reply quotes remain within the outbound body budget", () => {
 });
 
 test("mail rich text produces a deterministic list-aware plain-text fallback", () => {
-  const text = (value) => ({ nodeType: 3, nodeValue: value });
-  const element = (tagName, childNodes = [], attributes = {}) => {
-    const node = { nodeType: 1, tagName: tagName.toUpperCase(), childNodes, getAttribute: (name) => attributes[name] || "" };
-    for (const child of childNodes) child.parentNode = node;
-    node.children = childNodes.filter((child) => child.nodeType === 1);
-    return node;
-  };
-  const first = element("li", [text("First")]);
-  const second = element("li", [text("Second")]);
-  const list = element("ol", [first, second]);
-  first.parentElement = list;
-  second.parentElement = list;
-  const root = element("div", [
-    element("p", [text("Hello "), element("a", [text("documentation")], { href: "https://example.com/docs" })]),
-    list,
-  ]);
+  const root = document.createElement("div");
+  root.innerHTML = '<p>Hello <a href="https://example.com/docs">documentation</a></p><ol><li>First</li><li>Second</li></ol>';
 
   assert.equal(richTextToPlainText(root), "Hello documentation (https://example.com/docs)\n1. First\n2. Second");
-  assert.equal(richTextToPlainText(element("div", [element("a", [], { href: "https://example.com/empty" })])), "https://example.com/empty");
+  root.innerHTML = '<a href="https://example.com/empty"></a>';
+  assert.equal(richTextToPlainText(root), "https://example.com/empty");
   assert.equal(plainTextToHTML('<hello>\n"team"'), "&lt;hello&gt;<br>&quot;team&quot;");
+});
+
+test("message and action projections tolerate missing and malformed external data", () => {
+  assert.equal(messageRefKey(null), ":0:0");
+  assert.equal(messageRefKey({ folder: "Sent", uid: 3 }), "Sent:0:3");
+  assert.equal(addressLabel(null), "Unknown sender");
+  assert.equal(addressLabel([{ name: "reader" }, { address: "one@example.test" }, {}]), "reader, one@example.test");
+  assert.deepEqual(addressValues(null), []);
+  assert.deepEqual(addressValues([{ address: "one@example.test" }, {}]), ["one@example.test"]);
+  assert.equal(formatMessageDate("invalid"), "invalid");
+  assert.notEqual(formatMessageDate(new Date("2026-01-01T00:00:00Z")), "Unknown date");
+  assert.equal(mailActionSummary("list_folders", { output: null }), "Folders refreshed (0).");
+  assert.equal(mailActionSummary("search_messages", { output: ["untrusted"] }), "Mailbox loaded: 0 shown · 0 message(s) in mailbox.");
+  assert.equal(mailActionSummary("get_message", null), "Message loaded.");
+  assert.equal(mailActionSummary("mark_read", null), "Message marked as read.");
+  assert.equal(mailActionSummary("mark_unread", null), "Message marked as unread.");
+  assert.equal(mailActionSummary("move_message", null), "Message moved.");
+  assert.equal(mailActionSummary("archive_message", null), "Message archived.");
+  assert.equal(mailActionSummary("delete_message", null), "Message moved to Trash.");
+  assert.equal(mailActionSummary("send_message", null), "Message accepted for SMTP delivery.");
+  assert.equal(mailActionSummary("reply_message", null), "Reply accepted for SMTP delivery.");
+  assert.equal(mailActionSummary("custom_action", null), "custom action completed.");
+  assert.equal(mailActionResolution(null, 1), null);
+  assert.equal(mailActionResolution([], 0), null);
+  assert.equal(mailFolderAllowed("INBOX", null), false);
+});
+
+test("compose byte limits and quoting remain deterministic for unicode and escaped display names", () => {
+  assert.deepEqual(recipientList('"Doe, \\"John\\"" <one@example.test>; two@example.test'), ['"Doe, \\"John\\"" <one@example.test>', "two@example.test"]);
+  const valid = { to: "one@example.test", subject: "Status", text_body: "Ready" };
+  assert.match(validateComposeFields({ ...valid, cc: Array.from({ length: 20 }, () => "two@example.test") }), /20 recipients/);
+  assert.match(validateComposeFields({ ...valid, to: ["x".repeat(321)] }), /320 bytes/);
+  assert.match(validateComposeFields({ ...valid, subject: "line\nbreak" }), /one line/);
+  assert.match(validateComposeFields({ ...valid, subject: "" }), /required/);
+  assert.match(validateComposeFields({ ...valid, text_body: " " }), /required/);
+  const reply = replyText({ body: "😀".repeat(18000) });
+  assert.ok(new TextEncoder().encode(reply).length <= 48 * 1024);
+  assert.equal(reply.includes("�"), false);
 });

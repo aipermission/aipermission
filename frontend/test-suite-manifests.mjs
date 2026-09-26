@@ -47,7 +47,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/kubernetes/use-kubernetes-browser.js": [
     "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.jsx",
   ],
-  "src/connectors/templates/mail/use-mail-action-runner.js": ["src/connectors/templates/mail/use-mail-action-runner.component.test.jsx"],
+  "src/connectors/templates/mail/use-mail-action-runner.ts": ["src/connectors/templates/mail/use-mail-action-runner.component.test.tsx"],
   "src/connectors/templates/postgres/use-postgres-backup-restore.ts": [
     "src/connectors/templates/postgres/use-postgres-backup-restore.component.test.tsx",
   ],
