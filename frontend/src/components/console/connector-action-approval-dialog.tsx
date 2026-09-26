@@ -6,8 +6,23 @@ import { Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { TerminalBlock } from "../ui/terminal-block";
 import { formatLocalTimestamp, formatRelativeAge } from "../../lib/date-time";
+import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts.ts";
+import type { useConnectorApprovalDialog } from "./use-connector-approval-dialog.ts";
 
-export function ConnectorActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }) {
+type ApprovalDialog = ReturnType<typeof useConnectorApprovalDialog>;
+type Props = {
+  approval: ConnectorApproval | null;
+  note: string;
+  action: ApprovalDialog["action"];
+  onNoteChange: ApprovalDialog["setNote"];
+  onRun: ApprovalDialog["approve"];
+  onDecline: ApprovalDialog["decline"];
+  onClose: ApprovalDialog["close"];
+};
+type DecisionProps = Omit<Props, "approval">;
+type ContentProps = DecisionProps & { approval: ConnectorApproval; requestAge: string };
+
+export function ConnectorActionApprovalDialog({ approval, note, action, onNoteChange, onRun, onDecline, onClose }: Props) {
   const requestAge = approval ? formatRelativeAge(approval.created_at) : "";
   return (
     <Dialog
@@ -35,7 +50,7 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
   );
 }
 
-function ConnectorApprovalContent({ approval, requestAge, note, action, onNoteChange, onRun, onDecline, onClose }) {
+function ConnectorApprovalContent({ approval, requestAge, note, action, onNoteChange, onRun, onDecline, onClose }: ContentProps) {
   return (
     <div className="grid h-[calc(100vh-196px)] min-h-0 grid-rows-[minmax(0,1fr)_auto]">
       <div className="grid min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-3 p-5">
@@ -58,7 +73,7 @@ function ConnectorApprovalContent({ approval, requestAge, note, action, onNoteCh
   );
 }
 
-function ApprovalContext({ approval, requestAge }) {
+function ApprovalContext({ approval, requestAge }: Pick<ContentProps, "approval" | "requestAge">) {
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
@@ -79,7 +94,7 @@ function ApprovalContext({ approval, requestAge }) {
   );
 }
 
-function ApprovalPayloads({ approval, loading }) {
+function ApprovalPayloads({ approval, loading }: { approval: ConnectorApproval; loading: boolean }) {
   const input = JSON.stringify(approval.input || {}, null, 2);
   const preview = JSON.stringify(approval.preview || {}, null, 2);
   return (
@@ -96,7 +111,9 @@ function ApprovalPayloads({ approval, loading }) {
   );
 }
 
-function ApprovalPayload({ title, value, loading, loadingText = `Loading ${title.toLowerCase()}...`, empty = false }) {
+function ApprovalPayload({ title, value, loading, loadingText = `Loading ${title.toLowerCase()}...`, empty = false }: {
+  title: string; value: string; loading: boolean; loadingText?: string; empty?: boolean;
+}) {
   return (
     <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2">
       <div className="flex items-center justify-between gap-2">
@@ -114,7 +131,7 @@ function ApprovalPayload({ title, value, loading, loadingText = `Loading ${title
   );
 }
 
-function ApprovalDecisionFooter({ action, note, onNoteChange, onRun, onDecline, onClose }) {
+function ApprovalDecisionFooter({ action, note, onNoteChange, onRun, onDecline, onClose }: DecisionProps) {
   const terminal = action.state === "stale" || action.state === "failed" || action.state === "load_error";
   const decisionDisabled = action.state !== "idle" && action.state !== "error";
   return (

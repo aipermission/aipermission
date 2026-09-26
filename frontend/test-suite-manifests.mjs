@@ -2,12 +2,12 @@ export const asyncStateOwnerTests = {
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/App.jsx": ["src/App.component.test.jsx"],
   "src/components/app-shell.jsx": ["src/components/app-shell.component.test.jsx"],
-  "src/components/console/use-connector-approval-dialog.js": ["src/components/console/use-connector-approval-dialog.component.test.jsx"],
+  "src/components/console/use-connector-approval-dialog.ts": ["src/components/console/use-connector-approval-dialog.component.test.tsx"],
   "src/components/console/use-connector-token-permission-state.js": [
     "src/components/console/connector-token-permission-panel.component.test.jsx",
   ],
   "src/components/console/use-console-connections.ts": ["src/components/console/use-console-connections.component.test.jsx"],
-  "src/components/console/use-console-messages.js": ["src/components/console/use-console-messages.component.test.jsx"],
+  "src/components/console/use-console-messages.ts": ["src/components/console/use-console-messages.component.test.tsx"],
   "src/components/console/use-console-recovery-state.ts": ["src/components/console/use-console-recovery-state.component.test.ts"],
   "src/components/console/use-console-session-coordinator.ts": [
     "src/components/console/use-console-session-coordinator.component.test.jsx",

@@ -4,9 +4,25 @@ import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
 import { Select, Textarea } from "../ui/form";
 import { Notice } from "../ui/notice";
+import type { useConsoleMessages } from "./use-console-messages.ts";
 
-export function MessagesDialog({ open, target, tokens, tokenID, state, text, onTokenChange, onTextChange, onSubmit, onRefresh, onClose }) {
-  const messageListRef = useRef(null);
+type Messages = ReturnType<typeof useConsoleMessages>;
+type Props = {
+  open: boolean;
+  target: { name?: string } | null;
+  tokens: { id: number; name: string }[];
+  tokenID: Messages["tokenID"];
+  state: Messages["state"];
+  text: string;
+  onTokenChange: Messages["setTokenID"];
+  onTextChange: Messages["setText"];
+  onSubmit: Messages["submit"];
+  onRefresh: Messages["load"];
+  onClose: Messages["close"];
+};
+
+export function MessagesDialog({ open, target, tokens, tokenID, state, text, onTokenChange, onTextChange, onSubmit, onRefresh, onClose }: Props) {
+  const messageListRef = useRef<HTMLDivElement>(null);
   const filteredMessages = (tokenID ? state.data.filter((message) => Number(message.token_id) === Number(tokenID)) : state.data)
     .slice()
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || Number(a.id) - Number(b.id));
@@ -87,7 +103,7 @@ export function MessagesDialog({ open, target, tokens, tokenID, state, text, onT
   );
 }
 
-function formatMessageTime(value) {
+function formatMessageTime(value: string) {
   if (!value) return "";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
