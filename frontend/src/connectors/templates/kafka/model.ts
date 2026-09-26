@@ -115,8 +115,12 @@ export function credentialStateFromRow({ row }: { row: { target_id: number; name
     },
   };
 }
-export function credentialRows({ targets }: { targets: KafkaTarget[] }) {
-  return connectorCredentialRows({
+export function credentialRows<Profile extends KafkaProfile, Target extends KafkaTarget & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string[]>({
     targets,
     connectorKind: "kafka",
     connectorLabel: "Kafka / Redpanda",

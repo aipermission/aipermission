@@ -6,7 +6,7 @@ import {
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
 
-type S3Profile = {
+export type S3Profile = {
   id: number;
   label: string;
   kind: string;
@@ -14,7 +14,7 @@ type S3Profile = {
   public?: { access_key_id?: string };
 };
 
-type S3Target = {
+export type S3Target = {
   id?: number;
   name: string;
   connector_kind?: string;
@@ -25,7 +25,7 @@ type S3Target = {
     connection_mode?: string;
     scheme?: string;
     host?: string;
-    port?: number;
+    port?: number | string;
     region?: string;
     bucket?: string;
     path_style?: boolean;
@@ -175,8 +175,18 @@ export function credentialStateFromRow({ row }: { row: S3CredentialRow }): { for
   };
 }
 
-export function credentialRows({ targets }: { targets: S3Target[] }) {
-  return connectorCredentialRows({ targets, connectorKind: "s3", connectorLabel: "S3", targetEndpoint, credentialMetadata });
+export function credentialRows<Profile extends S3Profile, Target extends S3Target & { profiles?: Profile[] }>({
+  targets,
+}: {
+  targets: Target[];
+}) {
+  return connectorCredentialRows<Profile, Target, string>({
+    targets,
+    connectorKind: "s3",
+    connectorLabel: "S3",
+    targetEndpoint,
+    credentialMetadata,
+  });
 }
 
 export function canEdit() {

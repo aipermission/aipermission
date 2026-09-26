@@ -7,14 +7,14 @@ import { KafkaSASLFields } from "./sasl-fields";
 import type { CredentialFormProps } from "../_shared/connector-form-types";
 import type { KafkaCredentialForm } from "./form-types";
 
-export function KafkaCredentialFormTemplate({
+export function KafkaCredentialFormTemplate<Form extends KafkaCredentialForm>({
   targets,
   form,
   formMode = "create",
   state,
   onChange,
   onSubmit,
-}: CredentialFormProps<KafkaCredentialForm>) {
+}: CredentialFormProps<Form>) {
   const kafkaTargets = targets.filter((target) => target.connector_kind === "kafka");
   const editing = formMode === "edit";
   return (
