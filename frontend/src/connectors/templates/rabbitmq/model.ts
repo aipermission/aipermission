@@ -9,6 +9,7 @@ import {
 import type { RabbitMQModelForm, RabbitMQProfile, RabbitMQTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
+import { createStructuredConsoleModel } from "../_shared/structured-console-model";
 
 const emptyRabbitCredentialForm = { target_id: "", profile_label: "monitor", username: "", password: "", risk_label: "queue access" };
 const lifecycle = createTargetProfileLifecycle<RabbitMQModelForm, UsernameCredentialForm, RabbitMQProfile, RabbitMQTarget>({
@@ -131,17 +132,7 @@ export function targetSubtitle({ target }: { target: RabbitMQTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }: { target?: RabbitMQTarget | null }) {
-  return target?.profile_label || "monitor";
-}
-
-export function usesLiveConsole() {
-  return false;
-}
-
-export function recoverableRunningActions() {
-  return [];
-}
+export const { targetProfileLabel, usesLiveConsole, recoverableRunningActions } = createStructuredConsoleModel("monitor");
 
 export function deleteDialog({ target }: { target?: RabbitMQTarget | null }) {
   return {
