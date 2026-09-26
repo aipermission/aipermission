@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDownload, apiPost } from "../../../lib/api";
 import { BackupRestoreDialog } from "./backup-restore-dialog";
@@ -13,12 +14,14 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 beforeEach(() => {
-  apiDownload.mockReset();
-  apiPost.mockReset().mockResolvedValue({
-    request_id: 1,
-    status: "completed",
-    output: { rows: [{ table_schema: "public", table_name: "users", columns: ["id"] }] },
-  });
+  vi.mocked(apiDownload).mockReset();
+  vi.mocked(apiPost)
+    .mockReset()
+    .mockResolvedValue({
+      request_id: 1,
+      status: "completed",
+      output: { rows: [{ table_schema: "public", table_name: "users", columns: ["id"] }] },
+    });
 });
 
 describe("Postgres operation dialogs", () => {
@@ -32,12 +35,25 @@ describe("Postgres operation dialogs", () => {
 
     rerender(<PostgresConnectorOperationsTemplate value={operation("unknown")} onChange={onChange} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    rerender(
+      <PostgresConnectorOperationsTemplate value={{ ...operation("backup-restore"), connector_kind: "other" }} onChange={onChange} />,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("clears the operation identity when a completed dialog is closed", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<PostgresConnectorOperationsTemplate value={operation("backup-restore")} onChange={onChange} />);
+    await user.click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(onChange).toHaveBeenCalledWith({ open: false, connector_kind: "", type: "", state: "idle", error: null });
   });
 
   it("cannot close while managed credential provisioning is running", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    apiPost.mockImplementation((path) =>
+    vi.mocked(apiPost).mockImplementation((path: string) =>
       path.endsWith("/provision") ? new Promise(() => {}) : Promise.resolve({ request_id: 1, status: "completed", output: { rows: [] } }),
     );
     render(<ProvisionUserDialog value={operation("provision-user")} onClose={onClose} />);
@@ -55,7 +71,7 @@ describe("Postgres operation dialogs", () => {
   it("cannot close while a backup download is running", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    apiDownload.mockImplementation(() => new Promise(() => {}));
+    vi.mocked(apiDownload).mockImplementation(() => new Promise(() => {}));
     render(<BackupRestoreDialog value={operation("backup-restore")} onClose={onClose} />);
 
     await user.click(screen.getByRole("button", { name: "Download SQL dump" }));
@@ -67,7 +83,12 @@ describe("Postgres operation dialogs", () => {
   });
 });
 
-function operation(type) {
+function operation<Type extends string>(
+  type: Type,
+): Omit<NonNullable<ComponentProps<typeof PostgresConnectorOperationsTemplate>["value"]>, "type"> & {
+  type: Type;
+  connector_kind: "postgres";
+} {
   return {
     open: true,
     connector_kind: "postgres",

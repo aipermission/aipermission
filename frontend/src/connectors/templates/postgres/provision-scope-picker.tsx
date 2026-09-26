@@ -1,7 +1,13 @@
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { Checkbox } from "../../../components/ui/form";
 import { toggleColumn, toggleSchema, toggleTable, updateSchema, updateTable } from "./provisioning";
+import type { MetadataSchema, MetadataTable, ProvisionForm, ScopeSelection, TableSelection } from "./provisioning-types";
+import type { ProvisionController } from "./use-postgres-provisioning";
 
-export function ProvisionScopePicker({ metadata, scope, onChange, preset }) {
+type SelectionProps = { scope: ScopeSelection; onChange: Dispatch<SetStateAction<ScopeSelection>>; preset: ProvisionForm["preset"] };
+type PickerProps = SelectionProps & { metadata: Pick<ProvisionController["metadata"], "schemas" | "state"> };
+
+export function ProvisionScopePicker({ metadata, scope, onChange, preset }: PickerProps) {
   const schemas = metadata.schemas || [];
   if (metadata.state === "loading") {
     return <EmptyScopeState>Loading schema metadata...</EmptyScopeState>;
@@ -18,11 +24,11 @@ export function ProvisionScopePicker({ metadata, scope, onChange, preset }) {
   );
 }
 
-function EmptyScopeState({ children }) {
+function EmptyScopeState({ children }: { children: ReactNode }) {
   return <div className="rounded-md border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-500">{children}</div>;
 }
 
-function SchemaScopeRow({ schema, scope, onChange, preset }) {
+function SchemaScopeRow({ schema, scope, onChange, preset }: SelectionProps & { schema: MetadataSchema }) {
   const schemaState = scope.schemas[schema.name] || { selected: false, all_tables: true, tables: {} };
   return (
     <div className="border-b border-stone-200 p-3 last:border-b-0">
@@ -66,7 +72,17 @@ function SchemaScopeRow({ schema, scope, onChange, preset }) {
   );
 }
 
-function TableScopeRow({ schema, table, tableState, onChange, preset }) {
+function TableScopeRow({
+  schema,
+  table,
+  tableState,
+  onChange,
+  preset,
+}: Omit<SelectionProps, "scope"> & {
+  schema: string;
+  table: MetadataTable;
+  tableState?: TableSelection;
+}) {
   const current = tableState || { selected: false, all_columns: true, columns: {} };
   const columnScopedDisabled = preset === "read_write";
   return (

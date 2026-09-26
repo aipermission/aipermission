@@ -7,8 +7,10 @@ import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { ProvisionScopePicker } from "./provision-scope-picker";
 import { usePostgresProvisioning } from "./use-postgres-provisioning";
+import type { ProvisionController } from "./use-postgres-provisioning";
+import type { ProvisionOperationProps } from "./operation-types";
 
-export function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
+export function ProvisionUserDialog({ value, onClose, onOperationComplete }: ProvisionOperationProps & { onClose: () => void }) {
   const controller = usePostgresProvisioning({ value, onOperationComplete });
   return (
     <Dialog
@@ -56,7 +58,7 @@ export function ProvisionUserDialog({ value, onClose, onOperationComplete }) {
   );
 }
 
-function ProvisionFields({ controller }) {
+function ProvisionFields({ controller }: { controller: ProvisionController }) {
   return (
     <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px]">
       <Field>
@@ -78,7 +80,10 @@ function ProvisionFields({ controller }) {
       </Field>
       <Field>
         Preset
-        <Select value={controller.form.preset} onChange={(event) => controller.updateForm("preset", event.target.value)}>
+        <Select
+          value={controller.form.preset}
+          onChange={(event) => controller.updateForm("preset", event.target.value === "read_write" ? "read_write" : "read_only")}
+        >
           <option value="read_only">Read only</option>
           <option value="read_write">Read and change</option>
         </Select>
@@ -87,7 +92,7 @@ function ProvisionFields({ controller }) {
   );
 }
 
-function ProvisionScope({ controller }) {
+function ProvisionScope({ controller }: { controller: ProvisionController }) {
   return (
     <section className="grid min-h-0 gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 lg:grid-cols-2">
       <div className="grid min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-3">
