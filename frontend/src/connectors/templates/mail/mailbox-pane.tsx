@@ -3,8 +3,37 @@ import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Checkbox, Input } from "../../../components/ui/form";
 import { addressLabel, formatMessageDate, messageRefKey } from "./helpers";
+import type { FormEventHandler } from "react";
+import type { MailFolder, MailFolderStats, MailMessage } from "./message-types";
 
-export function FolderPane({ folders, selectedFolder, folderStats, onSelect, borderClass, mutedClass, rowHoverClass, activeRowClass }) {
+interface PaneStyles {
+  borderClass: string;
+  mutedClass: string;
+  rowHoverClass: string;
+  activeRowClass: string;
+}
+interface FolderPaneProps extends PaneStyles {
+  folders: MailFolder[];
+  selectedFolder: string;
+  folderStats: Record<string, MailFolderStats>;
+  onSelect: (_folder: string) => void;
+}
+interface MessagePaneProps extends PaneStyles {
+  messages: MailMessage[];
+  selectedRef: string;
+  query: string;
+  unreadOnly: boolean;
+  hasMore: boolean;
+  busy: boolean;
+  onQuery: (_query: string) => void;
+  onUnreadOnly: (_unread: boolean) => void;
+  onSearch: FormEventHandler<HTMLFormElement>;
+  onSelect: (_message: MailMessage) => void;
+  onLoadMore: () => void;
+  inputClass: string;
+}
+
+export function FolderPane({ folders, selectedFolder, folderStats, onSelect, borderClass, mutedClass, rowHoverClass, activeRowClass }: FolderPaneProps) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden border-r ${borderClass}`}>
       <div className={`border-b p-3 ${borderClass}`}>
@@ -51,7 +80,7 @@ export function MessagePane({
   inputClass,
   rowHoverClass,
   activeRowClass,
-}) {
+}: MessagePaneProps) {
   return (
     <section className={`grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-r ${borderClass}`}>
       <form className={`grid gap-2 border-b p-3 ${borderClass}`} onSubmit={onSearch}>

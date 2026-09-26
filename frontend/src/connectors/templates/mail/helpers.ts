@@ -1,9 +1,13 @@
-export function messageRefKey(messageOrRef) {
-  const ref = messageOrRef?.message_ref || messageOrRef || {};
+import type { MailProfileForm } from "./form-types";
+import type { MailAddress, MailDraftFields, MailMessage } from "./message-types";
+
+export function messageRefKey(messageOrRef: unknown) {
+  const source = record(messageOrRef);
+  const ref = record(source.message_ref || messageOrRef);
   return `${ref.folder || ""}:${ref.uidvalidity || 0}:${ref.uid || 0}`;
 }
 
-export function addressLabel(addresses) {
+export function addressLabel(addresses?: MailAddress[] | null) {
   if (!Array.isArray(addresses) || addresses.length === 0) return "Unknown sender";
   return addresses
     .map((item) => {
@@ -16,19 +20,19 @@ export function addressLabel(addresses) {
     .join(", ");
 }
 
-export function addressValues(addresses) {
+export function addressValues(addresses?: MailAddress[] | null) {
   if (!Array.isArray(addresses)) return [];
   return addresses.map((item) => item?.address || "").filter(Boolean);
 }
 
-export function formatMessageDate(value) {
+export function formatMessageDate(value?: string | number | Date | null) {
   if (!value) return "Unknown date";
-  const date = new Date(value);
+  const date = new Date(value instanceof Date ? value.getTime() : value);
   if (Number.isNaN(date.getTime())) return String(value);
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-export function recipientList(value) {
+export function recipientList(value: unknown) {
   const source = String(value || "");
   const result = [];
   let current = "";
@@ -60,11 +64,11 @@ export function recipientList(value) {
   return result;
 }
 
-export function mailProtocolsEnabled(form) {
+export function mailProtocolsEnabled(form?: Partial<Pick<MailProfileForm, "imap_enabled" | "smtp_auth_mode">> | null) {
   return form?.imap_enabled !== false || (form?.smtp_auth_mode || "disabled") !== "disabled";
 }
 
-export function submissionDraftFingerprint(fields) {
+export function submissionDraftFingerprint(fields?: MailDraftFields | null) {
   const normalized = {
     to: normalizeFingerprintRecipients(fields?.to),
     cc: normalizeFingerprintRecipients(fields?.cc),
@@ -76,7 +80,7 @@ export function submissionDraftFingerprint(fields) {
   return JSON.stringify(normalized);
 }
 
-export function unknownSubmissionRetryDecision(submissionUnknown, fields) {
+export function unknownSubmissionRetryDecision(submissionUnknown: { fingerprint: string } | null | undefined, fields?: MailDraftFields | null) {
   if (!submissionUnknown) return { required: false, changed: false };
   return {
     required: true,
@@ -84,13 +88,13 @@ export function unknownSubmissionRetryDecision(submissionUnknown, fields) {
   };
 }
 
-export function validateComposeFields(fields, { reply = false } = {}) {
+export function validateComposeFields(fields?: MailDraftFields | null, { reply = false } = {}) {
   const recipientError = validateRecipients(fields);
   if (recipientError) return recipientError;
   return validateMessageContent(fields, reply);
 }
 
-function validateRecipients(fields) {
+function validateRecipients(fields?: MailDraftFields | null) {
   const recipients = [fields?.to, fields?.cc, fields?.bcc].flatMap((value) => (Array.isArray(value) ? value : recipientList(value)));
   const to = Array.isArray(fields?.to) ? fields.to : recipientList(fields?.to);
   if (to.length === 0) return "Add at least one To recipient.";
@@ -99,7 +103,7 @@ function validateRecipients(fields) {
   return "";
 }
 
-function validateMessageContent(fields, reply) {
+function validateMessageContent(fields: MailDraftFields | null | undefined, reply: boolean) {
   const subject = String(fields?.subject || "").trim();
   if (!subject) return "Subject is required.";
   if (/[\r\n]/.test(subject)) return "Subject must stay on one line.";
@@ -112,7 +116,7 @@ function validateMessageContent(fields, reply) {
   return "";
 }
 
-export function mailActionResolution(items, requestID) {
+export function mailActionResolution<Item extends { id?: number | string; status?: string }>(items: Item[] | null | undefined, requestID?: number | string | null) {
   if (!requestID) return null;
   const item = (Array.isArray(items) ? items : []).find((candidate) => Number(candidate?.id) === Number(requestID));
   if (!item) return null;
@@ -121,20 +125,20 @@ export function mailActionResolution(items, requestID) {
   return { state: "failed", item };
 }
 
-function normalizeFingerprintRecipients(value) {
+function normalizeFingerprintRecipients(value: unknown) {
   return (Array.isArray(value) ? value : recipientList(value)).map((item) => String(item).trim());
 }
 
-function utf8Length(value) {
+function utf8Length(value: string) {
   return new TextEncoder().encode(value).length;
 }
 
-export function replySubject(subject) {
+export function replySubject(subject: unknown) {
   const value = String(subject || "").trim();
   return /^re:/i.test(value) ? value : `Re: ${value}`;
 }
 
-export function replyText(message) {
+export function replyText(message?: MailMessage | null) {
   const body = String(message?.body || "")
     .replace(/\r\n?/g, "\n")
     .trimEnd();
@@ -148,7 +152,7 @@ export function replyText(message) {
   return boundedUTF8(`\n\nOn ${date}, ${sender} wrote:\n${quote}`, 48 * 1024, "\n> [quoted message truncated]");
 }
 
-function boundedUTF8(value, maxBytes, suffix) {
+function boundedUTF8(value: string, maxBytes: number, suffix: string) {
   const encoder = new TextEncoder();
   const encoded = encoder.encode(value);
   if (encoded.length <= maxBytes) return value;
@@ -168,8 +172,8 @@ function boundedUTF8(value, maxBytes, suffix) {
   return `${prefix}${suffix}`;
 }
 
-export function mailActionSummary(actionName, item) {
-  const output = item?.output || {};
+export function mailActionSummary(actionName: string, item?: { output?: unknown } | null) {
+  const output = record(item?.output);
   switch (actionName) {
     case "list_folders":
       return `Folders refreshed (${Number(output.count || 0)}).`;
@@ -196,19 +200,23 @@ export function mailActionSummary(actionName, item) {
   }
 }
 
-export function mailFolderEqual(left, right) {
+export function mailFolderEqual(left: unknown, right: unknown) {
   const first = String(left || "");
   const second = String(right || "");
   return first === second || (first.toUpperCase() === "INBOX" && second.toUpperCase() === "INBOX");
 }
 
-export function mailFolderAllowed(folder, allowed) {
+export function mailFolderAllowed(folder: unknown, allowed: unknown) {
   return Array.isArray(allowed) && allowed.some((candidate) => mailFolderEqual(candidate, folder));
 }
 
-export function mailProtocolCapabilities(publicProfile) {
+export function mailProtocolCapabilities(publicProfile?: Partial<Pick<MailProfileForm, "imap_enabled" | "smtp_auth_mode">> | null) {
   return {
     imapEnabled: publicProfile?.imap_enabled !== false,
     smtpEnabled: publicProfile?.smtp_auth_mode !== "disabled",
   };
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }

@@ -6,8 +6,19 @@ import { Field, Input, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { recipientList, validateComposeFields } from "./helpers";
 import { normalizeEditorLink, plainTextToHTML, richTextToPlainText, splitPlainTextLines } from "./rich-text";
+import type { ClipboardEvent, ComponentProps, FormEvent } from "react";
+import type { MailComposeDraft, MailDraftFields, MailSubmittedFields } from "./message-types";
 
-export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
+interface ComposeDialogProps {
+  draft: MailComposeDraft;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (_fields: MailSubmittedFields) => void;
+}
+type ComposeForm = ReturnType<typeof emptyComposeForm>;
+
+export function ComposeDialog({ draft, busy, error, onClose, onSubmit }: ComposeDialogProps) {
   const [mode, setMode] = useState("plain");
   const [form, setForm] = useState(emptyComposeForm());
   const [formattedFallback, setFormattedFallback] = useState("");
@@ -25,7 +36,7 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
     initializeDraft();
   }, [draft?.open, draft?.reply, draft?.messageRef, draft?.pendingRequestID]);
 
-  function updateForm(changes) {
+  function updateForm(changes: Partial<ComposeForm>) {
     setValidationError("");
     setForm((current) => ({ ...current, ...changes }));
   }
@@ -40,7 +51,7 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
     setMode("formatted");
   }
 
-  function submit(event) {
+  function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const fields = {
       to: recipientList(form.to),
@@ -85,7 +96,7 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
         <div className="inline-flex w-fit rounded-md border border-stone-300 p-1">
           <Button
             type="button"
-            variant={mode === "plain" ? "primary" : "ghost"}
+            variant={mode === "plain" ? "default" : "ghost"}
             className="h-8"
             onClick={() => {
               setMode("plain");
@@ -94,7 +105,7 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
           >
             Plain text
           </Button>
-          <Button type="button" variant={mode === "formatted" ? "primary" : "ghost"} className="h-8" onClick={selectFormattedMode}>
+          <Button type="button" variant={mode === "formatted" ? "default" : "ghost"} className="h-8" onClick={selectFormattedMode}>
             Formatted
           </Button>
         </div>
@@ -141,19 +152,19 @@ export function ComposeDialog({ draft, busy, error, onClose, onSubmit }) {
   );
 }
 
-function RichTextEditor({ value, onChange }) {
+function RichTextEditor({ value, onChange }: { value: string; onChange: (_html: string, _text: string) => void }) {
   const labelID = useId();
   const descriptionID = useId();
-  const editorRef = useRef(null);
-  const savedRange = useRef(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const savedRange = useRef<Range | null>(null);
   const [linkEditor, setLinkEditor] = useState({ open: false, value: "https://", error: "" });
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== value) editorRef.current.innerHTML = value;
   }, [value]);
 
-  function command(name, argument = null) {
+  function command(name: string, argument: string | null = null) {
     editorRef.current?.focus();
-    document.execCommand(name, false, argument);
+    document.execCommand(name, false, argument ?? undefined);
     emitValue();
   }
 
@@ -164,7 +175,7 @@ function RichTextEditor({ value, onChange }) {
     setLinkEditor({ open: true, value: "https://", error: "" });
   }
 
-  function applyLink(event) {
+  function applyLink(event: { preventDefault: () => void }) {
     event.preventDefault();
     if (!savedRange.current || savedRange.current.collapsed) {
       setLinkEditor((current) => ({ ...current, error: "Select message text before adding a link." }));
@@ -191,7 +202,7 @@ function RichTextEditor({ value, onChange }) {
     onChange(editor.innerHTML, richTextToPlainText(editor));
   }
 
-  function pastePlainText(event) {
+  function pastePlainText(event: ClipboardEvent<HTMLDivElement>) {
     event.preventDefault();
     insertPlainText(event.clipboardData?.getData("text/plain") || "");
     emitValue();
@@ -277,7 +288,7 @@ function RichTextEditor({ value, onChange }) {
   );
 }
 
-function insertPlainText(value) {
+function insertPlainText(value: string) {
   const selection = window.getSelection();
   if (!selection || selection.rangeCount === 0) return;
   const range = selection.getRangeAt(0);
@@ -296,7 +307,7 @@ function insertPlainText(value) {
   selection.addRange(range);
 }
 
-function FormatButton({ title, onClick, children }) {
+function FormatButton({ title, onClick, children }: Pick<ComponentProps<typeof Button>, "title" | "onClick" | "children">) {
   return (
     <Button
       type="button"
@@ -312,7 +323,7 @@ function FormatButton({ title, onClick, children }) {
   );
 }
 
-function AddressField({ label, value, onChange, required = false }) {
+function AddressField({ label, value, onChange, required = false }: { label: string; value: string; onChange: (_value: string) => void; required?: boolean }) {
   return (
     <Field>
       {label}
@@ -325,10 +336,8 @@ function emptyComposeForm() {
   return { to: "", cc: "", bcc: "", subject: "", text_body: "", html_body: "" };
 }
 
-function composeFormValue(value = {}) {
+function composeFormValue(value: MailDraftFields = {}): ComposeForm {
   const form = { ...emptyComposeForm(), ...value };
-  for (const field of ["to", "cc", "bcc"]) {
-    if (Array.isArray(form[field])) form[field] = form[field].join(", ");
-  }
-  return form;
+  const recipients = (input: string | string[]) => Array.isArray(input) ? input.join(", ") : input;
+  return { ...form, to: recipients(form.to), cc: recipients(form.cc), bcc: recipients(form.bcc) };
 }

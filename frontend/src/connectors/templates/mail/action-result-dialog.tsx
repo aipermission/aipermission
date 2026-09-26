@@ -2,7 +2,12 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Dialog } from "../../../components/ui/dialog";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 
-export function MailActionResultDialog({ value, onClose }) {
+export interface MailActionResult {
+  actionName: string;
+  summary: string;
+  item: { status?: string; output?: unknown } | null;
+}
+export function MailActionResultDialog({ value, onClose }: { value: (MailActionResult & { open: boolean }) | null; onClose: () => void }) {
   const rawValue = JSON.stringify(
     {
       status: value?.item?.status || "completed",

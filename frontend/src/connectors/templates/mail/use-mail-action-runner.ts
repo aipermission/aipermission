@@ -3,18 +3,33 @@ import { apiPost } from "../../../lib/api";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { connectorActionCode, connectorActionError, connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
 import { mailActionResolution, mailActionSummary } from "./helpers";
+import { errorMessage } from "../../../lib/errors";
+import { connectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import type { Dispatch, SetStateAction } from "react";
+import type { createRequestGuard } from "../../../lib/request-guard";
+import type { MailActionResult } from "./action-result-dialog";
+import type { MailActionItem, MailActionResolution, MailPendingAction, MailPendingContext, MailRunnerState } from "./action-types";
+
+interface MailActionRunnerProps {
+  target: { ref: string };
+  approvals?: { data: MailActionItem[] } | null;
+  scopeKey: string;
+  onRefreshActivity?: () => unknown;
+  onResolution?: (_pending: MailPendingAction, _resolution: MailActionResolution) => unknown;
+}
+type Request = ReturnType<ReturnType<typeof createRequestGuard>["begin"]>;
 
 const browserActions = new Set(["list_folders", "search_messages", "get_message"]);
 
-export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution }) {
-  const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const [pendingActions, setPendingActions] = useState({});
-  const [resultDialog, setResultDialog] = useState({ open: false, actionName: "", summary: "", item: null });
+export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution }: MailActionRunnerProps) {
+  const [state, setState] = useState<MailRunnerState>({ state: "idle", error: "", message: "" });
+  const [pendingActions, setPendingActions] = useState<Record<number, MailPendingAction>>({});
+  const [resultDialog, setResultDialog] = useState<MailActionResult & { open: boolean }>({ open: false, actionName: "", summary: "", item: null });
   const requestGeneration = useRef(0);
   const currentScope = useRef(scopeKey);
   const requests = useRequestGuard(`mail-actions:${scopeKey}`);
-  const resolveForEffect = useEffectEvent((pending, resolution) => onResolution?.(pending, resolution));
-  const reconcileForEffect = useEffectEvent(async (pending, resolution) => {
+  const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution) => onResolution?.(pending, resolution));
+  const reconcileForEffect = useEffectEvent(async (pending: MailPendingAction, resolution: MailActionResolution) => {
     const { actionName, generation, scope } = pending;
     const { item } = resolution;
     if (scope !== currentScope.current) return;
@@ -46,7 +61,7 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
   useEffect(() => {
     const resolved = Object.values(pendingActions)
       .map((pending) => ({ pending, resolution: mailActionResolution(activeItems, pending.requestID) }))
-      .filter(({ resolution }) => resolution && resolution.state !== "pending");
+      .filter((value): value is { pending: MailPendingAction; resolution: MailActionResolution } => Boolean(value.resolution && value.resolution.state !== "pending"));
     if (resolved.length === 0) return;
     setPendingActions((current) => {
       const next = { ...current };
@@ -56,14 +71,14 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     for (const { pending, resolution } of resolved) void reconcileForEffect(pending, resolution);
   }, [activeItems, pendingActions]);
 
-  function reportActivityRefreshFailure(request, generation, actionScope) {
+  function reportActivityRefreshFailure(request: Request, generation: number, actionScope: string) {
     if (!request.isCurrent() || generation !== requestGeneration.current || actionScope !== currentScope.current) return;
     setState((current) =>
       current.state === "idle" ? { ...current, error: "Activity refresh unavailable.", message: "", result: null } : current,
     );
   }
 
-  function refreshActivitySafely(request, generation, actionScope) {
+  function refreshActivitySafely(request: Request, generation: number, actionScope: string) {
     try {
       const refresh = onRefreshActivity?.();
       void Promise.resolve(refresh).catch(() => reportActivityRefreshFailure(request, generation, actionScope));
@@ -72,13 +87,13 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     }
   }
 
-  async function runMailAction(actionName, input, reason, busyState = "running", pendingContext = {}) {
+  async function runMailAction(actionName: string, input: Record<string, unknown>, reason: string, busyState = "running", pendingContext: MailPendingContext = {}) {
     const generation = ++requestGeneration.current;
     const actionScope = scopeKey;
     const request = requests.begin("action");
     setState({ state: busyState, error: "", message: "" });
     try {
-      const item = await apiPost(
+      const response: unknown = await apiPost(
         "/api/connector-actions/local-run",
         {
           target_ref: target.ref,
@@ -89,6 +104,7 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
         { signal: request.signal },
       );
       if (!request.isCurrent() || generation !== requestGeneration.current || actionScope !== currentScope.current) return null;
+      const item = connectorActionResponse(response, { targetRef: target.ref, actionName });
       const actionError = connectorActionError(item);
       if (actionError) throw actionFailure(actionName, actionError, item, setState, setResultDialog);
       if (connectorActionPending(item)) {
@@ -108,12 +124,12 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
       return item;
     } catch (error) {
       if (!request.isCurrent() || generation !== requestGeneration.current || actionScope !== currentScope.current) return null;
-      const message = error.message || "Mail action failed.";
+      const message = errorMessage(error, "Mail action failed.");
       setState({
         state: "error",
         error: message,
         message: "",
-        result: error.actionResult || { actionName, summary: message, item: null },
+        result: error instanceof MailActionFailure ? error.actionResult : { actionName, summary: message, item: null },
       });
       throw error;
     } finally {
@@ -128,22 +144,29 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     activeItems,
     latestAction: activeItems[0] || null,
     resultDialog,
-    openResultDialog: (result) => setResultDialog({ open: true, ...result }),
+    openResultDialog: (result: MailActionResult) => setResultDialog({ open: true, ...result }),
     closeResultDialog: () => setResultDialog({ open: false, actionName: "", summary: "", item: null }),
     runMailAction,
   };
 }
 
-function actionFailure(actionName, message, item, setState, setResultDialog) {
+export class MailActionFailure extends Error {
+  readonly actionItem: MailActionItem;
+  readonly actionResult: MailActionResult;
+  constructor(message: string, actionItem: MailActionItem, actionResult: MailActionResult) {
+    super(message);
+    this.actionItem = actionItem;
+    this.actionResult = actionResult;
+  }
+}
+
+function actionFailure(actionName: string, message: string, item: MailActionItem, setState: Dispatch<SetStateAction<MailRunnerState>>, setResultDialog: Dispatch<SetStateAction<MailActionResult & { open: boolean }>>) {
   const result = { actionName, summary: message, item };
   setState({ state: "error", error: message, message: "", result });
   if (item?.output) setResultDialog({ open: true, ...result });
-  const failure = new Error(message);
-  failure.actionItem = item;
-  failure.actionResult = result;
-  return failure;
+  return new MailActionFailure(message, item, result);
 }
 
-export function isStaleMessageFailure(resolution) {
+export function isStaleMessageFailure(resolution: MailActionResolution) {
   return resolution.state !== "completed" && connectorActionCode(resolution.item) === "stale_message_reference";
 }
