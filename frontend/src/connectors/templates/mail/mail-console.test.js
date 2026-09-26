@@ -17,7 +17,7 @@ import {
   unknownSubmissionRetryDecision,
   validateComposeFields,
 } from "./helpers.js";
-import { normalizeEditorLink, plainTextToHTML, richTextToPlainText, splitPlainTextLines } from "./rich-text.js";
+import { normalizeEditorLink, plainTextToHTML, richTextToPlainText, splitPlainTextLines } from "./rich-text.ts";
 
 test("mail helpers preserve stable message references and explicit read errors", () => {
   assert.equal(messageRefKey({ message_ref: { folder: "INBOX", uidvalidity: 42, uid: 7 } }), "INBOX:42:7");

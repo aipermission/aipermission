@@ -8,7 +8,8 @@ import {
   standardSubmitLabel,
   usernameCredentialStateFromRow,
   usesStandardTargetProfileLifecycle,
-} from "./target-profile-lifecycle.js";
+} from "./target-profile-lifecycle.ts";
+import type { Dispatch, SetStateAction } from "react";
 
 test("shared connector defaults retain target order and form isolation", () => {
   const defaults = { profile_label: "readonly", target_id: "" };
@@ -76,7 +77,7 @@ test("credential form updates compose from the latest form state", () => {
   const props = lifecycle.credentialFormProps({
     targets: [],
     formState: state,
-    setFormState(update) {
+    setFormState(update: Parameters<Dispatch<SetStateAction<typeof state>>>[0]) {
       state = typeof update === "function" ? update(state) : update;
     },
     formMode: "edit",

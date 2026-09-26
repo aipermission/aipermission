@@ -73,7 +73,7 @@ const emptyS3CredentialForm = {
   session_token: "",
   risk_label: "object storage",
 };
-const lifecycle = createTargetProfileLifecycle({
+const lifecycle = createTargetProfileLifecycle<S3Form, S3CredentialForm, S3Profile, S3Target>({
   connectorKind: "s3",
   connectorLabel: "S3",
   targetPayload: (form: S3Form) => ({ name: form.name, config: s3TargetConfigFromForm(form) }),
