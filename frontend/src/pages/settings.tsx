@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
+import { errorMessage } from "../lib/errors";
+import { useRequestGuard } from "../lib/request-guard";
+import { settingsDatabaseResponse, type SettingsDatabase } from "../lib/gateway-contracts/settings-database-contract";
 import { BackupProviderDialogs } from "../components/settings/backup-provider-dialogs";
 import { BackupProviderPanel } from "../components/settings/backup-provider-panel";
 import { BackupRecordDialogs } from "../components/settings/backup-record-dialogs";
@@ -13,21 +16,25 @@ import { useBackupProviderState } from "../components/settings/use-backup-provid
 import { Notice } from "../components/ui/notice";
 
 export function SettingsPage() {
-  const [database, setDatabase] = useState({ state: "loading", data: null, error: null });
+  const [database, setDatabase] = useState<{ state: "loading" | "ready" | "error"; data: SettingsDatabase | null; error: string | null }>({ state: "loading", data: null, error: null });
+  const requestGuard = useRequestGuard("settings-database-status");
   const backupProvider = useBackupProviderState(database);
+
+  const loadDatabase = useCallback(async () => {
+    const request = requestGuard.begin("status");
+    try {
+      const data = settingsDatabaseResponse(await apiGet("/api/unlock/status", { signal: request.signal }));
+      if (request.isCurrent()) setDatabase({ state: "ready", data, error: null });
+    } catch (error) {
+      if (request.isCurrent()) setDatabase({ state: "error", data: null, error: errorMessage(error, "Unable to load database status.") });
+    } finally {
+      request.complete();
+    }
+  }, [requestGuard]);
 
   useEffect(() => {
     void loadDatabase();
-  }, []);
-
-  async function loadDatabase() {
-    try {
-      const data = await apiGet("/api/unlock/status");
-      setDatabase({ state: "ready", data, error: null });
-    } catch (error) {
-      setDatabase({ state: "error", data: null, error: error.message });
-    }
-  }
+  }, [loadDatabase]);
 
   const databaseName = database.data?.database_name || "Unknown";
 

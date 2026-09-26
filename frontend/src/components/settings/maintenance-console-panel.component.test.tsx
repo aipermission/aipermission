@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost } from "../../lib/api";
 import { MaintenanceConsolePanel } from "./maintenance-console-panel";
+import type { PtyConsoleProps } from "../console/pty-console";
 
 vi.mock("../../lib/api", () => ({
   apiPost: vi.fn(),
@@ -11,7 +12,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 vi.mock("../console/pty-console", () => ({
-  PtyConsole: ({ session, onInput, onResize }) => (
+  PtyConsole: ({ session, onInput, onResize }: Omit<PtyConsoleProps, "session"> & { session: { status: string } }) => (
     <div>
       <span>terminal:{session.status}</span>
       <button type="button" onClick={() => onInput("whoami\n")}>
@@ -27,9 +28,15 @@ vi.mock("../console/pty-console", () => ({
 class FakeWebSocket {
   static CONNECTING = 0;
   static OPEN = 1;
-  static instances = [];
+  static instances: FakeWebSocket[] = [];
+  url: string;
+  readyState = FakeWebSocket.CONNECTING;
+  send = vi.fn();
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onmessage: ((_event: { data: string }) => void) | null = null;
 
-  constructor(url) {
+  constructor(url: string) {
     this.url = url;
     this.readyState = FakeWebSocket.CONNECTING;
     this.send = vi.fn();
@@ -44,8 +51,8 @@ class FakeWebSocket {
 
 describe("MaintenanceConsolePanel", () => {
   beforeEach(() => {
-    apiPost.mockReset();
-    apiPost.mockResolvedValue({});
+    vi.mocked(apiPost).mockReset();
+    vi.mocked(apiPost).mockResolvedValue({});
     FakeWebSocket.instances = [];
     vi.stubGlobal("WebSocket", FakeWebSocket);
   });
@@ -134,13 +141,13 @@ describe("MaintenanceConsolePanel", () => {
 
   it("surfaces API and malformed websocket failures without trapping the dialog", async () => {
     const user = userEvent.setup();
-    apiPost.mockRejectedValueOnce(new Error("console denied"));
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("console denied"));
     render(<MaintenanceConsolePanel />);
 
     await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
     expect(await screen.findByText("console denied")).toBeVisible();
 
-    apiPost.mockResolvedValue({});
+    vi.mocked(apiPost).mockResolvedValue({});
     await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
     FakeWebSocket.instances[0].onmessage?.({ data: "not json" });
@@ -163,25 +170,25 @@ describe("MaintenanceConsolePanel", () => {
 
   it("closes a delayed backend open that resolves after unmount", async () => {
     const user = userEvent.setup();
-    let resolveOpen;
-    const delayedOpen = new Promise((resolve) => {
+    let resolveOpen!: (_value: unknown) => void;
+    const delayedOpen = new Promise<unknown>((resolve) => {
       resolveOpen = resolve;
     });
-    apiPost.mockReturnValueOnce(delayedOpen).mockResolvedValue({});
+    vi.mocked(apiPost).mockReturnValueOnce(delayedOpen).mockResolvedValue({});
     const view = render(<MaintenanceConsolePanel />);
     await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
 
     view.unmount();
-    await waitFor(() => expect(apiPost.mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(1));
+    await waitFor(() => expect(vi.mocked(apiPost).mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(1));
     resolveOpen({});
 
-    await waitFor(() => expect(apiPost.mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(2));
+    await waitFor(() => expect(vi.mocked(apiPost).mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(2));
     expect(FakeWebSocket.instances).toHaveLength(0);
   });
 
   it("keeps a failed close retryable and reports the outcome-unknown session", async () => {
     const user = userEvent.setup();
-    apiPost.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("close outcome unknown"));
+    vi.mocked(apiPost).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("close outcome unknown"));
     const view = render(<MaintenanceConsolePanel />);
     await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
     await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
@@ -190,6 +197,15 @@ describe("MaintenanceConsolePanel", () => {
     expect(await screen.findByText(/close outcome unknown/)).toBeVisible();
     view.unmount();
 
-    await waitFor(() => expect(apiPost.mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(2));
+    await waitFor(() => expect(vi.mocked(apiPost).mock.calls.filter(([path]) => path.endsWith("/close"))).toHaveLength(2));
+  });
+
+  it.each([null, [], { type: "snapshot", data: {} }, { type: "ready", shell: 3 }, { type: "output", status: [] }])("rejects malformed websocket structures %j", async (message) => {
+    const user = userEvent.setup();
+    render(<MaintenanceConsolePanel />);
+    await user.click(screen.getByRole("button", { name: "Open maintenance console" }));
+    await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(1));
+    FakeWebSocket.instances[0].onmessage?.({ data: JSON.stringify(message) });
+    expect(await screen.findByText("Maintenance console returned an invalid message.")).toBeVisible();
   });
 });

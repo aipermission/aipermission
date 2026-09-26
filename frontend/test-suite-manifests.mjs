@@ -1,4 +1,5 @@
 export const asyncStateOwnerTests = {
+  "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/App.jsx": ["src/App.component.test.jsx"],
   "src/components/app-shell.jsx": ["src/components/app-shell.component.test.jsx"],
   "src/components/console/use-connector-approval-dialog.js": ["src/components/console/use-connector-approval-dialog.component.test.jsx"],
@@ -19,7 +20,7 @@ export const asyncStateOwnerTests = {
   "src/components/file-transfer/use-transfer-download.ts": ["src/components/file-transfer/use-transfer-download.component.test.jsx"],
   "src/components/file-transfer/use-transfer-queues.ts": ["src/components/file-transfer/use-transfer-queues.component.test.jsx"],
   "src/components/history/use-history-transfer-download.ts": ["src/components/history/history-components.component.test.jsx", "src/components/history/use-history-transfer-download.component.test.tsx"],
-  "src/components/settings/maintenance-console-panel.jsx": ["src/components/settings/maintenance-console-panel.component.test.jsx"],
+  "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
   "src/components/settings/backup-retention-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx"],
   "src/components/settings/database-settings-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx", "src/components/settings/database-settings-panel.component.test.tsx"],
   "src/components/settings/diagnostics-panel.tsx": ["src/components/settings/diagnostics-panel.component.test.tsx"],
@@ -104,7 +105,7 @@ export const riskCoverageTestIncludes = [
   "src/components/file-transfer/file-transfer-actions.component.test.ts",
   "src/components/use-local-action-reconciliation.component.test.ts",
   "src/components/file-transfer/file-transfer-list-state.component.test.tsx",
-  "src/components/settings/maintenance-console-panel.component.test.jsx",
+  "src/components/settings/maintenance-console-panel.component.test.tsx",
   "src/components/vault/vault-action-approval-dialog.component.test.jsx",
   "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.tsx",
   "src/connectors/templates/_shared/network-transport-fields.component.test.tsx",

@@ -11,7 +11,7 @@
     "src/components/file-transfer/use-transfer-center-state.ts": [
       "src/components/file-transfer/use-transfer-center-state.component.test.tsx"
     ],
-    "src/components/settings/maintenance-console-panel.jsx": ["src/components/settings/maintenance-console-panel.component.test.jsx"],
+    "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
     "src/components/tokens/created-token-notice.tsx": ["src/components/tokens/created-token-notice.component.test.tsx"],
     "src/components/transfer-center.jsx": ["src/components/transfer-center.component.test.jsx"],
     "src/components/vault/vault-action-approval-dialog.jsx": ["src/components/vault/vault-action-approval-dialog.component.test.jsx"],

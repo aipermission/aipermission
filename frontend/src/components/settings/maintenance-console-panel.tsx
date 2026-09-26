@@ -1,23 +1,25 @@
 import { Terminal } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { apiPost, apiUrl, currentWorkspaceBinding } from "../../lib/api";
-import { limitTranscript } from "../app-shell-runtime";
+import { limitTranscript, parseConsoleSocketMessage } from "../app-shell-runtime";
+import { errorMessage } from "../../lib/errors";
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
 
-const closedSession = { transcript: "", status: "closed", error: null, shell: "" };
+type MaintenanceSession = { transcript: string; status: string; error: string | null; shell: string };
+const closedSession: MaintenanceSession = { transcript: "", status: "closed", error: null, shell: "" };
 const maxPendingInputBytes = 64 * 1024;
 const PtyConsole = lazy(() => import("../console/pty-console").then((module) => ({ default: module.PtyConsole })));
 
 export function MaintenanceConsolePanel() {
   const [open, setOpen] = useState(false);
   const [openError, setOpenError] = useState("");
-  const socketRef = useRef(null);
+  const socketRef = useRef<WebSocket | null>(null);
   const socketReadyRef = useRef(false);
   const pendingInputRef = useRef("");
-  const intentionallyClosedSocketsRef = useRef(new WeakSet());
+  const intentionallyClosedSocketsRef = useRef(new WeakSet<WebSocket>());
   const lifecycleGenerationRef = useRef(0);
   const connectTimerRef = useRef(0);
   const openRequestedRef = useRef(false);
@@ -66,7 +68,7 @@ export function MaintenanceConsolePanel() {
     } catch (error) {
       if (generation === lifecycleGenerationRef.current) {
         openRequestedRef.current = false;
-        setOpenError(error.message);
+        setOpenError(errorMessage(error, "Maintenance console open failed."));
       }
     } finally {
       if (generation === lifecycleGenerationRef.current) operationPendingRef.current = false;
@@ -88,7 +90,7 @@ export function MaintenanceConsolePanel() {
       await apiPost("/api/settings/maintenance-console/close", {});
       openRequestedRef.current = false;
     } catch (error) {
-      setOpenError(`${error.message || "Maintenance console close failed."} Reopen the console and retry closing it.`);
+      setOpenError(`${errorMessage(error, "Maintenance console close failed.")} Reopen the console and retry closing it.`);
     } finally {
       operationPendingRef.current = false;
     }
@@ -108,13 +110,13 @@ export function MaintenanceConsolePanel() {
       }
       connect({ force: true });
     } catch (error) {
-      if (generation === lifecycleGenerationRef.current) setOpenError(error.message);
+      if (generation === lifecycleGenerationRef.current) setOpenError(errorMessage(error, "Maintenance console reconnect failed."));
     } finally {
       if (generation === lifecycleGenerationRef.current) operationPendingRef.current = false;
     }
   }
 
-  function connect(options = {}) {
+  function connect(options: { force?: boolean } = {}) {
     const existing = socketRef.current;
     if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
       if (!options.force) return;
@@ -127,10 +129,8 @@ export function MaintenanceConsolePanel() {
     setSession((current) => ({ ...current, status: "connecting", error: null }));
     socket.onmessage = (event) => {
       if (socketRef.current !== socket) return;
-      let message;
-      try {
-        message = JSON.parse(event.data);
-      } catch {
+      const message = maintenanceMessage(event.data);
+      if (!message) {
         setSession((current) => ({ ...current, status: "error", error: "Maintenance console returned an invalid message." }));
         return;
       }
@@ -191,7 +191,7 @@ export function MaintenanceConsolePanel() {
     };
   }
 
-  function sendInput(data) {
+  function sendInput(data: string) {
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN && socketReadyRef.current) {
       socket.send(JSON.stringify({ type: "input", data }));
@@ -206,7 +206,7 @@ export function MaintenanceConsolePanel() {
     connect();
   }
 
-  function resize(cols, rows) {
+  function resize(cols: number, rows: number) {
     const socket = socketRef.current;
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "resize", cols, rows }));
   }
@@ -276,4 +276,15 @@ function maintenanceConsoleAttachUrl() {
   url.pathname = "/api/settings/maintenance-console/attach";
   url.searchParams.set("workspace", currentWorkspaceBinding());
   return url.toString();
+}
+
+function maintenanceMessage(value: unknown) {
+  const message = parseConsoleSocketMessage(value);
+  if (!message || ["data", "status", "shell"].some((field) => message[field] !== undefined && typeof message[field] !== "string")) return null;
+  return {
+    type: message.type,
+    data: typeof message.data === "string" ? message.data : "",
+    status: typeof message.status === "string" ? message.status : "",
+    shell: typeof message.shell === "string" ? message.shell : "",
+  };
 }
