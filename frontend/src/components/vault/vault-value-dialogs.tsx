@@ -64,6 +64,7 @@ function VaultReplaceDialog({ owner }: Props) {
             type="button"
             variant={replace.source === "imported" ? "default" : "ghost"}
             className="h-9"
+            disabled={replace.state === "saving"}
             onClick={owner.selectImportedReplacement}
           >
             Import value
@@ -72,6 +73,7 @@ function VaultReplaceDialog({ owner }: Props) {
             type="button"
             variant={replace.source === "generated" ? "default" : "ghost"}
             className="h-9"
+            disabled={replace.state === "saving"}
             onClick={() => void owner.generateReplacementPreview(replace.item, replace.generator_kind)}
           >
             Generate locally

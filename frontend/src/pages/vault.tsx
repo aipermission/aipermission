@@ -58,7 +58,7 @@ export function VaultPage() {
   );
 }
 
-function VaultNotices({ collection }) {
+function VaultNotices({ collection }: { collection: ReturnType<typeof useVaultCollection> }) {
   const { action, editor, items, projects } = collection;
   return (
     <>

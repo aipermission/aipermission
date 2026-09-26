@@ -5,14 +5,14 @@ type VaultBinding = {
   binding_revision?: number;
 };
 
-type BindingSelection = {
-  data: VaultBinding[];
+type BindingSelection<Binding extends VaultBinding> = {
+  data: Binding[];
   source_project_id: string | number;
   target_id: string | number;
   profile_id: string | number;
 };
 
-export function selectedBinding(state: BindingSelection): VaultBinding | null {
+export function selectedBinding<Binding extends VaultBinding>(state: BindingSelection<Binding>): Binding | null {
   return (
     state.data.find(
       (item) =>

@@ -4,17 +4,19 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { emptyVaultEditor } from "../components/vault/use-vault-collection";
 import { VaultBindingsDialog, VaultEditor } from "./vault-components";
+import type { VaultBindingsState } from "../components/vault/use-vault-bindings.ts";
 
-const target = { id: 7, name: "Target", connector_kind: "ssh", profiles: [{ id: 8, label: "Primary" }] };
+const target = { id: 7, name: "Target", connector_kind: "fixture", profiles: [{ id: 8, label: "Primary", vault_session_supported: true }] };
 const item = { id: 5, name: "API_KEY", owner_project_id: 2, project_ids: [2] };
 const project = { id: 2, name: "My Project" };
 
-function BindingHarness({ existing = false, onSave = vi.fn() }) {
-  const [state, setState] = useState({
+function BindingHarness({ existing = false, saving = false, onSave = vi.fn() }: { existing?: boolean; saving?: boolean; onSave?: (_state: VaultBindingsState) => void }) {
+  const [state, setState] = useState<VaultBindingsState>({
     open: true,
     item,
-    state: "ready",
-    data: existing ? [{ id: 11, source_project_id: 2, target_id: 7, profile_id: 8, replace_existing: true, target_name: "Target" }] : [],
+    state: saving ? "saving" : "ready",
+    data: existing ? [{ id: 11, vault_item_id: 5, source_project_id: 2, target_id: 7, profile_id: 8,
+      binding_revision: 1, replace_existing: true, target_name: "Target", profile_label: "Primary", source_project_name: "My Project", connector_kind: "fixture" }] : [],
     targets: [target],
     source_project_id: "2",
     target_id: "7",
@@ -60,6 +62,12 @@ it("preserves an overwrite change for an existing Vault binding", async () => {
   expect(overwrite).not.toBeChecked();
   await user.click(screen.getByRole("button", { name: "Update binding" }));
   expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ replace_existing: false }));
+});
+
+it("disables binding removals while another binding mutation is pending", () => {
+  render(<BindingHarness existing saving />);
+  expect(screen.getByRole("button", { name: "Remove binding" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
 });
 
 it("keeps the Vault editor fields locked while saving but permits cancellation", () => {

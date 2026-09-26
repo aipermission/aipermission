@@ -3,8 +3,18 @@ import { formatRelativeAge } from "../../lib/date-time";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { vaultSecretTypes } from "./vault-options";
+import type { ComponentProps } from "react";
+import type { LucideIcon } from "lucide-react";
+import type { VaultManagedItem } from "../../lib/gateway-contracts/vault-management-contract.ts";
+import type { ProjectOption } from "../../lib/load-project-options.ts";
 
-export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }) {
+type RowItem = Pick<VaultManagedItem, "name" | "provider" | "environment" | "secret_type" | "owner_project_name" | "project_ids" | "tags" | "last_used_at" | "expiry_warning_days" | "expires_at">;
+type Props = {
+  item: RowItem; projects: Pick<ProjectOption, "id" | "name">[];
+  onEdit?: () => void; onReveal?: () => void; onReplace?: () => void; onBindings?: () => void; onDelete?: () => void;
+};
+
+export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindings, onDelete }: Props) {
   const projectNames = [
     item.owner_project_name,
     ...(item.project_ids || []).map((id) => projects.find((project) => Number(project.id) === Number(id))?.name).filter(Boolean),
@@ -63,7 +73,7 @@ export function VaultRow({ item, projects, onEdit, onReveal, onReplace, onBindin
   );
 }
 
-function IconButton({ title, icon: Icon, onClick }) {
+function IconButton({ title, icon: Icon, onClick }: { title: string; icon: LucideIcon; onClick?: () => void }) {
   return (
     <Button type="button" variant="outline" className="h-9 w-9 px-0" title={title} onClick={onClick}>
       <Icon className="h-4 w-4" />
@@ -71,11 +81,11 @@ function IconButton({ title, icon: Icon, onClick }) {
   );
 }
 
-function secretTypeLabel(value) {
+function secretTypeLabel(value: string) {
   return vaultSecretTypes.find(([type]) => type === value)?.[1] || value;
 }
 
-function expiryState(item) {
+function expiryState(item: RowItem): { tone: NonNullable<ComponentProps<typeof Badge>["tone"]>; label: string } {
   if (!item.expires_at) return { tone: "neutral", label: "Never" };
   const expiresAt = Date.parse(item.expires_at);
   const now = Date.now();
