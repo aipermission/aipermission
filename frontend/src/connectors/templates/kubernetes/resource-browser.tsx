@@ -4,9 +4,33 @@ import { Button } from "../../../components/ui/button";
 import { Input, Select } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
+import type { KubernetesResource, KubernetesResourceKind } from "./resource-types";
 import { resourceKey, resourceStatus, resourceSubtitle, resourceTabs, resourceTertiary, resourceTitle, resourceTone } from "./helpers";
 
-export function KubernetesResourceBrowser({ browser, styles, theme }) {
+interface KubernetesResourceBrowserProps {
+  browser: {
+    tab: KubernetesResourceKind;
+    filteredResources: KubernetesResource[];
+    activeResources: KubernetesResource[];
+    latestAction: { status: string; action_name: string } | null;
+    state: { state: string };
+    namespace: string;
+    namespaces: { name: string }[];
+    filter: string;
+    activeTab: { label: string };
+    selectedKey: string;
+    refreshResource: (_kind: KubernetesResourceKind) => void;
+    switchTab: (_kind: KubernetesResourceKind) => void;
+    changeNamespace: (_namespace: string) => void;
+    setFilter: (_filter: string) => void;
+    selectResource: (_resource: KubernetesResource) => void;
+  };
+  styles: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input" | "rowHover" | "activeRow">;
+  theme: string;
+}
+
+export function KubernetesResourceBrowser({ browser, styles, theme }: KubernetesResourceBrowserProps) {
   return (
     <section
       className={`grid h-full min-h-0 grid-rows-[auto_auto_auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${styles.border} ${styles.subtlePanel}`}
@@ -103,7 +127,7 @@ export function KubernetesResourceBrowser({ browser, styles, theme }) {
   );
 }
 
-function actionTone(status) {
+function actionTone(status: string) {
   if (status === "failed") return "bad";
   if (status === "completed") return "good";
   return "warn";
