@@ -4,18 +4,30 @@ import { connectorActionBusy } from "../_shared/action-state";
 import { resourceSubtitle, resourceTitle } from "./helpers";
 import { KubernetesPodConsolePanel } from "./pod-console-panel";
 import { KubernetesHeaderStatus, KubernetesResourceDetail } from "./resource-detail";
+import type { ComponentProps, ReactNode } from "react";
+import type { useKubernetesBrowser } from "./use-kubernetes-browser";
+import type { useRolloutRestart } from "./use-rollout-restart";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
+
+type KubernetesResourceWorkspaceProps = {
+  browser: Pick<ReturnType<typeof useKubernetesBrowser>, "selectedResource" | "tab" | "activeTab" | "state" | "viewMode" | "selectedPodConsoleLive" | "consolePending" | "startPodConsole" | "detail" | "logs" | "resultSearch" | "setResultSearch" | "readLogs" | "openPodConsole">;
+  restart: Pick<ReturnType<typeof useRolloutRestart>, "open">;
+  theme: ComponentProps<typeof KubernetesPodConsolePanel>["theme"];
+  selectedRuntimeTarget?: ComponentProps<typeof KubernetesPodConsolePanel>["selectedRuntimeTarget"];
+  onEndLiveSession?: ComponentProps<typeof KubernetesPodConsolePanel>["onEnd"];
+  children?: ReactNode;
+  styles: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "subtlePanel" | "muted" | "input">;
+};
 
 export function KubernetesResourceWorkspace({
   browser,
   restart,
-  target,
   theme,
-  session,
   selectedRuntimeTarget,
   onEndLiveSession,
   children,
   styles,
-}) {
+}: KubernetesResourceWorkspaceProps) {
   const resource = browser.selectedResource;
   return (
     <section className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border ${styles.border}`}>
@@ -32,10 +44,8 @@ export function KubernetesResourceWorkspace({
       <div className="grid h-full min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden p-3">
         {browser.tab === "pods" && browser.viewMode === "console" ? (
           <KubernetesPodConsolePanel
-            target={target}
             pod={resource}
             selectedRuntimeTarget={selectedRuntimeTarget}
-            session={session}
             sessionLive={browser.selectedPodConsoleLive}
             pending={browser.consolePending}
             theme={theme}
@@ -63,7 +73,7 @@ export function KubernetesResourceWorkspace({
   );
 }
 
-function ResourceActions({ browser, restart }) {
+function ResourceActions({ browser, restart }: Pick<KubernetesResourceWorkspaceProps, "browser" | "restart">) {
   const resource = browser.selectedResource;
   return (
     <div className="flex flex-wrap items-center gap-2">

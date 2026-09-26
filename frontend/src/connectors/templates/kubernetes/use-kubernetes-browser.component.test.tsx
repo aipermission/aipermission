@@ -3,6 +3,9 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api.js";
 import { useKubernetesBrowser } from "./use-kubernetes-browser";
 import { useRolloutRestart } from "./use-rollout-restart";
+import type { KubernetesBrowserProps } from "./use-kubernetes-browser";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import { kubernetesOutputField } from "./resource-output";
 
 vi.mock("../../../lib/api.js", () => ({ apiPost: vi.fn() }));
 
@@ -12,12 +15,12 @@ const pods = [
 ];
 
 beforeEach(() => {
-  apiPost.mockReset();
-  apiPost.mockImplementation(async (_path, payload) => completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  vi.mocked(apiPost).mockReset();
+  vi.mocked(apiPost).mockImplementation(async (_path, payload: { action_name: string; input: Record<string, unknown> }) => completed(payload.action_name, responseFor(payload.action_name, payload.input)));
 });
 
-function renderBrowser(overrides = {}) {
-  const props = {
+function renderBrowser(overrides: Partial<KubernetesBrowserProps> = {}) {
+  const props: KubernetesBrowserProps = {
     target: { ref: "kubernetes:1:1" },
     approvals: { data: [] },
     session: { name: "", active: false },
@@ -31,12 +34,12 @@ function renderBrowser(overrides = {}) {
 }
 
 it("loads resources and ignores detail from a superseded pod selection", async () => {
-  const pending = new Map();
-  apiPost.mockImplementation((_path, payload) => {
+  const pending = new Map<string, (_value: ConnectorActionResponse) => void>();
+  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
     if (payload.action_name !== "describe_resource") {
       return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
     }
-    return new Promise((resolve) => pending.set(payload.input.name, resolve));
+    return new Promise((resolve) => pending.set(String(payload.input.name), resolve));
   });
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.activeResources).toEqual([]));
@@ -48,10 +51,10 @@ it("loads resources and ignores detail from a superseded pod selection", async (
   act(() => void result.current.selectResource(pods[1]));
   await waitFor(() => expect(pending.has("api-b")).toBe(true));
 
-  await act(async () => pending.get("api-a")(completed("describe_resource", { resource: pods[0] })));
+  await act(async () => pending.get("api-a")?.(completed("describe_resource", { resource: pods[0] })));
   expect(result.current.detail).toBeNull();
-  await act(async () => pending.get("api-b")(completed("describe_resource", { resource: pods[1] })));
-  await waitFor(() => expect(result.current.detail?.output?.resource?.name).toBe("api-b"));
+  await act(async () => pending.get("api-b")?.(completed("describe_resource", { resource: pods[1] })));
+  await waitFor(() => expect(kubernetesOutputField(result.current.detail?.output, "resource")).toEqual(pods[1]));
   expect(result.current.logs).toBe("logs for api-b");
 });
 
@@ -74,8 +77,8 @@ it("keeps pod console identity and params bound to the selected pod", async () =
 });
 
 it("discards resource lists that arrive after the connector target changes", async () => {
-  const pending = new Map();
-  apiPost.mockImplementation((_path, payload) => {
+  const pending = new Map<string, (_value: ConnectorActionResponse) => void>();
+  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown>; target_ref: string }) => {
     if (payload.action_name !== "list_workloads") {
       return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
     }
@@ -87,16 +90,16 @@ it("discards resource lists that arrive after the connector target changes", asy
   await waitFor(() => expect(pending.has("kubernetes:2:2")).toBe(true));
 
   await act(async () =>
-    pending.get("kubernetes:1:1")(completed("list_workloads", { workloads: [{ kind: "Deployment", namespace: "old", name: "stale" }] })),
+    pending.get("kubernetes:1:1")?.(completed("list_workloads", { workloads: [{ kind: "Deployment", namespace: "old", name: "stale" }] })),
   );
   expect(result.current.activeResources).toEqual([]);
-  await act(async () => pending.get("kubernetes:2:2")(completed("list_workloads", { workloads: [] }, "kubernetes:2:2")));
+  await act(async () => pending.get("kubernetes:2:2")?.(completed("list_workloads", { workloads: [] }, "kubernetes:2:2")));
   expect(result.current.activeResources).toEqual([]);
 });
 
 it("does not let an older tab list clear the current pod selection", async () => {
-  let resolveWorkloads;
-  apiPost.mockImplementation((_path, payload) => {
+  let resolveWorkloads: ((_value: ConnectorActionResponse) => void) | undefined;
+  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
     if (payload.action_name === "list_workloads") {
       return new Promise((resolve) => {
         resolveWorkloads = resolve;
@@ -110,16 +113,16 @@ it("does not let an older tab list clear the current pod selection", async () =>
   await waitFor(() => expect(result.current.activeResources).toEqual(pods));
   await act(async () => result.current.selectResource(pods[0]));
 
-  await act(async () => resolveWorkloads(completed("list_workloads", { workloads: [] })));
+  await act(async () => resolveWorkloads?.(completed("list_workloads", { workloads: [] })));
 
   expect(result.current.tab).toBe("pods");
   expect(result.current.selectedResource).toEqual(pods[0]);
 });
 
 it("does not let old pod detail replace a synchronously selected event", async () => {
-  let resolvePodDetail;
+  let resolvePodDetail: ((_value: ConnectorActionResponse) => void) | undefined;
   const event = { namespace: "default", object: "pod/api-b", reason: "Scheduled", last_timestamp: "now", message: "placed" };
-  apiPost.mockImplementation((_path, payload) => {
+  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
     if (payload.action_name === "describe_resource" && payload.input.resource_type === "pod") {
       return new Promise((resolve) => {
         resolvePodDetail = resolve;
@@ -137,19 +140,19 @@ it("does not let old pod detail replace a synchronously selected event", async (
   await waitFor(() => expect(result.current.activeResources).toEqual([event]));
   await act(async () => result.current.selectResource(event));
 
-  await act(async () => resolvePodDetail(completed("describe_resource", { resource: pods[0] })));
+  await act(async () => resolvePodDetail?.(completed("describe_resource", { resource: pods[0] })));
 
   expect(result.current.tab).toBe("events");
-  expect(result.current.detail?.output?.resource).toEqual(event);
+  expect(kubernetesOutputField(result.current.detail?.output, "resource")).toEqual(event);
 });
 
 it("restarts the workload captured by the confirmation dialog", async () => {
   const first = { kind: "Deployment", namespace: "default", name: "api-a" };
   const second = { kind: "Deployment", namespace: "default", name: "api-b" };
-  const runAction = vi.fn().mockResolvedValue({ id: 1 });
+  const runAction = vi.fn().mockResolvedValue(completed("rollout_restart", {}));
   const refreshResource = vi.fn().mockResolvedValue(undefined);
   const { result, rerender } = renderHook((props) => useRolloutRestart(props), {
-    initialProps: { targetRef: "kubernetes:1:1", tab: "workloads", selectedResource: first, runAction, refreshResource },
+    initialProps: { targetRef: "kubernetes:1:1", tab: "workloads" as const, selectedResource: first, runAction, refreshResource },
   });
   act(() => result.current.open());
   rerender({ targetRef: "kubernetes:1:1", tab: "workloads", selectedResource: second, runAction, refreshResource });
@@ -162,7 +165,7 @@ it("restarts the workload captured by the confirmation dialog", async () => {
   expect(refreshResource).toHaveBeenCalledWith("workloads");
 });
 
-function completed(actionName, output, targetRef = "kubernetes:1:1") {
+function completed(actionName: string, output: unknown, targetRef = "kubernetes:1:1"): ConnectorActionResponse {
   return {
     request_id: 1,
     status: "completed",
@@ -174,8 +177,8 @@ function completed(actionName, output, targetRef = "kubernetes:1:1") {
   };
 }
 
-function responseFor(actionName, input) {
-  const outputs = {
+function responseFor(actionName: string, input: Record<string, unknown>) {
+  const outputs: Record<string, unknown> = {
     list_namespaces: { namespaces: [{ name: "default" }] },
     list_workloads: { workloads: [] },
     list_pods: { pods },
@@ -183,3 +186,57 @@ function responseFor(actionName, input) {
   };
   return outputs[actionName] || {};
 }
+
+it("does not replace an opened console with delayed pod logs", async () => {
+  let resolveLogs: ((_value: ConnectorActionResponse) => void) | undefined;
+  vi.mocked(apiPost).mockImplementation((_path, payload: { action_name: string; input: Record<string, unknown> }) => {
+    if (payload.action_name === "get_logs") return new Promise((resolve) => { resolveLogs = resolve; });
+    return Promise.resolve(completed(payload.action_name, responseFor(payload.action_name, payload.input)));
+  });
+  const { result } = renderBrowser();
+  act(() => result.current.switchTab("pods"));
+  await waitFor(() => expect(result.current.activeResources).toEqual(pods));
+  act(() => void result.current.selectResource(pods[0]));
+  await waitFor(() => expect(resolveLogs).toBeTypeOf("function"));
+  act(() => result.current.openPodConsole());
+  await act(async () => resolveLogs?.(completed("get_logs", { logs: "old" })));
+  expect(result.current.viewMode).toBe("console");
+  expect(result.current.logs).toBe("");
+  expect(result.current.state.state).toBe("idle");
+});
+
+it("keeps a newer pod console pending when an older start rejects", async () => {
+  const pending = new Map<string, { resolve: () => void; reject: (_error: Error) => void }>();
+  const onNewLiveSession = vi.fn((_options: { name: string }) => new Promise<void>((resolve, reject) => { pending.set(_options.name, { resolve, reject }); }));
+  const { result } = renderBrowser({ onNewLiveSession });
+  act(() => result.current.switchTab("pods"));
+  await waitFor(() => expect(result.current.activeResources).toEqual(pods));
+  await act(async () => result.current.selectResource(pods[0]));
+  let first: Promise<void> | undefined;
+  act(() => { first = result.current.startPodConsole(); });
+  await act(async () => result.current.selectResource(pods[1]));
+  let second: Promise<void> | undefined;
+  act(() => { second = result.current.startPodConsole(); });
+  expect(result.current.consolePending).toBe(true);
+  await act(async () => {
+    pending.get("kubernetes:kubernetes:1:1:default:api-a")?.reject(new Error("old start failed"));
+    await first;
+  });
+  expect(result.current.consolePending).toBe(true);
+  await act(async () => {
+    pending.get("kubernetes:kubernetes:1:1:default:api-b")?.resolve();
+    await second;
+  });
+});
+
+it("does not carry the previous target namespace into initial workload refresh", async () => {
+  const { result, rerender, props } = renderBrowser();
+  await waitFor(() => expect(result.current.namespaces).toEqual([{ name: "default" }]));
+  act(() => result.current.changeNamespace("default"));
+  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => payload.target_ref === "kubernetes:1:1" && payload.input.namespace === "default")).toBe(true));
+  rerender({ ...props, target: { ref: "kubernetes:2:2" } });
+  await waitFor(() => expect(vi.mocked(apiPost).mock.calls.some(([, payload]) => payload.target_ref === "kubernetes:2:2" && payload.action_name === "list_workloads")).toBe(true));
+  const newRequests = vi.mocked(apiPost).mock.calls.filter(([, payload]) => payload.target_ref === "kubernetes:2:2" && payload.action_name === "list_workloads");
+  expect(newRequests).toHaveLength(1);
+  expect(newRequests[0][1].input).toEqual({});
+});

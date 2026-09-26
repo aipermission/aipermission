@@ -4,8 +4,22 @@ import { connectorActionBusy } from "../_shared/action-state";
 import { HighlightedText } from "../_shared/highlighted-text";
 import { ConnectorResultHeader, RawDataSection } from "../_shared/result-sections";
 import { resourceSubtitle } from "./helpers";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import type { KubernetesResource, KubernetesResourceKind } from "./resource-types";
+import type { KubernetesTarget } from "./form-types";
 
-export function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearch, inputClass, mutedClass }) {
+interface KubernetesResourceDetailProps {
+  tab: KubernetesResourceKind;
+  resource: KubernetesResource | null;
+  detail: Pick<ConnectorActionResponse, "output"> | null;
+  logs: string;
+  search: string;
+  onSearch: (_search: string) => void;
+  inputClass: string;
+  mutedClass: string;
+}
+
+export function KubernetesResourceDetail({ tab, resource, detail, logs, search, onSearch, inputClass, mutedClass }: KubernetesResourceDetailProps) {
   if (!resource) {
     return (
       <div className={`grid h-full min-h-0 place-items-center rounded-lg border border-dashed p-8 text-center text-sm ${mutedClass}`}>
@@ -13,7 +27,9 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
       </div>
     );
   }
-  const rawResource = detail?.output?.resource || detail?.output || resource;
+  const output = detail?.output;
+  const nestedResource = output && typeof output === "object" && "resource" in output ? output.resource : null;
+  const rawResource = nestedResource || output || resource;
   const rawValue = JSON.stringify(rawResource || {}, null, 2);
   const topTitle = kubernetesTopTitle(tab);
   const topSubtitle = kubernetesTopSubtitle(tab, resource);
@@ -63,7 +79,7 @@ export function KubernetesResourceDetail({ tab, resource, detail, logs, search, 
   );
 }
 
-export function KubernetesHeaderStatus({ state, mutedClass }) {
+export function KubernetesHeaderStatus({ state, mutedClass }: { state: { state: string; error?: string }; mutedClass: string }) {
   if (connectorActionBusy(state)) {
     return (
       <p className="mt-1 flex min-h-4 items-center gap-1 truncate text-[11px] text-amber-500">
@@ -78,14 +94,14 @@ export function KubernetesHeaderStatus({ state, mutedClass }) {
   return <p className={`mt-1 min-h-4 text-[11px] ${mutedClass}`}>&nbsp;</p>;
 }
 
-function kubernetesTopTitle(tab) {
+function kubernetesTopTitle(tab: KubernetesResourceKind) {
   if (tab === "pods") return "Pod logs";
   if (tab === "nodes") return "Node metadata";
   if (tab === "events") return "Event details";
   return "Resource metadata";
 }
 
-function kubernetesTopSubtitle(tab, resource) {
+function kubernetesTopSubtitle(tab: KubernetesResourceKind, resource: KubernetesResource | null) {
   if (!resource) return "";
   if (tab === "pods") return `${resource.namespace}/${resource.name}`;
   if (tab === "nodes") return "Node logs are not available through kubectl logs.";
@@ -93,13 +109,13 @@ function kubernetesTopSubtitle(tab, resource) {
   return resourceSubtitle(tab, resource);
 }
 
-function kubernetesMetadataText(tab, resource) {
+function kubernetesMetadataText(tab: KubernetesResourceKind, resource: KubernetesResource) {
   return summaryRows(tab, resource)
     .map((row) => `${row.label}: ${row.value || "-"}`)
     .join("\n");
 }
 
-function KubernetesSummaryCards({ tab, resource, mutedClass }) {
+function KubernetesSummaryCards({ tab, resource, mutedClass }: Pick<KubernetesResourceDetailProps, "tab" | "resource" | "mutedClass">) {
   if (!resource) {
     return <p className={`text-sm ${mutedClass}`}>No resource selected.</p>;
   }
@@ -118,7 +134,7 @@ function KubernetesSummaryCards({ tab, resource, mutedClass }) {
   );
 }
 
-export function KubernetesFooter({ target, borderClass, mutedClass }) {
+export function KubernetesFooter({ target, borderClass, mutedClass }: { target: Pick<KubernetesTarget, "config">; borderClass: string; mutedClass: string }) {
   return (
     <div className={`flex min-h-9 items-center justify-between border-t px-4 py-2 text-xs ${borderClass} ${mutedClass}`}>
       <span>Kubernetes transport</span>
@@ -127,7 +143,7 @@ export function KubernetesFooter({ target, borderClass, mutedClass }) {
   );
 }
 
-function summaryRows(tab, resource) {
+function summaryRows(tab: KubernetesResourceKind, resource: KubernetesResource) {
   if (tab === "workloads")
     return [
       { label: "Kind", value: resource.kind },

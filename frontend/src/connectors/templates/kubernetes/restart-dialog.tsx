@@ -2,8 +2,10 @@ import { TriangleAlert } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
 import { Notice } from "../../../components/ui/notice";
+import type { useRolloutRestart } from "./use-rollout-restart";
+import type { connectorConsoleTheme } from "../_shared/console-theme";
 
-export function KubernetesRestartDialog({ restart, styles }) {
+export function KubernetesRestartDialog({ restart, styles }: { restart: ReturnType<typeof useRolloutRestart>; styles: Pick<ReturnType<typeof connectorConsoleTheme>, "border" | "muted"> }) {
   const value = restart.dialog;
   return (
     <Dialog open={value.open} onClose={restart.close} title="Rollout restart deployment" size="md" closeDisabled={value.pending}>

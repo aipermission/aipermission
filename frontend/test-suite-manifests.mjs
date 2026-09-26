@@ -44,8 +44,11 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/host-ping-button.tsx": ["src/connectors/templates/host-ping-button.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-browser.js": ["src/connectors/templates/docker/use-docker-browser.component.test.jsx"],
   "src/connectors/templates/kafka/use-kafka-browser.js": ["src/connectors/templates/kafka/use-kafka-browser.component.test.jsx"],
-  "src/connectors/templates/kubernetes/use-kubernetes-browser.js": [
-    "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.jsx",
+  "src/connectors/templates/kubernetes/use-kubernetes-browser.ts": [
+    "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.tsx",
+  ],
+  "src/connectors/templates/kubernetes/use-rollout-restart.ts": [
+    "src/connectors/templates/kubernetes/use-rollout-restart.component.test.tsx",
   ],
   "src/connectors/templates/mail/use-mail-action-runner.ts": ["src/connectors/templates/mail/use-mail-action-runner.component.test.tsx"],
   "src/connectors/templates/postgres/use-postgres-backup-restore.ts": [
