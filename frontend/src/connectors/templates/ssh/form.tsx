@@ -1,10 +1,13 @@
 import { Link } from "react-router";
+import { useId } from "react";
 import { Checkbox, Field, Input, Select, Textarea } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { InstallCommandPanel } from "../common";
 import { HostPingButton } from "../host-ping-button";
+import type { SSHForm, SSHKey } from "./form-types";
 
-export function SSHConnectorFormTemplate({ form, credentials, activeCredential, onChange }) {
+export function SSHConnectorFormTemplate({ form, credentials, activeCredential, onChange }: { form: SSHForm; credentials: readonly SSHKey[]; activeCredential: SSHKey | null; onChange: (_field: string, _value: string | boolean) => void }) {
+  const hostID = useId();
   return (
     <>
       {credentials.length === 0 ? (
@@ -25,12 +28,12 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
         <Input value={form.name} onChange={(event) => onChange("name", event.target.value)} placeholder="worker-1" required />
       </Field>
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
-        <Field>
+        <Field htmlFor={hostID}>
           <span className="flex items-center justify-between gap-2">
             <span>Host</span>
             <HostPingButton host={form.host} port={form.port} />
           </span>
-          <Input value={form.host} onChange={(event) => onChange("host", event.target.value)} placeholder="203.0.113.10" required />
+          <Input id={hostID} value={form.host} onChange={(event) => onChange("host", event.target.value)} placeholder="203.0.113.10" required />
         </Field>
         <Field>
           Port
@@ -56,7 +59,7 @@ export function SSHConnectorFormTemplate({ form, credentials, activeCredential, 
       </Field>
       {activeCredential ? (
         <InstallCommandPanel
-          command={activeCredential.install_command}
+          command={activeCredential.install_command || ""}
           title="Install this SSH key on the target"
           description="Paste this command on the remote server before creating a tested SSH connector."
         />

@@ -83,7 +83,7 @@ export const asyncStateOwnerTests = {
   "src/pages/remote-restore-panel.jsx": ["src/pages/remote-restore-panel.component.test.jsx"],
   "src/pages/projects.jsx": ["src/pages/projects.component.test.jsx"],
   "src/pages/tokens.jsx": ["src/pages/tokens.component.test.jsx"],
-  "src/pages/use-security-page-state.js": ["src/pages/security.component.test.jsx"],
+  "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
   "src/pages/audit-logs.jsx": ["src/pages/audit-logs.component.test.jsx"],
   "src/pages/use-unlock-lifecycle-mutation.js": ["src/pages/unlock.component.test.jsx"],
   "src/pages/use-history-page-state.js": ["src/pages/history.component.test.jsx"],

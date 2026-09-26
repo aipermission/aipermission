@@ -1,4 +1,5 @@
 import { Database, KeyRound, Mail, Server } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
 import { CopyButton } from "../../components/ui/copy-button";
 import { TerminalBlock } from "../../components/ui/terminal-block";
@@ -6,14 +7,14 @@ import { connectorKindLabel, connectorTemplateMetadata } from "./catalog";
 
 export { connectorBadgeTone, connectorKindLabel, connectorSummary } from "./catalog";
 
-const connectorIcons = Object.freeze({
+const connectorIcons: Readonly<Record<string, LucideIcon>> = Object.freeze({
   database: Database,
   key: KeyRound,
   mail: Mail,
   server: Server,
 });
 
-export function ConnectorKindCell({ target, catalog }) {
+export function ConnectorKindCell({ target, catalog }: { target: { connector_kind: string; id: string | number }; catalog: { data: readonly { kind: string; label?: string }[] } }) {
   return (
     <td className="px-4 py-4">
       <div className="flex min-w-0 items-center gap-2">
@@ -29,7 +30,7 @@ export function ConnectorKindCell({ target, catalog }) {
   );
 }
 
-export function TargetCell({ target, endpoint }) {
+export function TargetCell({ target, endpoint }: { target: { name?: string }; endpoint: string }) {
   return (
     <td className="px-4 py-4">
       <div className="grid min-w-0 gap-1">
@@ -40,7 +41,7 @@ export function TargetCell({ target, endpoint }) {
   );
 }
 
-export function ProfilesCell({ target }) {
+export function ProfilesCell({ target }: { target: { profiles?: readonly { id: string | number; label?: string; ref?: string }[] } }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {(target.profiles || []).map((profile) => (
@@ -53,11 +54,11 @@ export function ProfilesCell({ target }) {
   );
 }
 
-export function StatusCell({ target }) {
+export function StatusCell({ target }: { target: { status: string } }) {
   return <Badge tone={target.status === "active" ? "good" : "warn"}>{target.status}</Badge>;
 }
 
-export function InstallCommandPanel({ command, title, description }) {
+export function InstallCommandPanel({ command, title, description }: { command: string; title: string; description: string }) {
   return (
     <div className="grid min-w-0 gap-3 overflow-hidden rounded-lg border border-stone-200 bg-white p-3">
       <div className="flex min-w-0 items-start justify-between gap-3">
@@ -72,15 +73,15 @@ export function InstallCommandPanel({ command, title, description }) {
   );
 }
 
-export function ConnectorIcon({ kind, className = "" }) {
+export function ConnectorIcon({ kind, className = "" }: { kind: string; className?: string }) {
   const Icon = connectorIcons[connectorIconName(kind)] || KeyRound;
   return <Icon className={className} />;
 }
 
-export function catalogLabel(catalog, kind) {
+export function catalogLabel(catalog: { data: readonly { kind: string; label?: string }[] }, kind: string) {
   return catalog.data.find((item) => item.kind === kind)?.label || connectorKindLabel(kind);
 }
 
-function connectorIconName(kind) {
+function connectorIconName(kind: string) {
   return connectorTemplateMetadata[kind]?.icon || "key";
 }
