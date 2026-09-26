@@ -1,10 +1,46 @@
 import { Download, FolderOpen, Pause, Play, RefreshCcw, Upload } from "lucide-react";
 import { useId } from "react";
+import type { ChangeEvent, ComponentProps, RefObject } from "react";
 import { Button } from "../ui/button";
 import { Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { fileTransferFailureText } from "../../lib/file-transfer-utils";
 import { QueueList, QueueSummary } from "./file-transfer-queue";
+import type { TransferBatchState, TransferBatch, TransferDirection } from "./transfer-contracts";
+
+type SourceProps = {
+  runtimeTarget: { name?: string; subtitle?: string } | null;
+  activeBatch: TransferBatch | boolean | null;
+  defaultRemoteDir: string;
+  onOpenBrowser: (_mode: TransferDirection) => void;
+};
+type UploadProps = SourceProps & {
+  remoteDir: string;
+  recursive: boolean;
+  fileInputRef: RefObject<HTMLInputElement | null>;
+  folderInputRef: RefObject<HTMLInputElement | null>;
+  onRemoteDirectoryChange: (_path: string) => void;
+  onLocalFileChange: (_event: ChangeEvent<HTMLInputElement>) => void;
+};
+type SetupProps = UploadProps & {
+  mode: TransferDirection;
+  batch: TransferBatchState;
+  queue: ComponentProps<typeof QueueList>["queue"];
+  progress: ComponentProps<typeof QueueSummary>["progress"];
+  notice?: { tone: ComponentProps<typeof Notice>["tone"]; message: string } | null;
+  transferNotice: string;
+  onModeChange: (_mode: TransferDirection) => void;
+};
+type QueueProps = Pick<SetupProps, "mode" | "batch" | "queue" | "activeBatch"> & Pick<ComponentProps<typeof QueueList>, "onRemove" | "onMove"> & {
+  canStart: boolean;
+  onRefresh: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  onSaveDownload: () => void;
+  onClear: () => void;
+  onStart: () => void;
+};
 
 export function TransferSetupPanel({
   runtimeTarget,
@@ -24,7 +60,7 @@ export function TransferSetupPanel({
   onRemoteDirectoryChange,
   onOpenBrowser,
   onLocalFileChange,
-}) {
+}: SetupProps) {
   return (
     <section className="grid min-h-0 content-start gap-4">
       <Notice tone="warn">{transferNotice}</Notice>
@@ -96,7 +132,7 @@ function UploadSourcePanel({
   onRemoteDirectoryChange,
   onOpenBrowser,
   onLocalFileChange,
-}) {
+}: UploadProps) {
   const remoteDirectoryID = useId();
   return (
     <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
@@ -145,14 +181,14 @@ function UploadSourcePanel({
             <FolderOpen className="h-4 w-4" />
             Add folder
           </Button>
-          <input ref={folderInputRef} className="hidden" type="file" multiple webkitdirectory="" onChange={onLocalFileChange} />
+          <input ref={folderInputRef} className="hidden" type="file" multiple {...{ webkitdirectory: "" }} onChange={onLocalFileChange} />
         </>
       ) : null}
     </div>
   );
 }
 
-function DownloadSourcePanel({ runtimeTarget, activeBatch, defaultRemoteDir, onOpenBrowser }) {
+function DownloadSourcePanel({ runtimeTarget, activeBatch, defaultRemoteDir, onOpenBrowser }: SourceProps) {
   return (
     <div className="grid gap-3 rounded-md border border-stone-200 bg-white p-4">
       <Button
@@ -188,8 +224,8 @@ export function TransferQueuePanel({
   onSaveDownload,
   onClear,
   onStart,
-}) {
-  const failureMessage = fileTransferFailureText(batch.item, batch.error);
+}: QueueProps) {
+  const failureMessage = fileTransferFailureText(batch.item, batch.error || "");
   return (
     <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">

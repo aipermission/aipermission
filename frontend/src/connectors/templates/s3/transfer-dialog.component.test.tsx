@@ -32,7 +32,6 @@ it("retains folder-relative identity in preview and multipart after prefix navig
       options={{
         defaultDirectory: "/",
         recursive: true,
-        folderUpload: true,
         joinRemotePath: joinTransferPath,
         normalizeRemoteDirectoryInput: normalizeTransferDirectory,
       }}
@@ -73,7 +72,6 @@ it("waits for the canonical browse path before using an upload folder", async ()
       options={{
         defaultDirectory: "/",
         recursive: true,
-        folderUpload: true,
         joinRemotePath: joinTransferPath,
         normalizeRemoteDirectoryInput: normalizeTransferDirectory,
       }}

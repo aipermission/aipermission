@@ -3,7 +3,39 @@ import { Button } from "../ui/button";
 import { ProgressBar } from "../ui/progress-bar";
 import { fileTransferFailureText, formatBytes, formatETA, pendingBatchItemIDs, transferProgress } from "../../lib/file-transfer-utils";
 
-export function QueueSummary({ batch, queue, mode, progress }) {
+type QueueItem = {
+  id: string | number;
+  name?: string;
+  file_name?: string;
+  path?: string;
+  remote_path?: string;
+  size?: number;
+  size_bytes?: number;
+  transferred_bytes?: number;
+  eta_seconds?: number;
+  status?: string;
+  failure_kind?: string;
+  error?: string | null;
+};
+type QueueBatch = {
+  status: string;
+  size_bytes?: number;
+  total_items?: number;
+  bytes_per_second?: number;
+  eta_seconds?: number;
+  items?: (QueueItem & { status: string })[];
+};
+type QueueListProps = {
+  mode: "upload" | "download";
+  queue: QueueItem[];
+  batch: QueueBatch | null;
+  active: boolean;
+  canEditPausedBatch: boolean;
+  onRemove: (_id: QueueItem["id"]) => void;
+  onMove: (_id: QueueItem["id"], _direction: number) => void;
+};
+
+export function QueueSummary({ batch, queue, mode, progress }: Pick<QueueListProps, "batch" | "queue" | "mode"> & { progress: { percent: number } }) {
   const totalSize = batch ? batch.size_bytes : queue.reduce((sum, item) => sum + Number(item.size || 0), 0);
   const totalItems = batch ? batch.total_items : queue.length;
   return (
@@ -42,7 +74,7 @@ export function QueueSummary({ batch, queue, mode, progress }) {
   );
 }
 
-export function QueueList({ mode, queue, batch, active, canEditPausedBatch, onRemove, onMove }) {
+export function QueueList({ mode, queue, batch, active, canEditPausedBatch, onRemove, onMove }: QueueListProps) {
   const items = batch?.items || queue;
   const editableIDs = canEditPausedBatch ? pendingBatchItemIDs(batch) : [];
   if (items.length === 0) {
@@ -79,7 +111,14 @@ export function QueueList({ mode, queue, batch, active, canEditPausedBatch, onRe
   );
 }
 
-function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, canMoveUp, canMoveDown, mode, onRemove, onMove }) {
+function QueueRow({ item, index, total, active, batchMode, canEditPausedBatch, canMoveUp, canMoveDown, mode, onRemove, onMove }: Omit<QueueListProps, "batch" | "queue"> & {
+  item: QueueItem;
+  index: number;
+  total: number;
+  batchMode: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+}) {
   const name = item.file_name || item.name || item.path || item.remote_path;
   const source = mode === "upload" ? item.remote_path : item.path || item.remote_path;
   const progress = transferProgress(item.status ? item : null);

@@ -2,6 +2,18 @@ const terminalBatchStatuses = new Set(["completed", "failed", "canceled", "decli
 export type FileTransferListBatch = { id: number; status: string; [field: string]: unknown };
 export type FileTransferListState = { state: string; data: FileTransferListBatch[]; error: string | null };
 
+export function fileTransferListBatchResponse(value: unknown): FileTransferListBatch {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("id" in value) || typeof value.id !== "number" || !Number.isSafeInteger(value.id) || value.id <= 0 || !("status" in value) || typeof value.status !== "string") {
+    throw new Error("Invalid transfer list batch response from gateway.");
+  }
+  return { ...value, id: value.id, status: value.status };
+}
+
+export function fileTransferListResponse(value: unknown): { items: FileTransferListBatch[] } {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("items" in value) || !Array.isArray(value.items)) throw new Error("Invalid transfer list response from gateway.");
+  return { items: value.items.map(fileTransferListBatchResponse) };
+}
+
 export function createFileTransferListState() {
   let generation = 0;
   return {
@@ -34,8 +46,8 @@ export async function loadCurrentFileTransferBatches({
   onError,
 }: {
   request: () => Promise<{ items?: FileTransferListBatch[] } | null | undefined>;
-  pollGeneration: number;
-  pollIsCurrent: (_generation: number) => boolean;
+  pollGeneration?: number;
+  pollIsCurrent: (_generation: number | undefined) => boolean;
   listState: ReturnType<typeof createFileTransferListState>;
   onItems: (_items: FileTransferListBatch[]) => unknown;
   onError: (_error: unknown) => unknown;

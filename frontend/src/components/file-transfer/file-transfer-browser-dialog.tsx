@@ -1,10 +1,13 @@
 import { File, Folder, RefreshCcw } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Field, Input } from "../ui/form";
 import { Notice } from "../ui/notice";
 import { formatBytes, formatShortDate } from "../../lib/file-transfer-utils";
+import type { RemoteBrowserState, RemoteBrowserOptions, RemoteEntry, TransferDirection } from "./transfer-contracts";
+import { useRequestGuard } from "../../lib/request-guard";
+import { errorMessage } from "../../lib/errors";
 
 export function RemoteBrowserDialog({
   browser,
@@ -16,10 +19,27 @@ export function RemoteBrowserDialog({
   onAddFiles,
   queuedPaths,
   recursive,
+}: {
+  browser: RemoteBrowserState;
+  transportLabel?: string;
+  onClose: () => void;
+  onLoad: (_path: string, _purpose: TransferDirection, _options?: RemoteBrowserOptions) => void;
+  onPathChange: (_path: string) => void;
+  onUseDirectory: (_path: string) => void;
+  onAddFiles: (_entries: RemoteEntry[]) => Promise<boolean>;
+  queuedPaths?: Set<string>;
+  recursive: boolean;
 }) {
-  const [selectedFiles, setSelectedFiles] = useState({});
+  const [selectedFiles, setSelectedFiles] = useState<Record<string, RemoteEntry>>({});
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState("");
+  const addingRef = useRef(false);
+  const requests = useRequestGuard(`remote-file-selection:${browser.open}:${browser.purpose}`);
 
   useEffect(() => {
+    addingRef.current = false;
+    setAdding(false);
+    setAddError("");
     if (browser.open && browser.purpose === "download") {
       setSelectedFiles({});
     }
@@ -32,7 +52,7 @@ export function RemoteBrowserDialog({
   const selectedList = Object.values(selectedFiles);
   const selectedCount = selectedList.length;
 
-  function toggleFile(entry) {
+  function toggleFile(entry: RemoteEntry) {
     if (!entry || (entry.type !== "file" && !(recursive && entry.type === "directory")) || queuedPaths?.has(entry.path)) return;
     setSelectedFiles((current) => {
       const next = { ...current };
@@ -46,11 +66,25 @@ export function RemoteBrowserDialog({
   }
 
   async function addSelectedFiles() {
-    if (selectedCount === 0) return;
-    const added = await onAddFiles(selectedList);
-    if (!added) return;
-    setSelectedFiles({});
-    onClose();
+    if (selectedCount === 0 || addingRef.current) return;
+    const request = requests.begin("add");
+    addingRef.current = true;
+    setAdding(true);
+    setAddError("");
+    try {
+      const added = await onAddFiles(selectedList);
+      if (!request.isCurrent() || !added) return;
+      setSelectedFiles({});
+      onClose();
+    } catch (error) {
+      if (request.isCurrent()) setAddError(errorMessage(error, "Could not add selected files."));
+    } finally {
+      if (request.isCurrent()) {
+        addingRef.current = false;
+        setAdding(false);
+      }
+      request.complete();
+    }
   }
 
   return (
@@ -92,18 +126,19 @@ export function RemoteBrowserDialog({
             Refresh
           </Button>
           {canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={() => onUseDirectory(browser.data.path)} disabled={!currentDirectoryReady}>
+            <Button type="button" className="h-10" onClick={() => { if (browser.data?.path) onUseDirectory(browser.data.path); }} disabled={!currentDirectoryReady}>
               Use this folder
             </Button>
           ) : null}
           {!canUseCurrentDirectory ? (
-            <Button type="button" className="h-10" onClick={() => void addSelectedFiles()} disabled={selectedCount === 0}>
+            <Button type="button" className="h-10" onClick={() => void addSelectedFiles()} disabled={selectedCount === 0 || adding}>
               Add Selected Files ({selectedCount})
             </Button>
           ) : null}
         </div>
 
         {browser.error ? <Notice tone="bad">{browser.error}</Notice> : null}
+        {addError ? <Notice tone="bad">{addError}</Notice> : null}
 
         <div className="min-h-80 overflow-hidden rounded-md border border-stone-200 bg-white">
           <div className="max-h-[50vh] overflow-auto">
@@ -164,8 +199,8 @@ export function RemoteBrowserDialog({
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => onLoad(browser.path, browser.purpose, { append: true, cursor: browser.data.next_cursor })}
-                  disabled={browser.state === "loading-more"}
+                  onClick={() => onLoad(browser.data?.path || browser.path, browser.purpose, { append: true, cursor: browser.data?.next_cursor })}
+                  disabled={browser.state !== "ready"}
                 >
                   {browser.state === "loading-more" ? "Loading more..." : "Load more"}
                 </Button>

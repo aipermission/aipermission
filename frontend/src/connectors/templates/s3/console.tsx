@@ -207,7 +207,7 @@ function S3ConsoleDialogs({
           recursive: true,
           notice:
             "S3 transfers use bounded queues with multipart uploads, progress, pause, cancel, and short-lived local staging. A paused transfer resumes only while this gateway process remains running.",
-          onUploadCompleted: () => browser.refreshObjects({ reset: true }),
+          onUploadCompleted: async () => { await browser.refreshObjects({ reset: true }); },
         }}
         onClose={() => setTransferOpen(false)}
       />
