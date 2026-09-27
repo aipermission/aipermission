@@ -454,7 +454,7 @@ function parsePayload(value: string): unknown {
 }
 
 function oneLine(value: unknown) {
-  return String(value || "")
+  return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
 }
