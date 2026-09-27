@@ -186,6 +186,8 @@ jobs:
       - name: Install
         working-directory: frontend
         run: npm ci --workspaces=false
+      - name: Frontend verification policy tests
+        run: node scripts/run-tooling-tests.js scripts/frontend
       - name: Install Playwright browser
         working-directory: frontend
         run: npx playwright install chromium

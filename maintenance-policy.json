@@ -116,16 +116,20 @@
   ],
   "toolingTestRoots": [
     "scripts/ci",
+    "scripts/frontend",
     "scripts/maintenance",
     "scripts/release",
     "scripts/verification"
   ],
   "toolingTestFiles": [
+    "scripts/frontend/coverage-config.test.mjs",
+    "scripts/frontend/coverage-git-state.test.mjs",
     "scripts/ci/ci-workflow.test.js",
     "scripts/ci/compose-topology.test.js",
     "scripts/ci/documented-verification-contract.test.js",
     "scripts/ci/gitleaks-history-scan.test.js",
     "scripts/ci/markdown-link-check.test.js",
+    "scripts/ci/mcp-client-catalog.test.js",
     "scripts/ci/node-toolchain-check.test.js",
     "scripts/ci/platform/windows-runtime-tests.test.js",
     "scripts/ci/policy/verification-policy.test.js",

@@ -20,7 +20,7 @@ test("treats production modules as owners by default", () => {
     "src/lib/gateway-contracts/runtime-contract.d.ts",
     "src/lib/release.generated.json",
     "src/lib/mcp-client-catalog.ts",
-    "src/pages/history.component.test.tsx",
+    "src/test/activity/history.component.test.tsx",
     "src/lib/smoke/app-smoke-fixtures.test.js",
     "src/test/setup.ts",
   ];

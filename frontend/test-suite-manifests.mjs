@@ -3,9 +3,11 @@ export const asyncStateOwnerTests = {
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/lib/use-unlock-status.ts": ["src/App.component.test.tsx"],
   "src/components/app-shell.tsx": ["src/components/app-shell.component.test.tsx"],
-  "src/components/console/use-connector-approval-dialog.ts": ["src/components/console/use-connector-approval-dialog.component.test.tsx"],
+  "src/components/console/use-connector-approval-dialog.ts": [
+    "src/test/console-permissions/use-connector-approval-dialog.component.test.tsx",
+  ],
   "src/components/console/use-connector-token-permission-state.ts": [
-    "src/components/console/connector-token-permission-panel.component.test.tsx",
+    "src/test/console-permissions/connector-token-permission-panel.component.test.tsx",
   ],
   "src/components/console/use-console-connections.ts": ["src/components/console/use-console-connections.component.test.tsx"],
   "src/components/console/use-console-messages.ts": ["src/components/console/use-console-messages.component.test.tsx"],
@@ -14,7 +16,7 @@ export const asyncStateOwnerTests = {
     "src/components/console/use-console-session-coordinator.component.test.tsx",
   ],
   "src/components/console/use-console-workspace-session.ts": ["src/components/console/use-console-workspace-session.component.test.tsx"],
-  "src/components/console/use-vault-session-items.ts": ["src/components/console/use-vault-session-items.component.test.tsx"],
+  "src/components/console/use-vault-session-items.ts": ["src/test/console-permissions/use-vault-session-items.component.test.tsx"],
   "src/components/file-transfer/use-transfer-browser.ts": ["src/components/file-transfer/use-transfer-browser.component.test.tsx"],
   "src/components/file-transfer/file-transfer-browser-dialog.tsx": [
     "src/components/file-transfer/file-transfer-browser-dialog.component.test.tsx",
@@ -67,8 +69,8 @@ export const asyncStateOwnerTests = {
     "src/connectors/editor/use-credential-profile-editor-native.component.test.tsx",
   ],
   "src/connectors/templates/_shared/action-runner.ts": ["src/connectors/templates/_shared/action-runner.component.test.tsx"],
-  "src/connectors/templates/_shared/use-sql-metadata.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
-  "src/connectors/templates/_shared/use-sql-console.ts": ["src/connectors/templates/_shared/use-sql-console.component.test.tsx"],
+  "src/connectors/templates/_shared/use-sql-metadata.ts": ["src/test/sql/use-sql-console.component.test.tsx"],
+  "src/connectors/templates/_shared/use-sql-console.ts": ["src/test/sql/use-sql-console.component.test.tsx"],
   "src/connectors/templates/host-ping-button.tsx": ["src/connectors/templates/host-ping-button.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-browser.ts": ["src/connectors/templates/docker/use-docker-browser.component.test.tsx"],
   "src/connectors/templates/docker/use-docker-lifecycle.ts": ["src/connectors/templates/docker/use-docker-browser.component.test.tsx"],
@@ -112,12 +114,12 @@ export const asyncStateOwnerTests = {
   "src/pages/projects.tsx": ["src/pages/projects.component.test.tsx"],
   "src/pages/tokens.tsx": ["src/pages/tokens.component.test.tsx"],
   "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
-  "src/pages/audit-logs.tsx": ["src/pages/audit-logs.component.test.tsx"],
+  "src/pages/audit-logs.tsx": ["src/test/activity/audit-logs.component.test.tsx"],
   "src/pages/use-unlock-lifecycle-mutation.ts": [
     "src/pages/unlock.component.test.tsx",
     "src/pages/use-unlock-lifecycle-mutation.component.test.ts",
   ],
-  "src/pages/use-history-page-state.ts": ["src/pages/history.component.test.tsx"],
+  "src/pages/use-history-page-state.ts": ["src/test/activity/history.component.test.tsx"],
 };
 
 export const asyncStateTestIncludes = [...new Set(Object.values(asyncStateOwnerTests).flat())]

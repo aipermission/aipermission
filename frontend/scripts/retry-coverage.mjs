@@ -4,7 +4,11 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const frontendRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const retryCoverageTests = ["src/lib/api.test.ts", "src/lib/api-backup-retry.test.ts", "src/lib/local-action-retry/records.test.ts"];
+const retryCoverageTests = [
+  "src/test/http/api.test.ts",
+  "src/test/http/api-backup-retry.test.ts",
+  "src/lib/local-action-retry/records.test.ts",
+];
 
 export function retryCoverageFiles(root = frontendRoot) {
   const files = [join(root, "src/lib/local-action-retry.ts")];
