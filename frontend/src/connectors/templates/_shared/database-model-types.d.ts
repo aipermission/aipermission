@@ -20,6 +20,7 @@ export type DatabaseTarget = Pick<Target, "id" | "name" | "connector_kind"> & {
   target_name?: string;
   profile_label?: string;
 };
+export type DatabasePresentationTarget = Pick<DatabaseTarget, "config" | "target_name" | "profile_label"> & { name?: string };
 export type DatabaseCredentialRow = {
   id: number;
   target_id: number;
@@ -50,7 +51,7 @@ export type DatabaseModelConfig<Fields extends DatabaseTargetDefaults, Credentia
   defaultRiskLabel: string;
   targetForm: (_target: DatabaseTarget) => Omit<Fields, "name" | "port"> & { port: string | number };
   targetConfig: (_form: DatabaseModelForm<Fields>) => Record<string, unknown>;
-  targetEndpoint: (_input: { target: DatabaseTarget }) => string;
+  targetEndpoint: (_input: { target: DatabasePresentationTarget }) => string;
   credentialExtras?: (_row: DatabaseCredentialRow) => Partial<Credential>;
   credentialPublic?: (_form: Credential) => Record<string, unknown>;
   targetCredentialPublic?: (_form: DatabaseModelForm<Fields>) => Record<string, unknown>;

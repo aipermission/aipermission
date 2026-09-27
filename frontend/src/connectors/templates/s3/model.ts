@@ -35,6 +35,8 @@ export type S3Target = {
   };
 };
 
+export type S3PresentationTarget = Pick<S3Target, "config" | "target_name" | "profile_label"> & { name?: string };
+
 export type S3Form = {
   connector_kind: string;
   name: string;
@@ -202,7 +204,7 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }: { target: S3Target }) {
+export function targetEndpoint({ target }: { target: S3PresentationTarget }) {
   const scheme = target.config?.scheme || "https";
   const host = target.config?.host || "s3.amazonaws.com";
   const port = target.config?.port || (scheme === "http" ? 80 : 443);
@@ -211,16 +213,16 @@ export function targetEndpoint({ target }: { target: S3Target }) {
   return `${scheme}://${host}:${port}/${bucket} · ${mode}`;
 }
 
-export function targetDisplayName({ target }: { target?: S3Target | null }) {
+export function targetDisplayName({ target }: { target?: S3PresentationTarget | null }) {
   if (!target) return "S3 target";
   return target.target_name || target.name || "S3 target";
 }
 
-export function targetSubtitle({ target }: { target: S3Target }) {
+export function targetSubtitle({ target }: { target: S3PresentationTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }: { target?: S3Target | null }) {
+export function targetProfileLabel({ target }: { target?: S3PresentationTarget | null }) {
   return target?.profile_label || "default";
 }
 

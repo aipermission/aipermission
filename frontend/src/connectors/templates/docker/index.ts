@@ -19,3 +19,4 @@ export default Object.freeze({
   Operations: DockerConnectorOperationsTemplate,
   RowActions: DockerConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { dockerConsoleModel as consoleModel } from "./console-model";

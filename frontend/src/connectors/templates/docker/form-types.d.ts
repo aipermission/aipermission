@@ -27,3 +27,4 @@ export interface DockerTarget extends LifecycleTarget<DockerProfile> {
   config?: { connection_mode?: string; transport_target_ref?: string; docker_command?: string };
 }
 export type DockerRuntimeTarget = DockerTarget & ConnectorRuntimeIdentity;
+export type DockerPresentationTarget = Pick<DockerTarget, "config" | "target_name" | "profile_label"> & { name?: string };
