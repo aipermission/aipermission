@@ -9,8 +9,9 @@ import { S3ConnectorRowActionsTemplate } from "./list-item";
 import { S3ConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
 import type { ConsoleTemplateContract } from "../console-template-contract";
+import { defineConsoleTemplate } from "../_shared/console-template";
 
-export default Object.freeze({
+export default defineConsoleTemplate({
   credentialFamily: s3CredentialFamily,
   Console: S3ConnectorConsoleTemplate,
   CredentialForm: S3CredentialFormTemplate,

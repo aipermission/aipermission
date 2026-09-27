@@ -342,7 +342,7 @@ function moduleLayer(sourceRoot, file, connectorKinds) {
   if (
     [
       "connectors/templates/catalog.ts",
-      "connectors/templates/registry.jsx",
+      "connectors/templates/registry.tsx",
       "connectors/templates/credential-registry.ts",
       "connectors/templates/connector-family-registry.ts",
       "connectors/templates/console-model-registry.ts",

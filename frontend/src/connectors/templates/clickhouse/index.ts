@@ -4,12 +4,13 @@ import { ClickHouseConnectorFormTemplate } from "./form";
 import { ClickHouseConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";
 import type { ConsoleTemplateContract } from "../console-template-contract";
+import { defineConsoleTemplate } from "../_shared/console-template";
 import { clickHouseCredentialFamily } from "./credential-family";
 
 export { clickHouseCredentialFamily as credentialFamily } from "./credential-family";
 export { clickHouseConnectorFamily as connectorFamily } from "./connector-family";
 
-export default Object.freeze({
+export default defineConsoleTemplate({
   credentialFamily: clickHouseCredentialFamily,
   Console: ClickHouseConnectorConsoleTemplate,
   CredentialForm: ClickHouseCredentialFormTemplate,

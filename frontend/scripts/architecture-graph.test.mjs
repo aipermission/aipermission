@@ -239,16 +239,16 @@ test("does not classify production modules by test-like directory names", () => 
 
 test("expands glob edges and rejects template imports into registry and page layers", () => {
   withSourceTree("glob", ["pages", "connectors/templates/fixture"], (root) => {
-    writeFileSync(join(root, "connectors/templates/registry.jsx"), 'const modules = import.meta.glob("./*/index.jsx");\n');
-    writeFileSync(join(root, "connectors/templates/fixture/index.jsx"), 'import "../registry.jsx"; import "../../../pages/route.js";\n');
-    writeFileSync(join(root, "pages/route.js"), 'import "../connectors/templates/fixture/index.jsx";\n');
+    writeFileSync(join(root, "connectors/templates/registry.tsx"), 'const modules = import.meta.glob("./*/index.ts");\n');
+    writeFileSync(join(root, "connectors/templates/fixture/index.ts"), 'import "../registry.tsx"; import "../../../pages/route.ts";\n');
+    writeFileSync(join(root, "pages/route.ts"), 'import "../connectors/templates/fixture/index.ts";\n');
 
     const result = analyzeSourceTree(root);
     assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
-    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.jsx imports connectors/templates/registry.jsx")));
-    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.jsx imports pages/route.js")));
-    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js imports connectors/templates/fixture/index.jsx")));
-    assert.ok(analyzeSourceTree(root, { importBudget: 0 }).failures.some((failure) => failure.includes("registry.jsx imports 1 modules")));
+    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports connectors/templates/registry.tsx")));
+    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports pages/route.ts")));
+    assert.ok(result.failures.some((failure) => failure.includes("pages/route.ts imports connectors/templates/fixture/index.ts")));
+    assert.ok(analyzeSourceTree(root, { importBudget: 0 }).failures.some((failure) => failure.includes("registry.tsx imports 1 modules")));
   });
 });
 

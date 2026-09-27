@@ -7,6 +7,7 @@ import { gatewayTargetFixture } from "../../test/connector-inventory-fixtures";
 import { connectorApprovalFixture } from "../../test/connector-action-fixtures";
 import { MailConnectorConsoleTemplate } from "../../connectors/templates/mail/console";
 import { gatewayTargetsResponse } from "../../lib/gateway-contracts/core-resource-contracts";
+import { getConnectorTemplate } from "../../connectors/templates/registry";
 
 vi.mock("./pty-console", () => ({ PtyConsole: () => <div data-testid="pty-console" /> }));
 
@@ -70,6 +71,20 @@ function panelProps(overrides: Partial<ConsoleWorkspacePanelProps> = {}): Consol
 }
 
 describe("ConsoleWorkspacePanel", () => {
+  it.each(["postgres", "clickhouse"])("renders the captured %s toolbar and forwards structured session controls", (kind) => {
+    const value = panelProps();
+    const template = getConnectorTemplate(kind);
+    if (!template?.ToolbarActions) throw new Error(`${kind} toolbar registration is missing`);
+    value.connectorView.ToolbarActions = template.ToolbarActions;
+    const view = render(<ConsoleWorkspacePanel {...value} />);
+    fireEvent.click(screen.getByRole("button", { name: "End Session" }));
+    expect(value.actions.endStructuredSession).toHaveBeenCalledOnce();
+    value.sessionView.selectedStructuredSession = { active: false, startedAt: "" };
+    view.rerender(<ConsoleWorkspacePanel {...value} />);
+    fireEvent.click(screen.getByRole("button", { name: "New Session" }));
+    expect(value.actions.startStructuredSession).toHaveBeenCalledOnce();
+  });
+
   it("contains invalid connector-owned data and recovers after the saved target is corrected", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const value = panelProps();

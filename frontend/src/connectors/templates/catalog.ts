@@ -28,7 +28,7 @@ export const connectorTemplateMetadata: Readonly<Record<string, Readonly<Connect
 export const supportedConnectorKinds = Object.freeze(Object.keys(connectorTemplateMetadata));
 
 export function getConnectorMetadata(kind: string): Readonly<ConnectorMetadata> | null {
-  return connectorTemplateMetadata[kind] || null;
+  return Object.hasOwn(connectorTemplateMetadata, kind) ? connectorTemplateMetadata[kind] : null;
 }
 
 export function connectorKindLabel(kind: string): string {

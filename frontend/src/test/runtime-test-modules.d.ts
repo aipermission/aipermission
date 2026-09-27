@@ -11,7 +11,7 @@ declare module "*api.ts?retry-storage-denied" {
   const api: typeof import("../lib/api");
   export = api;
 }
-declare module "*src/connectors/templates/registry.jsx" {
+declare module "*src/connectors/templates/registry.tsx" {
   const registry: typeof import("../connectors/templates/registry");
   export = registry;
 }

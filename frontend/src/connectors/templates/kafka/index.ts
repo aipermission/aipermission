@@ -9,8 +9,9 @@ import { KafkaConnectorRowActionsTemplate } from "./list-item";
 import { KafkaConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
 import type { ConsoleTemplateContract } from "../console-template-contract";
+import { defineConsoleTemplate } from "../_shared/console-template";
 
-export default Object.freeze({
+export default defineConsoleTemplate({
   credentialFamily: kafkaCredentialFamily,
   Console: KafkaConnectorConsoleTemplate,
   CredentialForm: KafkaCredentialFormTemplate,

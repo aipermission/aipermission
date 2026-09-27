@@ -23,7 +23,7 @@ test("connector template registry evaluates at runtime", async () => {
     server: { host: "127.0.0.1", port: 0, strictPort: false },
   });
   await server.listen();
-  await server.warmupRequest("/src/connectors/templates/registry.jsx");
+  await server.warmupRequest("/src/connectors/templates/registry.tsx");
   const address = server.httpServer?.address();
   assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
   const baseURL = `http://127.0.0.1:${address.port}/`;
@@ -35,13 +35,12 @@ test("connector template registry evaluates at runtime", async () => {
     page.on("pageerror", (error) => pageErrors.push(error));
     await page.goto(baseURL, { waitUntil: "domcontentloaded" });
     const registryResult = await page.evaluate(async (expectedKinds) => {
-      const registry = await import("/src/connectors/templates/registry.jsx");
+      const registry = await import("/src/connectors/templates/registry.tsx");
       const redisTemplate = registry.getConnectorTemplate("redis");
       if (!redisTemplate) throw new Error("Redis template is missing");
       const redisModel = await import("/src/connectors/templates/redis/model.ts");
       const clickHouseModel = await import("/src/connectors/templates/clickhouse/model.ts");
       const rabbitMQModel = await import("/src/connectors/templates/rabbitmq/model.ts");
-      if (redisTemplate.model !== redisModel) throw new Error("Redis registry does not expose the owned model");
       const valkeyTarget = {
         id: 8,
         connector_kind: "redis",
@@ -51,7 +50,15 @@ test("connector template registry evaluates at runtime", async () => {
       };
       return {
         expected: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorTemplate(kind))])),
-        models: Object.fromEntries(expectedKinds.map((kind) => [kind, Boolean(registry.getConnectorModel(kind)?.emptyForm)])),
+        consoles: Object.fromEntries(
+          expectedKinds.map((kind) => [kind, typeof registry.getConnectorTemplate(kind)?.Console === "function"]),
+        ),
+        rawModelsExposed: Object.fromEntries(
+          expectedKinds.map((kind) => {
+            const template = registry.getConnectorTemplate(kind);
+            return [kind, Boolean(template && ("model" in template || "Form" in template))];
+          }),
+        ),
         metadata: Object.fromEntries(expectedKinds.map((kind) => [kind, registry.getConnectorTemplate(kind)?.metadata?.kind])),
         networkTransport: registry.getConnectorTemplate("ssh")?.metadata?.network_transport,
         missing: registry.getConnectorTemplate("__missing_connector__") === null,
@@ -94,7 +101,8 @@ test("connector template registry evaluates at runtime", async () => {
       };
     }, connectorTemplateKinds);
     assert.deepEqual(registryResult.expected, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
-    assert.deepEqual(registryResult.models, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
+    assert.deepEqual(registryResult.consoles, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, true])));
+    assert.deepEqual(registryResult.rawModelsExposed, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, false])));
     assert.deepEqual(registryResult.metadata, Object.fromEntries(connectorTemplateKinds.map((kind) => [kind, kind])));
     assert.deepEqual(registryResult.networkTransport, {
       mode: "over_ssh",
