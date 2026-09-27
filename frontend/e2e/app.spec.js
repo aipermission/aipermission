@@ -54,6 +54,9 @@ test.beforeEach(async ({ page }) => {
   await page.route("http://localhost:8080/api/connectors", async (route) => {
     await route.fulfill({ json: { items: [{ kind: "ssh", label: "SSH", version: "0.1" }] } });
   });
+  await page.route("http://localhost:8080/api/connectors/ssh", async (route) => {
+    await route.fulfill({ json: { kind: "ssh", label: "SSH", version: "0.1" } });
+  });
   await page.route("http://localhost:8080/api/connector-targets", async (route) => {
     await route.fulfill({ json: { items: [targetSummary()] } });
   });
@@ -632,6 +635,13 @@ function postgresTargetProfile(profileID, label) {
     profile_id: profileID,
     target_name: "analytics-db",
     profile_label: label,
+    profile_kind: "password",
+    project_id: 1,
+    project_name: "Ungrouped",
+    project_slug: "ungrouped",
+    status: "active",
+    created_at: "2026-05-31T00:00:00Z",
+    updated_at: "2026-05-31T00:00:00Z",
     config: { host: "127.0.0.1", port: 5432, database: "analytics" },
     public: { username: label },
   };
@@ -668,6 +678,8 @@ function targetSummary() {
     name: "worker-1",
     config: { host: "127.0.0.1", port: 22 },
     status: "active",
+    created_at: "2026-05-31T00:00:00Z",
+    updated_at: "2026-05-31T00:00:00Z",
   };
 }
 
@@ -753,6 +765,9 @@ function targetInventory() {
         kind: "private_key",
         label: "main",
         public: { username: "root", ssh_key_id: 1 },
+        vault_session_supported: true,
+        created_at: "2026-05-31T00:00:00Z",
+        updated_at: "2026-05-31T00:00:00Z",
         actions: [sshExecAction()],
       },
     ],
