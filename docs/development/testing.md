@@ -72,8 +72,10 @@ This runs:
 - frontend duplicate-block comparison against the base Git revision
 - backend and MCP baseline-based duplicate-block comparison that rejects new
   meaningful clones; existing clones are recorded without retroactive CI failure
-- TypeScript checks for connector action, permission, approval, Vault, and
-  session contracts; untrusted HTTP responses are still validated at runtime
+- strict TypeScript checks for connector action, permission, approval, Vault,
+  token/project scope, console/session, credential/connector editor, transfer,
+  and backup workflow contracts; untrusted HTTP responses are still validated
+  at runtime, and modules outside the migrated workflow set remain incremental
 - a measured initial JavaScript budget with the maintenance terminal loaded
   only when Settings opens it
 - frontend per-file coverage floors for connector permission editing, shared
