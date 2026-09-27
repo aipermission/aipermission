@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from "react";
-import { getConnectorModel } from "../../connectors/templates/registry";
+import { getConsoleSessionRecovery } from "../../connectors/templates/console-recovery-registry";
 import { useRequestGuard } from "../../lib/request-guard";
 import { errorMessage } from "../../lib/errors";
 import { isLiveConsoleSession } from "./helpers";
@@ -37,7 +37,7 @@ export function useConsoleWorkspaceSession<Runtime extends RuntimeTarget>({
   selectedTarget,
   selectedTargetUsesLiveConsole,
   sessions,
-  resolveConnectorModel = getConnectorModel,
+  resolveConnectorModel = getConsoleSessionRecovery,
 }: Props<Runtime>) {
   const [structuredByTarget, setStructuredByTarget] = useState<Record<string, StructuredSession>>({});
   const [liveSessionNameByTarget, setLiveSessionNameByTarget] = useState<Record<string, string>>({});

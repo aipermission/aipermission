@@ -346,6 +346,7 @@ function moduleLayer(sourceRoot, file, connectorKinds) {
       "connectors/templates/credential-registry.ts",
       "connectors/templates/connector-family-registry.ts",
       "connectors/templates/console-model-registry.ts",
+      "connectors/templates/console-recovery-registry.ts",
     ].includes(path)
   )
     return "connector-registry";

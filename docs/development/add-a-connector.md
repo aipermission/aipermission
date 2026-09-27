@@ -475,6 +475,52 @@ recovery with real-controller tests. The connector-owned registration must not
 import its captured registry, the page, or editor orchestration at runtime;
 type-only imports of editor contracts are allowed.
 
+Define console presentation with `captureConsolePresentation` from
+`templates/_shared/console-presentation.ts`. Export the captured result as
+`consoleModel` from the connector's `index.ts`, with the same `kind` as its
+directory and metadata. Keep the native target decoder and model inside the
+connector; the capture preserves their correlated types without publishing the
+form model or mutation methods to common UI code.
+
+The projection provides target display name, subtitle, profile label,
+live-console capability, and recoverable running actions. Decode only the native
+config/public fields these methods need. Do not manufacture target, profile, or
+runtime IDs just to satisfy a form/editor type: presentation types should require
+only presentation data. If a subtitle uses live-runtime fallback fields, validate
+those fields in the native `subtitle` callback. Reuse an existing console decoder
+where the schema matches. Database connectors share
+`captureDatabaseConsolePresentation` for their common endpoint fields.
+
+`templates/console-model-registry.ts` verifies factory provenance and exact
+catalog/path identity before exposing these projections to navigation, History,
+and permission UI. Plain objects, copied registrations, missing kinds, and
+path-mismatched models are rejected. Keep registrations frozen and add tests for
+defaults, live-runtime fallbacks, malformed data, and identity preservation.
+Permission rows without a full console reference may query the connector's
+default capability without creating a synthetic target reference.
+
+For runtime-backed consoles, provide a native `runtimeTarget` callback using
+`captureConsoleRuntimeProjection`. Its decoder receives a gateway target with a
+verified positive runtime identity. Narrow native runtime projection inputs to
+the fields they use, rather than requiring the editor's CRUD target shape.
+The shared capture rejects a native projection that substitutes a target or
+profile ID for `runtime_id`, and retains the original gateway target in the
+runtime result. Native config/public validation still belongs to the connector.
+The captured model may also expose the native `loadCredentialResources` read
+service; preserve all caller options, including cancellation and poll timeout.
+Neither service exposes credential or target mutation methods to shared code.
+
+Every native `index.ts` also exports `consoleRecovery`: explicitly `null` when
+unsupported, or a `captureConsoleSessionRecovery` registration when session
+startup errors require a native dialog. An absent named export is not supported
+by the eager browser registry. The native callback selects a recoverable error
+and an exact retry runtime, then supplies its typed operation and dialog render
+callback. The capture stores that operation privately; the common console host
+receives only an opaque, connector-scoped envelope. Closing, replacing, or
+unmounting the dialog retires its callbacks. Test fingerprint approval/retry,
+cancelled and stale completions, factory provenance, and unrelated errors with
+the real console consumer as well as the native template.
+
 Allowed metadata icons are `database`, `key`, `mail`, and `server`. Add another icon
 only when the shared template registry and docs are updated together.
 

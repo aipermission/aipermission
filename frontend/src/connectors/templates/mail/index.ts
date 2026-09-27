@@ -18,3 +18,4 @@ export default Object.freeze({
   RowActions: MailConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { mailConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;

@@ -20,3 +20,4 @@ export default Object.freeze({
   RowActions: KafkaConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { kafkaConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;

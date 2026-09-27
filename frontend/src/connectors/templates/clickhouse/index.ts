@@ -19,3 +19,4 @@ export default Object.freeze({
   ToolbarActions: ClickHouseConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { clickhouseConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;

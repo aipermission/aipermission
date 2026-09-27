@@ -312,6 +312,13 @@ command host coordinates exclusive drafts and active-family status without
 depending on connector-specific fields. Template factories may import editor
 contract types, but not captured registries or orchestration at runtime.
 
+Console navigation, History labels, and permission capabilities use
+`console-model-registry.ts`. Each native `consoleModel` is created by the typed
+presentation capture, which retains its native decoder and exposes only read
+methods. The registry checks capture provenance and connector/catalog identity;
+common consumers cannot access form defaults or mutation methods through it.
+Presentation decoding must not manufacture persistence or runtime identities.
+
 ## MCP Package
 
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:

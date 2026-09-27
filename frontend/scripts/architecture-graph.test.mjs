@@ -253,7 +253,7 @@ test("expands glob edges and rejects template imports into registry and page lay
 });
 
 test("native family registrations may not import their captured registry", () => {
-  for (const registry of ["credential-registry", "connector-family-registry", "console-model-registry"]) {
+  for (const registry of ["credential-registry", "connector-family-registry", "console-model-registry", "console-recovery-registry"]) {
     withSourceTree(registry, ["connectors/templates/fixture"], (root) => {
       writeFileSync(join(root, `connectors/templates/${registry}.ts`), 'const modules = import.meta.glob("./*/index.ts");\n');
       writeFileSync(join(root, "connectors/templates/fixture/index.ts"), `import "../${registry}.ts";\n`);

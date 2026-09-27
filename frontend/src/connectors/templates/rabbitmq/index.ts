@@ -20,3 +20,4 @@ export default Object.freeze({
   RowActions: RabbitMQConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { rabbitConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;
