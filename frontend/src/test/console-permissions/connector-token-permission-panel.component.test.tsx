@@ -1,0 +1,793 @@
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { connectorActionCacheKey } from "../../lib/use-connector-permissions";
+import { ConnectorTokenPermissionPanel } from "../../components/console/connector-token-permission-panel";
+import type { ConnectorTokenPermissionPanelProps } from "../../components/console/connector-token-permission-panel";
+import type { PermissionTarget } from "../../components/console/use-connector-token-permission-state";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
+import type { GatewayToken } from "../../lib/gateway-contracts/core-resource-contracts";
+
+type PermissionInput = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "expires_at"> & { execution_rule: string };
+const fetchMock = vi.fn<typeof fetch>();
+function permissionRow(input: PermissionInput): TokenActionPermission {
+  const rule = input.execution_rule;
+  if (rule !== "approval_required" && rule !== "always_run" && rule !== "blocked") throw new Error("Invalid test permission rule");
+  return {
+    project_id: 3,
+    project_name: "My Project",
+    project_slug: "my-project",
+    project_enabled: true,
+    target_name: "Target",
+    profile_label: "default",
+    target_ref: `fixture:${input.target_id}:${input.profile_id}`,
+    connector_kind: "fixture",
+    profile_kind: "fixture",
+    created_at: "2026-09-26",
+    updated_at: "2026-09-26",
+    ...input,
+    execution_rule: rule,
+  };
+}
+
+const selectedTarget = {
+  connector_kind: "postgres",
+  target_id: 7,
+  target_name: "Application database",
+  profile_id: 11,
+  profile_label: "Admin",
+  project_id: 3,
+  project_name: "My Project",
+};
+const profiles = [selectedTarget, { ...selectedTarget, profile_id: 12, profile_label: "Read only" }];
+const actions = [
+  { name: "get_tables", description: "List tables", risk: "read", category: "schema" },
+  { name: "query_readonly", description: "Run a read query", risk: "read", category: "query" },
+  { name: "create_user", description: "Create a user", risk: "write", category: "users" },
+];
+
+function projectScopeResponse(items: { project_id: number; enabled: boolean }[], revision: string) {
+  return {
+    items: items.map((item) => ({
+      project_name: `Project ${item.project_id}`,
+      project_slug: `project-${item.project_id}`,
+      ...item,
+    })),
+    revision,
+  };
+}
+
+function renderPanel({
+  compact = false,
+  onToggleCompact = () => {},
+  permissions = [],
+  loadPermissions,
+  replacePermissions,
+  target = selectedTarget,
+  targetProfiles = profiles,
+  unreadMessages = [],
+  onOpenMessages = vi.fn(),
+  omitOptionalProps = false,
+  tokens = [{ id: 5, name: "codex", token: "aip_example" }],
+}: {
+  compact?: boolean;
+  onToggleCompact?: () => void;
+  permissions?: PermissionInput[];
+  loadPermissions?: (_tokens: { id: number }[], _options?: { requireCurrent?: boolean }) => Promise<Record<number, PermissionInput[]>>;
+  replacePermissions?: NonNullable<ConnectorTokenPermissionPanelProps["replaceTokenConnectorPermissions"]>;
+  target?: PermissionTarget | null;
+  targetProfiles?: PermissionTarget[];
+  unreadMessages?: ConnectorTokenPermissionPanelProps["unreadMessages"];
+  onOpenMessages?: (_id: number) => void;
+  omitOptionalProps?: boolean;
+  tokens?: GatewayToken[];
+} = {}) {
+  const replaceTokenConnectorPermissions = vi.fn(replacePermissions || (async () => []));
+  const loadConnectorActions = vi.fn(async () => actions);
+  const loadAllConnectorPermissions = vi.fn(async (currentTokens: { id: number }[] = [], options?: { requireCurrent?: boolean }) => {
+    const snapshot = loadPermissions ? await loadPermissions(currentTokens, options) : {};
+    return Object.fromEntries(Object.entries(snapshot).map(([id, items]) => [id, items.map(permissionRow)]));
+  });
+  const renderWithPermissions = (
+    nextPermissions: PermissionInput[],
+    currentTarget = target,
+    currentProfiles = targetProfiles,
+    currentTokens = tokens,
+  ) => (
+    <ConnectorTokenPermissionPanel
+      tokens={{ state: "ready", data: currentTokens }}
+      selectedTarget={currentTarget}
+      targets={{ data: currentProfiles }}
+      {...(omitOptionalProps ? {} : { compact, onToggleCompact, unreadMessages })}
+      connectorPermissionState={{
+        state: "ready",
+        data: { 5: nextPermissions.map(permissionRow) },
+        revisionsByToken: { 5: "r1" },
+        actionsByTargetRef: {
+          [connectorActionCacheKey(selectedTarget, 11)]: actions,
+          [connectorActionCacheKey(selectedTarget, 12)]: actions,
+          ...(currentTarget
+            ? Object.fromEntries(currentProfiles.map((profile) => [connectorActionCacheKey(currentTarget, profile.profile_id), actions]))
+            : {}),
+        },
+        error: null,
+      }}
+      loadAllConnectorPermissions={loadAllConnectorPermissions}
+      loadConnectorActions={loadConnectorActions}
+      replaceTokenConnectorPermissions={replaceTokenConnectorPermissions}
+      onRefresh={async () => {}}
+      onOpenMessages={onOpenMessages}
+    />
+  );
+  const view = render(renderWithPermissions(permissions));
+  return {
+    replaceTokenConnectorPermissions,
+    loadConnectorActions,
+    rerenderPermissions: (nextPermissions: PermissionInput[]) => view.rerender(renderWithPermissions(nextPermissions)),
+    rerenderTarget: (nextTarget: PermissionTarget, nextProfiles = [nextTarget]) =>
+      view.rerender(renderWithPermissions(permissions, nextTarget, nextProfiles)),
+    rerenderTokens: (nextTokens: GatewayToken[]) => view.rerender(renderWithPermissions(permissions, target, targetProfiles, nextTokens)),
+    loadAllConnectorPermissions,
+  };
+}
+
+beforeEach(() => {
+  window.localStorage.clear();
+  fetchMock.mockReset();
+  vi.stubGlobal(
+    "fetch",
+    fetchMock.mockImplementation(
+      async (_url, options = {}) =>
+        new Response(
+          JSON.stringify(
+            projectScopeResponse([{ project_id: 3, enabled: options.method !== "PUT" }], options.method === "PUT" ? "scope-2" : "scope-1"),
+          ),
+          { status: 200 },
+        ),
+    ),
+  );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe("ConnectorTokenPermissionPanel modes", () => {
+  it("shows the creation prompt when there are no tokens", () => {
+    renderPanel({ tokens: [] });
+    expect(screen.getByText("Create a token first.")).toBeVisible();
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  });
+
+  it("shows compact grant counts without losing the selected credential profile", async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      compact: true,
+      permissions: actions.map((action) => ({ target_id: 7, profile_id: 11, action_name: action.name, execution_rule: "always_run" })),
+    });
+    const trigger = await screen.findByTitle("codex: 3 connector grants");
+    expect(within(trigger).getByText("3")).toBeVisible();
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Profile")).toHaveValue("11");
+    expect(screen.getByRole("button", { name: "Basic" })).toHaveClass("permission-button-active");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByLabelText("Profile")).not.toBeInTheDocument();
+  });
+
+  it("uses the selected target profile in compact mode when the inventory snapshot is empty", async () => {
+    const user = userEvent.setup();
+    const { loadConnectorActions } = renderPanel({ compact: true, targetProfiles: [] });
+    await user.click(await screen.findByTitle("codex: 0 connector grants"));
+    expect(screen.getByLabelText("Profile")).toHaveValue("11");
+    expect(screen.getByRole("button", { name: "Always" })).toBeEnabled();
+    expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ target_id: 7, profile_id: 11 }));
+  });
+
+  it("uses the expanded defaults when optional panel props are omitted", async () => {
+    renderPanel({ omitOptionalProps: true });
+
+    expect(await screen.findByText("Tokens")).toBeVisible();
+    expect(screen.queryByTitle("Collapse tokens")).not.toBeInTheDocument();
+  });
+
+  it("removes a token when it expires while the console remains open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+    renderPanel({
+      tokens: [{ id: 5, name: "short-lived", token: "aip_example", expires_at: "2026-09-21T12:00:01.000Z" }],
+    });
+
+    expect(screen.getByText("short-lived")).toBeVisible();
+    await act(async () => vi.advanceTimersByTimeAsync(1001));
+    expect(screen.getByText("No active tokens.")).toBeVisible();
+    expect(screen.queryByText("short-lived")).not.toBeInTheDocument();
+  });
+
+  it("classifies newly loaded token data against the current time", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-21T12:00:00.000Z"));
+    const { rerenderTokens } = renderPanel({ tokens: [{ id: 5, name: "current", token: "aip_current" }] });
+    expect(screen.getByText("current")).toBeVisible();
+
+    vi.setSystemTime(new Date("2026-09-21T13:00:00.000Z"));
+    rerenderTokens([{ id: 6, name: "already-expired", token: "aip_expired", expires_at: "2026-09-21T12:30:00.000Z" }]);
+
+    expect(screen.getByText("No active tokens.")).toBeVisible();
+    expect(screen.queryByText("already-expired")).not.toBeInTheDocument();
+  });
+
+  it("selects and persists a connector credential profile", async () => {
+    const user = userEvent.setup();
+    const { loadConnectorActions } = renderPanel();
+    const profile = await screen.findByLabelText("Profile");
+
+    expect(profile).toHaveValue("11");
+    await user.selectOptions(profile, "12");
+
+    expect(profile).toHaveValue("12");
+    expect(window.localStorage.getItem("aipermission.console.profile:postgres:7:5")).toBe("12");
+    await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
+  });
+
+  it("falls back to the selected target profile when a stored profile disappears", async () => {
+    window.localStorage.setItem("aipermission.console.profile:postgres:7:5", "99");
+    renderPanel({ targetProfiles: [selectedTarget] });
+
+    expect(await screen.findByLabelText("Profile")).toHaveValue("11");
+  });
+
+  it("keeps the panel inert until a connector target is selected", async () => {
+    const { loadConnectorActions } = renderPanel({ target: null });
+
+    expect(screen.getByText("Select a connector")).toBeVisible();
+    expect(await screen.findByText("No credential profiles for this connector.")).toBeVisible();
+    expect(loadConnectorActions).not.toHaveBeenCalled();
+  });
+
+  it("infers grouped permissions and lets the user switch to advanced controls", async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      permissions: actions.map((action) => ({
+        target_id: 7,
+        profile_id: 11,
+        action_name: action.name,
+        execution_rule: action.risk === "read" ? "always_run" : "approval_required",
+      })),
+    });
+
+    expect(await screen.findByRole("button", { name: "Grouped" })).toHaveClass("permission-button-active");
+    expect(screen.getByText("Read operations")).toBeInTheDocument();
+    expect(screen.getByText("Write operations")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    expect(screen.getByText("get_tables")).toBeInTheDocument();
+    expect(screen.getByText("create_user")).toBeInTheDocument();
+  });
+
+  it("applies a Basic preset to every action in the selected profile", async () => {
+    const user = userEvent.setup();
+    const { replaceTokenConnectorPermissions } = renderPanel();
+
+    expect(await screen.findByRole("button", { name: "Basic" })).toHaveClass("permission-button-active");
+    await user.click(screen.getByRole("button", { name: "Always" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions).toHaveBeenCalledWith(
+      5,
+      actions.map((action) => ({
+        target_id: 7,
+        profile_id: 11,
+        action_name: action.name,
+        execution_rule: "always_run",
+        expires_at: "",
+      })),
+    );
+  });
+
+  it("applies grouped and advanced rules only to their selected actions", async () => {
+    const user = userEvent.setup();
+    const { replaceTokenConnectorPermissions } = renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Grouped" }));
+    await user.click(within(screen.getByRole("group", { name: "Read operations permission" })).getByRole("button", { name: "Prompt" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1].map((permission) => permission.action_name)).toEqual([
+      "get_tables",
+      "query_readonly",
+    ]);
+
+    await user.click(screen.getByRole("button", { name: "Advanced" }));
+    await user.click(within(screen.getByRole("group", { name: "create_user permission" })).getByRole("button", { name: "Blocked" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+    expect(replaceTokenConnectorPermissions.mock.calls[1][1]).toEqual([
+      expect.objectContaining({ action_name: "create_user", execution_rule: "blocked" }),
+    ]);
+  });
+
+  it("keeps compact token controls interactive", async () => {
+    const user = userEvent.setup();
+    const onToggleCompact = vi.fn();
+    const { loadConnectorActions } = renderPanel({ compact: true, onToggleCompact });
+
+    await user.click(screen.getByTitle("Expand tokens"));
+    expect(onToggleCompact).toHaveBeenCalledOnce();
+
+    await user.click(await screen.findByTitle("codex: 0 connector grants"));
+    await user.selectOptions(screen.getByLabelText("Profile"), "12");
+    await waitFor(() => expect(loadConnectorActions).toHaveBeenCalledWith(expect.objectContaining({ profile_id: 12 })));
+  });
+
+  it("keeps compact token controls inert without a selected connector", async () => {
+    renderPanel({ compact: true, target: null });
+
+    expect(screen.getByTitle("Select a connector first")).toBeDisabled();
+    expect(screen.queryByText("No credential profiles for this connector.")).not.toBeInTheDocument();
+  });
+
+  it("returns focus to the compact token trigger after Escape", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.click(screen.getByLabelText("Profile"));
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps the compact token popover open for non-dismissal keys", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+
+    await user.click(trigger);
+    await user.keyboard("a");
+
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes the compact token popover after an outside pointer press", async () => {
+    const user = userEvent.setup();
+    renderPanel({ compact: true });
+    const trigger = await screen.findByTitle("codex: 0 connector grants");
+    await user.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    await user.pointer({ target: document.body, keys: "[MouseLeft]" });
+    await waitFor(() => expect(trigger).toHaveAttribute("aria-expanded", "false"));
+  });
+
+  it("opens unread connector messages for the selected token profile", async () => {
+    const onOpenMessages = vi.fn();
+    const liveTarget = {
+      ...selectedTarget,
+      connector_kind: "ssh",
+      target_id: 8,
+      profile_id: 13,
+      runtime_id: 21,
+      target_name: "Support mailbox",
+    };
+    renderPanel({
+      target: liveTarget,
+      targetProfiles: [liveTarget],
+      unreadMessages: [{ runtime_id: 21, token_id: 5 }],
+      onOpenMessages,
+    });
+    await userEvent.click(await screen.findByRole("button", { name: /codex/ }));
+    expect(onOpenMessages).toHaveBeenCalledWith(5);
+  });
+});
+
+describe("ConnectorTokenPermissionPanel mutations", () => {
+  it("updates the token project visibility from the permission panel", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [], expected_revision: "scope-1" }) }),
+      ),
+    );
+    expect(await screen.findByRole("button", { name: "Enable" })).toBeEnabled();
+  });
+
+  it("does not replace project scopes before the initial snapshot is loaded", async () => {
+    const user = userEvent.setup();
+    const projectScopes = deferred<Response>();
+    fetchMock.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") throw new Error("project scope mutation must remain disabled while loading");
+      return projectScopes.promise;
+    });
+    renderPanel();
+
+    const loading = await screen.findByRole("button", { name: "Loading..." });
+    expect(loading).toBeDisabled();
+    await user.click(loading);
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+
+    projectScopes.resolve(
+      new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 }),
+    );
+    expect(await screen.findByRole("button", { name: "Hide" })).toBeEnabled();
+  });
+
+  it("reports a project-scope load failure without enabling mutations", async () => {
+    fetchMock.mockRejectedValue(new Error("scope service unavailable"));
+    renderPanel();
+
+    expect(await screen.findByText("scope service unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
+  });
+
+  it("rejects malformed project scopes before enabling visibility changes", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ items: [{ project_id: 3, enabled: true }], revision: "scope-1" }), { status: 200 }),
+    );
+    renderPanel();
+
+    expect(await screen.findByText("Invalid project scope response from gateway.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
+  });
+
+  it("uses a complete refreshed project snapshot for visibility replacement", async () => {
+    const user = userEvent.setup();
+    const refreshedScopes = deferred<Response>();
+    let getCalls = 0;
+    fetchMock.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") {
+        return new Response(
+          JSON.stringify(
+            projectScopeResponse(
+              [
+                { project_id: 3, enabled: false },
+                { project_id: 4, enabled: true },
+              ],
+              "scope-3",
+            ),
+          ),
+          {
+            status: 200,
+          },
+        );
+      }
+      getCalls += 1;
+      if (getCalls === 1) {
+        return new Response(
+          JSON.stringify(
+            projectScopeResponse(
+              [
+                { project_id: 3, enabled: true },
+                { project_id: 4, enabled: true },
+              ],
+              "scope-1",
+            ),
+          ),
+          { status: 200 },
+        );
+      }
+      return refreshedScopes.promise;
+    });
+    renderPanel();
+    await screen.findByRole("button", { name: "Hide" });
+
+    await user.click(screen.getByTitle("Refresh connector permissions"));
+    expect(await screen.findByRole("button", { name: "Loading..." })).toBeDisabled();
+    refreshedScopes.resolve(
+      new Response(
+        JSON.stringify(
+          projectScopeResponse(
+            [
+              { project_id: 3, enabled: true },
+              { project_id: 4, enabled: true },
+            ],
+            "scope-2",
+          ),
+        ),
+        { status: 200 },
+      ),
+    );
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringMatching(/\/api\/tokens\/5\/project-scopes$/),
+        expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled_project_ids: [4], expected_revision: "scope-2" }) }),
+      ),
+    );
+  });
+
+  it("restores project controls and reports a failed visibility update", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockImplementation(async (_url, options = {}) => {
+      if (options.method === "PUT") throw new Error("scope update unavailable");
+      return new Response(JSON.stringify(projectScopeResponse([{ project_id: 3, enabled: true }], "scope-1")), { status: 200 });
+    });
+    renderPanel();
+
+    await user.click(await screen.findByRole("button", { name: "Hide" }));
+
+    expect(await screen.findByText("scope update unavailable")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hide" })).toBeEnabled();
+  });
+
+  it("applies one temporary lifetime to every enabled action in the profile", async () => {
+    const now = new Date("2026-08-11T10:00:00Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const user = userEvent.setup();
+    const permissions = actions.map((action) => ({
+      target_id: 7,
+      profile_id: 11,
+      action_name: action.name,
+      execution_rule: "approval_required",
+      expires_at: "",
+    }));
+    const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
+
+    await user.click(await screen.findByRole("button", { name: "1h" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions).toHaveBeenCalledWith(
+      5,
+      permissions.map((permission) => ({ ...permissionRow(permission), expires_at: "2026-08-11T11:00:00.000Z" })),
+    );
+  });
+
+  it("keeps blocked actions permanent when a profile lifetime changes", async () => {
+    const now = new Date("2026-08-11T10:00:00Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const user = userEvent.setup();
+    const permissions = actions.map((action, index) => ({
+      target_id: 7,
+      profile_id: 11,
+      action_name: action.name,
+      execution_rule: index === 0 ? "blocked" : "approval_required",
+      expires_at: "",
+    }));
+    const { replaceTokenConnectorPermissions } = renderPanel({ permissions });
+
+    await user.click(await screen.findByRole("button", { name: "1h" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
+      { ...permissionRow(permissions[0]), expires_at: "" },
+      { ...permissionRow(permissions[1]), expires_at: "2026-08-11T11:00:00.000Z" },
+      { ...permissionRow(permissions[2]), expires_at: "2026-08-11T11:00:00.000Z" },
+    ]);
+  });
+
+  it("shows permission save failures with context and retries the mutation", async () => {
+    const user = userEvent.setup();
+    let attempts = 0;
+    const { replaceTokenConnectorPermissions } = renderPanel({
+      replacePermissions: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("gateway unavailable");
+        return [];
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("codex / Admin");
+    expect(alert).toHaveTextContent("get_tables, query_readonly, create_user");
+    expect(alert).toHaveTextContent("gateway unavailable");
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
+  it("rebuilds a retried mutation from the latest permission snapshot", async () => {
+    const user = userEvent.setup();
+    const revokedPermission = {
+      target_id: 99,
+      profile_id: 101,
+      action_name: "deploy",
+      execution_rule: "always_run",
+      expires_at: "",
+    };
+    let attempts = 0;
+    const conflict = Object.assign(new Error("permission revision conflict"), { status: 409 });
+    const { loadAllConnectorPermissions, replaceTokenConnectorPermissions } = renderPanel({
+      permissions: [revokedPermission],
+      loadPermissions: async () => ({ 5: [] }),
+      replacePermissions: async () => {
+        attempts += 1;
+        if (attempts === 1) throw conflict;
+        return [];
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("permission revision conflict");
+    expect(loadAllConnectorPermissions).toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+    expect(replaceTokenConnectorPermissions.mock.calls[1][1]).toEqual(
+      actions.map((action) => ({
+        target_id: 7,
+        profile_id: 11,
+        action_name: action.name,
+        execution_rule: "always_run",
+        expires_at: "",
+      })),
+    );
+  });
+});
+
+describe("ConnectorTokenPermissionPanel mutation ownership", () => {
+  it("retries a lifetime update only after refreshing the current permission snapshot", async () => {
+    const now = new Date("2026-08-11T10:00:00Z").getTime();
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const user = userEvent.setup();
+    const permissions = actions.map((action) => ({
+      target_id: 7,
+      profile_id: 11,
+      action_name: action.name,
+      execution_rule: "approval_required",
+      expires_at: "",
+    }));
+    let attempts = 0;
+    const conflict = Object.assign(new Error("permission revision conflict"), { status: 409 });
+    const { loadAllConnectorPermissions, replaceTokenConnectorPermissions } = renderPanel({
+      permissions,
+      loadPermissions: async () => ({ 5: permissions }),
+      replacePermissions: async () => {
+        attempts += 1;
+        if (attempts === 1) throw conflict;
+        return [];
+      },
+    });
+
+    await user.click(await screen.findByRole("button", { name: "1h" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("permission revision conflict");
+    expect(loadAllConnectorPermissions).toHaveBeenCalledWith(expect.any(Array), { requireCurrent: true });
+
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledTimes(2));
+  });
+
+  it("disables conflict retry when the current permission snapshot cannot be refreshed", async () => {
+    const user = userEvent.setup();
+    let loads = 0;
+    const conflict = Object.assign(new Error("permission revision conflict"), { status: 409 });
+    const { loadAllConnectorPermissions, replaceTokenConnectorPermissions } = renderPanel({
+      loadPermissions: async () => {
+        loads += 1;
+        if (loads === 1) return { 5: [] };
+        throw new Error("permission refresh failed");
+      },
+      replacePermissions: async () => {
+        throw conflict;
+      },
+    });
+    await waitFor(() => expect(loadAllConnectorPermissions).toHaveBeenCalledTimes(1));
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("permission refresh failed");
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce();
+  });
+
+  it("builds a mutation from a permission snapshot received after mount", async () => {
+    const user = userEvent.setup();
+    const currentPermission = {
+      target_id: 99,
+      profile_id: 101,
+      action_name: "deploy",
+      execution_rule: "approval_required",
+      expires_at: "",
+    };
+    const { rerenderPermissions, replaceTokenConnectorPermissions } = renderPanel();
+    rerenderPermissions([currentPermission]);
+
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+
+    await waitFor(() => expect(replaceTokenConnectorPermissions).toHaveBeenCalledOnce());
+    expect(replaceTokenConnectorPermissions.mock.calls[0][1]).toEqual([
+      permissionRow(currentPermission),
+      ...actions.map((action) => ({
+        target_id: 7,
+        profile_id: 11,
+        action_name: action.name,
+        execution_rule: "always_run",
+        expires_at: "",
+      })),
+    ]);
+  });
+  it("locks profile, mode, and refresh controls while a permission mutation is pending", async () => {
+    const user = userEvent.setup();
+    const mutation = deferred();
+    renderPanel({ replacePermissions: () => mutation.promise });
+    await screen.findByRole("button", { name: "Hide" });
+
+    await user.click(screen.getByRole("button", { name: "Always" }));
+
+    expect(screen.getByLabelText("Profile")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Basic" })).toBeDisabled();
+    expect(screen.getByTitle("Refresh connector permissions")).toBeDisabled();
+
+    mutation.resolve([]);
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toBeEnabled());
+  });
+
+  it("does not publish a stale mutation failure after the selected target changes", async () => {
+    const user = userEvent.setup();
+    const mutation = deferred();
+    const { rerenderTarget } = renderPanel({ replacePermissions: () => mutation.promise });
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+
+    const nextTarget = { ...selectedTarget, target_id: 8, target_name: "Reporting database", profile_id: 13 };
+    rerenderTarget(nextTarget);
+    mutation.reject(new Error("old target failed"));
+
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("13"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("does not publish stale success state after the selected target changes", async () => {
+    const user = userEvent.setup();
+    const mutation = deferred();
+    const { rerenderTarget } = renderPanel({ replacePermissions: () => mutation.promise });
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+
+    const nextTarget = { ...selectedTarget, target_id: 8, target_name: "Reporting database", profile_id: 13 };
+    rerenderTarget(nextTarget);
+    mutation.resolve([]);
+
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("13"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("retires conflict recovery when the selected target changes", async () => {
+    const user = userEvent.setup();
+    const refresh = deferred<Record<number, PermissionInput[]>>();
+    let loads = 0;
+    const conflict = Object.assign(new Error("permission revision conflict"), { status: 409 });
+    const { loadAllConnectorPermissions, rerenderTarget } = renderPanel({
+      loadPermissions: async () => {
+        loads += 1;
+        if (loads === 1) return { 5: [] };
+        return refresh.promise;
+      },
+      replacePermissions: async () => {
+        throw conflict;
+      },
+    });
+    await waitFor(() => expect(loadAllConnectorPermissions).toHaveBeenCalledOnce());
+    await user.click(await screen.findByRole("button", { name: "Always" }));
+    await waitFor(() => expect(loadAllConnectorPermissions).toHaveBeenCalledTimes(2));
+
+    const nextTarget = { ...selectedTarget, target_id: 8, target_name: "Reporting database", profile_id: 13 };
+    rerenderTarget(nextTarget);
+    refresh.resolve({ 5: [] });
+
+    await waitFor(() => expect(screen.getByLabelText("Profile")).toHaveValue("13"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+});
+
+function deferred<T = TokenActionPermission[]>() {
+  let resolve!: (_value: T) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
+}

@@ -296,6 +296,7 @@
       "job": "frontend",
       "job_name": "Frontend",
       "commands": [
+        "node scripts/run-tooling-tests.js scripts/frontend",
         "npm ci --workspaces=false",
         "npx playwright install chromium",
         "npm run lint",

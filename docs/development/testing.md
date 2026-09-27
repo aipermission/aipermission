@@ -70,6 +70,9 @@ This runs:
   and token-secret dismissal; removing a test requires a replacement that still
   reaches the protected owner through the import graph
 - frontend duplicate-block comparison against the base Git revision
+- frontend test suites are grouped by permission, SQL, transport, and activity
+  responsibility under `frontend/src/test`; source and test-package budgets
+  remain unchanged, and discovery/ownership manifests enforce their execution
 - backend and MCP baseline-based duplicate-block comparison that rejects new
   meaningful clones; existing clones are recorded without retroactive CI failure
 - strict TypeScript checks for every production module and colocated test in
