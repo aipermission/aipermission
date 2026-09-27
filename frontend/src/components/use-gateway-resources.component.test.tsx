@@ -52,12 +52,12 @@ function renderResources(options: Partial<GatewayResourceOptions> = {}) {
   );
 }
 
-describe("useGatewayResources", () => {
-  beforeEach(() => {
-    vi.mocked(apiGet).mockReset();
-    vi.mocked(apiPut).mockReset();
-  });
+beforeEach(() => {
+  vi.mocked(apiGet).mockReset();
+  vi.mocked(apiPut).mockReset();
+});
 
+describe("useGatewayResources", () => {
   it("ignores a superseded target response", async () => {
     const older = deferred();
     apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ items: [target(2)] });
@@ -212,6 +212,112 @@ describe("useGatewayResources", () => {
       state: "ready",
       data: [{ id: 9, runtime_id: 9, connector_kind: "fixture", runtime: true }],
     });
+  });
+});
+
+describe("captured native gateway services", () => {
+  it("uses captured native services for default credential reads and runtime projection", async () => {
+    const gatewayTarget = target(3, {
+      connector_kind: "ssh",
+      ref: "ssh:3:7",
+      profile_id: 7,
+      runtime_id: 19,
+      config: { host: "endpoint", port: 22 },
+      public: { username: "operator", ssh_key_id: 11 },
+    });
+    apiGet.mockImplementation(async (path) => {
+      if (path === "/api/targets") return { items: [gatewayTarget] };
+      if (path === "/api/connectors/ssh/credentials") return [{ id: 11, name: "Credential", key_type: "ed25519" }];
+      throw new Error(`Unexpected GET ${path}`);
+    });
+    const { result } = renderHook(() => useGatewayResources({ pollIsCurrent: () => true, connectorKinds: ["ssh", "postgres"] }));
+    await act(async () => Promise.all([result.current.loadTargets(5), result.current.loadCredentials(5)]));
+    expect(result.current.liveConsoleTargets.data).toEqual([
+      expect.objectContaining({
+        id: 19,
+        connector_ref: "ssh:3:7",
+        target_id: 3,
+        profile_id: 7,
+        host: "endpoint",
+        username: "operator",
+        target: gatewayTarget,
+      }),
+    ]);
+    expect(result.current.credentials.data).toEqual([
+      expect.objectContaining({ id: 11, connector_kind: "ssh", resource_ref: "ssh:ssh_key:11" }),
+    ]);
+    expect(result.current.credentials.errors).toEqual([]);
+    expect(apiGet).toHaveBeenCalledWith(
+      "/api/connectors/ssh/credentials",
+      expect.objectContaining({ signal: expect.any(AbortSignal), timeoutMs: 4000 }),
+    );
+  });
+
+  it("aborts superseded native credential reads and ignores their eventual payload", async () => {
+    const older = deferred();
+    apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce([{ id: 12, name: "Current", key_type: "ed25519" }]);
+    const { result } = renderHook(() => useGatewayResources({ pollIsCurrent: () => true, connectorKinds: ["ssh"] }));
+    let oldLoad: Promise<unknown> | undefined;
+    act(() => {
+      oldLoad = result.current.loadCredentials(1);
+    });
+    const signal = apiGet.mock.calls[0][1]?.signal;
+    expect(signal?.aborted).toBe(false);
+    await act(async () => {
+      await result.current.loadCredentials(2);
+    });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      older.resolve([{ id: 11, name: "Stale", key_type: "ed25519" }]);
+      await oldLoad;
+    });
+    expect(result.current.credentials.data).toEqual([expect.objectContaining({ id: 12, name: "Current" })]);
+    expect(result.current.credentials.errors).toEqual([]);
+  });
+
+  it("surfaces native projection failures without crashing the shell and recovers on the next target load", async () => {
+    const validTarget = target(3, {
+      connector_kind: "docker",
+      ref: "docker:3:7",
+      profile_id: 7,
+      runtime_id: 19,
+      config: { transport_target_ref: "example:5:8" },
+    });
+    apiGet
+      .mockResolvedValueOnce({ items: [{ ...validTarget, config: { transport_target_ref: [] } }] })
+      .mockResolvedValueOnce({ items: [validTarget] });
+    const { result } = renderHook(() => useGatewayResources({ pollIsCurrent: () => true, connectorKinds: ["docker"] }));
+    await act(async () => {
+      await result.current.loadTargets();
+    });
+    expect(result.current.liveConsoleTargets).toMatchObject({
+      state: "error",
+      data: [],
+      error: "Invalid Docker console target transport_target_ref.",
+    });
+    await act(async () => {
+      await result.current.loadTargets();
+    });
+    expect(result.current.liveConsoleTargets).toMatchObject({ state: "ready", data: [{ id: 19, connector_kind: "docker" }], error: null });
+  });
+
+  it("aborts a native credential read on unmount without applying its delayed result", async () => {
+    const pending = deferred();
+    apiGet.mockReturnValueOnce(pending.promise);
+    const { result, unmount } = renderHook(() => useGatewayResources({ pollIsCurrent: () => true, connectorKinds: ["ssh"] }));
+    let load: Promise<unknown> | undefined;
+    act(() => {
+      load = result.current.loadCredentials(1);
+    });
+    const signal = apiGet.mock.calls[0][1]?.signal;
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    await act(async () => {
+      pending.resolve([{ id: 11, name: "Stale", key_type: "ed25519" }]);
+      await load;
+    });
+    expect(result.current.credentials.data).toEqual([]);
   });
 
   it("keeps a verified target snapshot when a current response is malformed", async () => {

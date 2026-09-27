@@ -21,3 +21,4 @@ export default Object.freeze({
   RowActions: SSHConnectorRowActionsTemplate,
   ToolbarActions: SSHConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { sshConsoleModel as consoleModel } from "./console-model";

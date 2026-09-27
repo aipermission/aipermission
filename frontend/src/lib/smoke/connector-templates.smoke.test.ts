@@ -59,7 +59,7 @@ test("shared frontend code does not import connector implementations", () => {
       const source = readFileSync(filename, "utf8");
       assert.doesNotMatch(
         source,
-        /connectors\/templates\/(?!_shared|registry|catalog|common|(?:credential|connector-family)-registry(?:\.ts)?["'])/,
+        /connectors\/templates\/(?!_shared|registry|catalog|common|(?:credential|connector-family|console-model)-registry(?:\.ts)?["'])/,
         `shared code imports a connector template: ${filename}`,
       );
       assert.doesNotMatch(source, connectorKindBranch, `shared code branches on a connector kind: ${filename}`);

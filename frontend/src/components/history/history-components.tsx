@@ -1,7 +1,7 @@
 import { Download, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { connectorBadgeTone, connectorKindLabel } from "../../connectors/templates/common";
-import { getConnectorModel } from "../../connectors/templates/registry";
+import { getConsolePresentationModel } from "../../connectors/templates/console-model-registry";
 import { formatBytes } from "../../lib/file-transfer-utils";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -507,7 +507,7 @@ function transferFileName(item: HistoryItem) {
 
 function targetOptionLabel(target: ConsoleNavigationTarget | null | undefined) {
   if (!target) return "Unknown connector";
-  const model = getConnectorModel(target.connector_kind);
+  const model = getConsolePresentationModel(target.connector_kind);
   const name = model?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "connector";
   const profile = model?.targetProfileLabel?.({ target }) || target.profile_label || "default";
   return `${name} / ${profile}`;

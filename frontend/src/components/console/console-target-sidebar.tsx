@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, Circle, Database, FolderKanban, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { connectorTargetKey, profilesForConnectorTarget } from "../../lib/connector-permissions";
 import { ConnectorIcon } from "../../connectors/templates/common";
-import { getConnectorModel } from "../../connectors/templates/registry";
+import { getConsolePresentationModel } from "../../connectors/templates/console-model-registry";
 import { CountBadge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Notice } from "../ui/notice";
@@ -318,34 +318,51 @@ export function defaultConsoleTargetRef(
   return targets[0].ref;
 }
 
+// Malformed native config must not prevent navigation to its contained console error.
+function presentationRead<Value>(read: () => Value): Value | undefined {
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
+}
+
 export function targetDisplayName(target: ConsoleNavigationTarget | null | undefined): string {
   if (!target) return "Target";
   return (
-    getConnectorModel(target.connector_kind)?.targetDisplayName?.({ target }) || target.target_name || target.name || target.ref || "Target"
+    presentationRead(() => getConsolePresentationModel(target.connector_kind)?.targetDisplayName({ target })) ||
+    target.target_name ||
+    target.name ||
+    target.ref ||
+    "Target"
   );
 }
 
 export function targetSubtitle(target: ConsoleNavigationTarget | null | undefined, runtimeTarget?: ConsoleRuntimeTarget | null): string {
   if (!target) return "";
   return (
-    getConnectorModel(target.connector_kind)?.targetSubtitle?.({ target, runtimeTarget }) ||
+    presentationRead(() => getConsolePresentationModel(target.connector_kind)?.targetSubtitle({ target, runtimeTarget })) ||
     `${target.connector_kind} profile ${target.profile_label || "default"}`
   );
 }
 
 export function targetProfileLabel(target: ConsoleNavigationTarget | null | undefined): string {
   if (!target) return "default";
-  return getConnectorModel(target.connector_kind)?.targetProfileLabel?.({ target }) || target.profile_label || "default";
+  return (
+    presentationRead(() => getConsolePresentationModel(target.connector_kind)?.targetProfileLabel({ target })) ||
+    target.profile_label ||
+    "default"
+  );
 }
 
 export function targetUsesLiveConsole(target: ConsoleNavigationTarget | null | undefined): boolean {
   if (!target) return false;
-  return Boolean(getConnectorModel(target.connector_kind)?.usesLiveConsole?.({ target }));
+  return Boolean(presentationRead(() => getConsolePresentationModel(target.connector_kind)?.usesLiveConsole({ target })));
 }
 
 export function recoverableRunningActions(target: ConsoleNavigationTarget | null | undefined): string[] {
   if (!target) return [];
-  const actions = getConnectorModel(target.connector_kind)?.recoverableRunningActions?.({ target });
+  const actions = presentationRead(() => getConsolePresentationModel(target.connector_kind)?.recoverableRunningActions({ target }));
   return Array.isArray(actions) ? actions.filter(Boolean).map(String) : [];
 }
 

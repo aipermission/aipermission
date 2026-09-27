@@ -3,6 +3,7 @@ import { s3ConsoleTarget } from "./console-target";
 import * as model from "./model";
 
 export const s3ConsoleModel = captureConsolePresentation({
+  kind: "s3",
   decodeTarget: (target) => ({ ...consolePresentationIdentity(target), ...s3ConsoleTarget(target) }),
   model,
 });

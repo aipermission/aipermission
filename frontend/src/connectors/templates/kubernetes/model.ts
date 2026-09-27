@@ -160,7 +160,12 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function liveConsoleRuntimeTarget({ target }: { target: KubernetesRuntimeTarget }) {
+export function liveConsoleRuntimeTarget({
+  target,
+}: {
+  target: KubernetesPresentationTarget &
+    Pick<KubernetesRuntimeTarget, "runtime_id" | "ref" | "connector_kind" | "target_id" | "profile_id">;
+}) {
   return {
     id: target.runtime_id,
     name: targetDisplayName({ target }),

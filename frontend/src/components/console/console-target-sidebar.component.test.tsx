@@ -7,6 +7,11 @@ import {
   consoleTargetRows,
   defaultConsoleTargetRef,
   groupConsoleTargetsByProject,
+  targetDisplayName,
+  targetSubtitle,
+  targetProfileLabel,
+  targetUsesLiveConsole,
+  recoverableRunningActions,
 } from "./console-target-sidebar";
 import type { ComponentProps } from "react";
 import type { GatewayTarget } from "../../lib/gateway-contracts/core-resource-contracts";
@@ -57,6 +62,22 @@ const target: GatewayTarget = {
   created_at: "2026-09-26",
   updated_at: "2026-09-26",
 };
+
+it("keeps malformed native targets navigable without enabling live console capabilities", () => {
+  const malformed = { ...target, connector_kind: "mail", config: { imap_host: 42 } };
+  expect(targetDisplayName(malformed)).toBe("Database");
+  expect(targetSubtitle(malformed)).toBe("mail profile Admin");
+  expect(targetProfileLabel(malformed)).toBe("Admin");
+  expect(targetUsesLiveConsole(malformed)).toBe(false);
+  expect(recoverableRunningActions(malformed)).toEqual([]);
+  renderSidebar({
+    targetRows: [malformed],
+    targetItems: [malformed],
+    selectedTarget: malformed,
+    groups: groupConsoleTargetsByProject([malformed]),
+  });
+  expect(screen.getByText("Database")).toBeVisible();
+});
 
 function renderSidebar(overrides: Partial<ComponentProps<typeof ConsoleTargetSidebar>> = {}) {
   const onSelect = vi.fn();

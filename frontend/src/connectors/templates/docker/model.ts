@@ -158,7 +158,11 @@ export function recoverableRunningActions() {
   return [];
 }
 
-export function liveConsoleRuntimeTarget({ target }: { target: DockerRuntimeTarget }) {
+export function liveConsoleRuntimeTarget({
+  target,
+}: {
+  target: DockerPresentationTarget & Pick<DockerRuntimeTarget, "runtime_id" | "ref" | "connector_kind" | "target_id" | "profile_id">;
+}) {
   return {
     id: target.runtime_id,
     name: targetDisplayName({ target }),

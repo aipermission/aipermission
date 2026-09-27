@@ -6,7 +6,8 @@ import {
 } from "../../lib/connector-action-risks";
 import { matchesConnectorTargetProfileAction } from "../../lib/connector-permissions";
 import { effectiveRule } from "../../lib/permissions";
-import { getConnectorModel } from "../../connectors/templates/registry";
+import { getConsolePresentationModel } from "../../connectors/templates/console-model-registry";
+import type { ConsolePresentationTarget } from "../../connectors/templates/_shared/console-presentation-types";
 import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
 
 type Target = { connector_kind?: string; target_id?: number; runtime_id?: number };
@@ -20,9 +21,13 @@ export function matchesPermissionMutationError(value: MutationError, tokenID: nu
   return value?.targetKey === targetKey && Number(value?.tokenID) === Number(tokenID) && Number(value?.profileID) === Number(profileID);
 }
 
-export function targetSupportsMessages(target: Target | null | undefined): boolean {
+export function targetSupportsMessages(target: (Target & Partial<ConsolePresentationTarget>) | null | undefined): boolean {
   if (!target?.runtime_id) return false;
-  return Boolean(getConnectorModel(target.connector_kind)?.usesLiveConsole?.({ target }));
+  const consoleTarget =
+    typeof target.ref === "string" && typeof target.connector_kind === "string"
+      ? { ...target, ref: target.ref, connector_kind: target.connector_kind }
+      : undefined;
+  return Boolean(getConsolePresentationModel(target.connector_kind)?.usesLiveConsole({ target: consoleTarget }));
 }
 
 export function ruleForActions(
