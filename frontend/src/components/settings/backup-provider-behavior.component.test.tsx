@@ -1,7 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { FormEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../../lib/api";
 import { backupProviderLabel, useBackupProviderState } from "./use-backup-provider-state";
+import type { BackupProvider } from "./backup-contracts";
 
 vi.mock("../../lib/api", () => ({
   apiDelete: vi.fn(),
@@ -11,21 +13,50 @@ vi.mock("../../lib/api", () => ({
   apiPut: vi.fn(),
 }));
 
-const provider = { id: 7, name: "Remote", provider_type: "custom", public: { base_url: "https://backup.example" } };
-const event = () => ({ preventDefault: vi.fn() });
+const provider: BackupProvider = { id: 7, name: "Remote", provider_type: "custom", public: { base_url: "https://backup.example" } };
+const event = () =>
+  ({
+    nativeEvent: new Event("submit"),
+    currentTarget: document.createElement("form"),
+    target: document.createElement("form"),
+    bubbles: true,
+    cancelable: true,
+    defaultPrevented: false,
+    eventPhase: 2,
+    isTrusted: false,
+    preventDefault: vi.fn(),
+    isDefaultPrevented: () => false,
+    stopPropagation: vi.fn(),
+    isPropagationStopped: () => false,
+    persist: vi.fn(),
+    timeStamp: 0,
+    type: "submit",
+  }) satisfies FormEvent;
 const idle = { state: "idle", error: null, message: null };
 
+type ProviderOperation = {
+  request: "requestEnableBackupProvider" | "requestArchiveBackupProvider" | "requestUploadBackupProvider";
+  close: "closeEnableBackupProviderDialog" | "closeBackupProviderArchiveDialog" | "closeUploadBackupDialog";
+  submit: "enableBackupProvider" | "archiveBackupProvider" | "uploadBackupProvider";
+  target: "backupEnableTarget" | "backupProviderArchiveTarget" | "backupUploadTarget";
+  pending: string;
+  api: typeof apiPost | typeof apiDelete;
+  path: string;
+  payload?: Record<string, string>;
+  message: string;
+};
+
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((yes, no) => {
     resolve = yes;
     reject = no;
   });
   return { promise, resolve, reject };
 }
 
-async function setup(database = { data: { database_name: "Default" } }) {
+async function setup(database: Parameters<typeof useBackupProviderState>[0] = { data: { database_name: "Default" } }) {
   const hook = renderHook(() => useBackupProviderState(database));
   await waitFor(() => expect(hook.result.current.backupProviders.state).toBe("ready"));
   await waitFor(() => expect(hook.result.current.backupProviderCatalog.state).toBe("ready"));
@@ -35,14 +66,14 @@ async function setup(database = { data: { database_name: "Default" } }) {
 describe("backup provider behavior", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path.endsWith("/catalog")) return { items: [{ provider_type: "custom", label: "Custom Backup" }] };
       if (path === "/api/backup/providers") return { items: [provider] };
       throw new Error(`Unexpected GET ${path}`);
     });
-    apiPost.mockResolvedValue({ filename: "snapshot.aipdb" });
-    apiPut.mockResolvedValue({});
-    apiDelete.mockResolvedValue({});
+    vi.mocked(apiPost).mockResolvedValue({ id: 1, filename: "snapshot.aipdb" });
+    vi.mocked(apiPut).mockResolvedValue({});
+    vi.mocked(apiDelete).mockResolvedValue({});
   });
 
   it("uses catalog defaults, resets the editor, and trims new connection secrets", async () => {
@@ -67,7 +98,7 @@ describe("backup provider behavior", () => {
     expect(result.current.backupProviderDialogOpen).toBe(false);
     expect(result.current.backupProviderEditingID).toBeNull();
     expect(result.current.backupProviderForm.token).toBe("");
-    expect(apiGet.mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(2);
+    expect(vi.mocked(apiGet).mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(2);
     act(() => result.current.openBackupProviderDialog());
     expect(result.current.backupProviderState).toEqual(idle);
     act(() => result.current.closeBackupProviderDialog());
@@ -76,7 +107,7 @@ describe("backup provider behavior", () => {
 
   it("edits without replacing a stored token and cannot close during save", async () => {
     const pending = deferred();
-    apiPut.mockReturnValueOnce(pending.promise);
+    vi.mocked(apiPut).mockReturnValueOnce(pending.promise);
     const { result } = await setup();
     act(() => result.current.openBackupProviderDialog(provider));
     expect(result.current.backupProviderEditingID).toBe(7);
@@ -87,7 +118,7 @@ describe("backup provider behavior", () => {
       token: "",
     });
     act(() => result.current.updateBackupProviderField("token", "   "));
-    let saving;
+    let saving: Promise<void> | undefined;
     act(() => {
       saving = result.current.saveBackupProvider(event());
     });
@@ -108,8 +139,8 @@ describe("backup provider behavior", () => {
   });
 
   it("retains failed connection input for retry and supports catalog/editor fallbacks", async () => {
-    apiGet.mockResolvedValue({ items: [] });
-    apiPost.mockRejectedValueOnce(new Error("Connection refused"));
+    vi.mocked(apiGet).mockResolvedValue({ items: [] });
+    vi.mocked(apiPost).mockRejectedValueOnce(new Error("Connection refused"));
     const { result } = await setup();
     act(() => result.current.openBackupProviderDialog());
     expect(result.current.backupProviderForm.name).toBe("aipermission_backup");
@@ -125,7 +156,7 @@ describe("backup provider behavior", () => {
   });
 
   it("surfaces catalog and provider transport failures independently", async () => {
-    apiGet.mockImplementation(async (path) => {
+    vi.mocked(apiGet).mockImplementation(async (path) => {
       throw new Error(path.endsWith("catalog") ? "Catalog offline" : "Providers offline");
     });
     const { result } = renderHook(() => useBackupProviderState({}));
@@ -136,7 +167,7 @@ describe("backup provider behavior", () => {
 
   it.each([false, true])("probes and disables providers, refreshing even after failure (%s)", async (fail) => {
     const { result } = await setup();
-    if (fail) apiPost.mockRejectedValueOnce(new Error("Incompatible protocol"));
+    if (fail) vi.mocked(apiPost).mockRejectedValueOnce(new Error("Incompatible protocol"));
     await act(async () => result.current.testBackupProvider(provider));
     expect(apiPost).toHaveBeenCalledWith("/api/backup/providers/7/test", {});
     expect(result.current.backupProviderState).toEqual(
@@ -144,12 +175,12 @@ describe("backup provider behavior", () => {
         ? { state: "error", error: "Incompatible protocol", message: null }
         : { state: "idle", error: null, message: "Remote is reachable and protocol-compatible." },
     );
-    if (fail) apiPut.mockRejectedValueOnce(new Error("Disable refused"));
+    if (fail) vi.mocked(apiPut).mockRejectedValueOnce(new Error("Disable refused"));
     await act(async () => result.current.disableBackupProvider(provider));
     expect(apiPut).toHaveBeenCalledWith("/api/backup/providers/7", { name: "Remote", status: "disabled" });
     expect(result.current.backupProviderState.error).toBe(fail ? "Disable refused" : null);
     expect(result.current.backupProviderState.message).toBe(fail ? null : "Remote disabled.");
-    expect(apiGet.mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(3);
+    expect(vi.mocked(apiGet).mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(3);
   });
 
   it.each([
@@ -185,7 +216,7 @@ describe("backup provider behavior", () => {
       payload: {},
       message: "Uploaded snapshot.aipdb to Remote.",
     },
-  ])("guards $submit, retains failures, then refreshes on retry", async (operation) => {
+  ] satisfies ProviderOperation[])("guards $submit, retains failures, then refreshes on retry", async (operation) => {
     const { result } = await setup();
     await act(async () => result.current[operation.submit](event()));
     expect(operation.api).not.toHaveBeenCalled();
@@ -196,8 +227,8 @@ describe("backup provider behavior", () => {
     act(() => result.current[operation.request](provider));
     if (operation.submit === "enableBackupProvider") act(() => result.current.setBackupEnablePassword("password"));
     const pending = deferred();
-    operation.api.mockReturnValueOnce(pending.promise);
-    let submitting;
+    vi.mocked(operation.api).mockReturnValueOnce(pending.promise);
+    let submitting: Promise<void> | undefined;
     act(() => {
       submitting = result.current[operation.submit](event());
     });
@@ -210,20 +241,20 @@ describe("backup provider behavior", () => {
     });
     expect(result.current.backupProviderState.error).toBe("Transport unavailable");
     expect(result.current[operation.target]).toEqual(provider);
-    expect(apiGet.mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(1);
+    expect(vi.mocked(apiGet).mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(1);
     await act(async () => result.current[operation.submit](event()));
     expect(operation.api).toHaveBeenLastCalledWith(...(operation.payload ? [operation.path, operation.payload] : [operation.path]));
     expect(result.current[operation.target]).toBeNull();
     expect(result.current.backupProviderState.message).toBe(operation.message);
-    expect(apiGet.mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(2);
+    expect(vi.mocked(apiGet).mock.calls.filter(([path]) => path === "/api/backup/providers")).toHaveLength(2);
     if (operation.submit === "enableBackupProvider") expect(result.current.backupEnablePassword).toBe("");
   });
 
   it("ignores a stale probe failure after opening a new action dialog", async () => {
     const pending = deferred();
-    apiPost.mockReturnValueOnce(pending.promise);
+    vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
     const { result } = await setup();
-    let probing;
+    let probing: Promise<void> | undefined;
     act(() => {
       probing = result.current.testBackupProvider(provider);
     });
@@ -238,7 +269,7 @@ describe("backup provider behavior", () => {
   });
 
   it("uses the database-name fallback and reports streaming transport errors", async () => {
-    apiDownload.mockRejectedValueOnce(new Error("Streaming required"));
+    vi.mocked(apiDownload).mockRejectedValueOnce(new Error("Streaming required"));
     const { result } = await setup({});
     expect(result.current.databaseName).toBe("Unknown");
     await act(async () => result.current.downloadDatabase());
