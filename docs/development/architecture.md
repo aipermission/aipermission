@@ -273,7 +273,7 @@ must be explicit, narrower than the inherited limit, and justified in review.
 
 The changed-coverage gate owns browser component behavior. Retry-storage
 internals are instead exercised through the Node IndexedDB integration suite in
-`frontend/src/lib/api.test.js`; the public retry facade remains in the browser
+`frontend/src/lib/api.test.ts`; the public retry facade remains in the browser
 coverage ratchet. Async-state owners are registered beside their focused tests
 in `frontend/test-suite-manifests.mjs`; the release gate discovers guarded,
 abortable, timer-driven, and socket-driven production modules and rejects an
@@ -285,6 +285,12 @@ the frontend import graph. A test may be renamed or consolidated only when a
 real replacement preserves that relationship.
 
 ## Frontend Boundaries
+
+All application modules and colocated tests in `frontend/src` use TypeScript
+with strict checking. Keep native connector contracts at their owning template
+boundary rather than introducing universal casts or bypassing runtime response
+validation. The test-discovery gate rejects JavaScript source regressions in
+this tree; JavaScript tooling outside `src` is not shipped application code.
 
 - `src/pages`: route-level pages.
 - `src/components`: reusable UI and domain components.

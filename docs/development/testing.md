@@ -72,10 +72,13 @@ This runs:
 - frontend duplicate-block comparison against the base Git revision
 - backend and MCP baseline-based duplicate-block comparison that rejects new
   meaningful clones; existing clones are recorded without retroactive CI failure
-- strict TypeScript checks for connector action, permission, approval, Vault,
-  token/project scope, console/session, credential/connector editor, transfer,
-  and backup workflow contracts; untrusted HTTP responses are still validated
-  at runtime, and modules outside the migrated workflow set remain incremental
+- strict TypeScript checks for every production module and colocated test in
+  `frontend/src`, including connector action, permission, approval, Vault, and
+  session contracts; the source tree has no JavaScript fallback or excluded
+  migration islands, and untrusted HTTP responses are still validated at runtime
+- frontend test discovery rejects JavaScript source regressions inside `src`;
+  JavaScript build scripts and browser test tooling outside `src` remain separate
+  from the shipped TypeScript application
 - a measured initial JavaScript budget with the maintenance terminal loaded
   only when Settings opens it
 - frontend per-file coverage floors for connector permission editing, shared
