@@ -3,6 +3,40 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.59",
+      "date": "2026-09-27",
+      "label": "Typed frontend security contracts",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Generated frontend TypeScript contracts derive security-sensitive API models from the canonical OpenAPI schema.",
+            "Strict type checks cover permission, approval, Vault, connector action, token and project scope contracts."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Permission and Vault draft helpers use shared typed contracts while preserving the existing user workflows and runtime validation."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Generated-contract drift checks and compile-time regression tests protect the first phase of the frontend TypeScript migration."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "This release introduces the TypeScript foundations; the remaining frontend workflows and source modules migrate in subsequent releases.",
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.58",
       "date": "2026-09-25",
       "label": "Connector and Vault reliability hardening",

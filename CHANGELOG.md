@@ -9,6 +9,32 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.59] - 2026-09-27
+
+### Added
+
+- Generated frontend TypeScript contracts derive security-sensitive API models from the
+  canonical OpenAPI schema.
+- Strict type checks cover permission, approval, Vault, connector action, token and
+  project scope contracts.
+
+### Changed
+
+- Permission and Vault draft helpers use shared typed contracts while preserving the
+  existing user workflows and runtime validation.
+
+### Maintenance
+
+- Generated-contract drift checks and compile-time regression tests protect the first
+  phase of the frontend TypeScript migration.
+
+### Notes
+
+- This release introduces the TypeScript foundations; the remaining frontend workflows
+  and source modules migrate in subsequent releases.
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.58] - 2026-09-25
 
 ### Fixed
