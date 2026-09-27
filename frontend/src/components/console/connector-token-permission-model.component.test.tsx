@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { groupActions, groupActionsByRisk, inferPermissionMode, ruleForActions } from "./connector-token-permission-model";
+import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts";
+
+type Permission = Pick<TokenActionPermission, "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at">;
 
 const target = { connector_kind: "postgres", target_id: 7 };
 const actions = [
@@ -7,8 +10,8 @@ const actions = [
   { name: "query_readonly", risk: "read", category: "schema" },
   { name: "create_user", risk: "write" },
 ];
-const permissions = (rules) =>
-  actions.map((action, index) => ({
+const permissions = (rules: readonly Permission["execution_rule"][]): Permission[] =>
+  actions.map((action, index): Permission => ({
     target_id: 7,
     profile_id: 11,
     action_name: action.name,
@@ -44,8 +47,8 @@ describe("connector permission mode classification", () => {
     const catalog = [...actions, { name: "unknown", risk: "unrecognized" }, { name: "missing" }];
     const groups = groupActionsByRisk(catalog);
     expect(groups.flatMap((group) => group.actions)).toHaveLength(catalog.length);
-    expect(groups.find((group) => group.key === "write").actions).toEqual(catalog.slice(2, 3));
-    expect(groups.find((group) => group.key === "other").actions).toEqual(catalog.slice(3));
-    expect(groups.find((group) => group.key === "read").actions).toEqual(catalog.slice(0, 2));
+    expect(groups.find((group) => group.key === "write")?.actions).toEqual(catalog.slice(2, 3));
+    expect(groups.find((group) => group.key === "other")?.actions).toEqual(catalog.slice(3));
+    expect(groups.find((group) => group.key === "read")?.actions).toEqual(catalog.slice(0, 2));
   });
 });

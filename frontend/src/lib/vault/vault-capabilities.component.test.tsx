@@ -5,11 +5,17 @@ import {
   vaultCapabilityKey,
   vaultCapabilitySnapshot,
 } from "../vault-capabilities";
+import type { VaultCapabilityDefinition, VaultCapabilityGrant, VaultCapabilitySnapshot } from "../vault-capabilities";
 
 describe("Vault capability snapshot validation", () => {
-  const definition = { name: "vault.session_apply", label: "Apply", description: "Apply environment", allowed_rules: ["always_run"] };
-  const item = { project_id: 7, capability_name: definition.name, execution_rule: "always_run", expires_at: null };
-  const snapshot = { definitions: [definition], items: [item], revision: "r1" };
+  const definition: VaultCapabilityDefinition = {
+    name: "vault.session_apply",
+    label: "Apply",
+    description: "Apply environment",
+    allowed_rules: ["always_run"],
+  };
+  const item: VaultCapabilityGrant = { project_id: 7, capability_name: definition.name, execution_rule: "always_run", expires_at: null };
+  const snapshot: VaultCapabilitySnapshot = { definitions: [definition], items: [item], revision: "r1" };
 
   it("retains a validated snapshot and nullable expiry", () => {
     expect(vaultCapabilitySnapshot(snapshot)).toEqual(snapshot);
@@ -48,10 +54,17 @@ describe("Vault capability snapshot validation", () => {
 });
 
 describe("Vault capability drafts", () => {
-  const definitions = [{ name: "vault.session_apply", allowed_rules: ["approval_required", "always_run"] }];
+  const definitions: VaultCapabilityDefinition[] = [
+    {
+      name: "vault.session_apply",
+      label: "Apply",
+      description: "Apply environment",
+      allowed_rules: ["approval_required", "always_run"],
+    },
+  ];
 
   it("preserves project identity, rule, and temporary expiry through a round trip", () => {
-    const items = [
+    const items: VaultCapabilityGrant[] = [
       { project_id: 7, capability_name: "vault.session_apply", execution_rule: "always_run", expires_at: "2026-10-01T12:00:00Z" },
       { project_id: 8, capability_name: "vault.session_apply", execution_rule: "approval_required" },
     ];
@@ -68,12 +81,20 @@ describe("Vault capability drafts", () => {
   });
 
   it("does not load unknown or unsupported rules into a draft", () => {
-    const items = [
+    const items: VaultCapabilityGrant[] = [
       { project_id: 7, capability_name: "unknown", execution_rule: "always_run" },
       { project_id: 7, capability_name: "vault.session_apply", execution_rule: "blocked" },
       { project_id: 7, capability_name: "without_rules", execution_rule: "always_run" },
     ];
-    expect(vaultCapabilityDraftFromItems(items, [...definitions, { name: "without_rules" }])).toEqual({});
+    const withoutRules: VaultCapabilityDefinition = {
+      name: "without_rules",
+      label: "Without rules",
+      description: "Capability without supported rules",
+      allowed_rules: [],
+    };
+    // Preserve the malformed runtime definition without asserting it has required fields.
+    Reflect.deleteProperty(withoutRules, "allowed_rules");
+    expect(vaultCapabilityDraftFromItems(items, [...definitions, withoutRules])).toEqual({});
     expect(vaultCapabilityDraftFromItems(items, undefined)).toEqual({});
   });
 
