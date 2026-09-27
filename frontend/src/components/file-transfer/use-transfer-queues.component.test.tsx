@@ -31,7 +31,8 @@ function QueueHarness({ recursive = true, runtimeTarget = { id: 7 } }: QueueProp
   });
   return (
     <div>
-      <input aria-label="files" type="file" multiple onChange={queues.handleLocalFileChange} />
+      <input ref={queues.fileInputRef} aria-label="files" type="file" multiple onChange={queues.handleLocalFileChange} />
+      <input ref={queues.folderInputRef} aria-label="folder files" type="file" multiple onChange={queues.handleLocalFileChange} />
       <button type="button" onClick={() => queues.moveQueueItem(queues.uploadQueue[1]?.id || "", -1)}>
         Move
       </button>
@@ -298,4 +299,129 @@ it("rejects malformed recursive expansion results without queuing remote paths",
   await user.click(screen.getByRole("button", { name: "Expand" }));
   expect(await screen.findByText("Invalid remote folder entry from gateway.")).toBeVisible();
   expect(screen.getByTestId("downloads")).toBeEmptyDOMElement();
+});
+
+function queueOptions(overrides: Partial<Parameters<typeof useTransferQueues>[0]> = {}): Parameters<typeof useTransferQueues>[0] {
+  return {
+    runtimeTarget: { id: 7 },
+    defaultRemoteDir: "/tmp",
+    recursive: false,
+    joinRemotePath: (directory, name) => `${directory}/${name}`,
+    onNotice: vi.fn(),
+    ...overrides,
+  };
+}
+
+it("orders and removes downloads without expanding directories in non-recursive mode", async () => {
+  const { result } = renderHook(() => useTransferQueues(queueOptions()));
+  await act(async () => {
+    expect(
+      await result.current.addRemoteFiles([
+        { type: "directory", path: "/remote", name: "remote" },
+        { type: "file", path: "/remote/a", name: "a" },
+        { type: "file", path: "/remote/b", name: "b", size: 2 },
+        { type: "file", path: "/remote/a", name: "a" },
+      ]),
+    ).toBe(true);
+  });
+  expect(apiPost).not.toHaveBeenCalled();
+  expect(result.current.downloadQueue.map((item) => item.path)).toEqual(["/remote/a", "/remote/b"]);
+  act(() => result.current.setMode("download"));
+  act(() => result.current.moveQueueItem("remote-/remote/b", -1));
+  expect(result.current.queue.map((item) => item.name)).toEqual(["b", "a"]);
+  act(() => result.current.moveQueueItem("remote-/remote/b", -1));
+  act(() => result.current.moveQueueItem("missing", 1));
+  expect(result.current.queue.map((item) => item.name)).toEqual(["b", "a"]);
+  act(() => result.current.removeQueueItem("remote-/remote/b"));
+  expect(result.current.queue.map((item) => item.name)).toEqual(["a"]);
+  await act(async () => {
+    expect(await result.current.addRemoteFiles([{ type: "file", path: "/remote/a", name: "a" }])).toBe(true);
+  });
+  expect(result.current.queue).toHaveLength(1);
+});
+
+it.each(["object", "count", "bytes"])("rejects remote %s limits while preserving existing entries", async (limit) => {
+  const onNotice = vi.fn();
+  const { result } = renderHook(() => useTransferQueues(queueOptions({ onNotice })));
+  const files = (prefix: string, count: number, size: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      type: "file" as const,
+      path: `/remote/${prefix}${index}`,
+      name: `${prefix}${index}`,
+      size,
+    }));
+  const existing = files("existing", limit === "count" ? 50 : limit === "bytes" ? 2 : 1, limit === "bytes" ? 512 * 1024 * 1024 : 1);
+  await act(async () => expect(await result.current.addRemoteFiles(existing)).toBe(true));
+  const original = result.current.downloadQueue;
+  const additions = files("new", limit === "count" ? 51 : 1, limit === "object" ? 512 * 1024 * 1024 + 1 : 1);
+  await act(async () => expect(await result.current.addRemoteFiles(additions)).toBe(false));
+  expect(result.current.downloadQueue).toEqual(original);
+  expect(result.current.downloadQueue.map((item) => item.path)).toEqual(existing.map((item) => item.path));
+  expect(onNotice).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      message: expect.stringContaining(limit === "object" ? "per-object download limit" : "100 objects or 1 GiB"),
+    }),
+  );
+});
+
+it("does not queue downloads without a runtime target", async () => {
+  const { result } = renderHook(() => useTransferQueues(queueOptions({ runtimeTarget: null })));
+  await act(async () => expect(await result.current.addRemoteFiles([{ type: "file", path: "/remote/a", name: "a" }])).toBe(false));
+  expect(result.current.downloadQueue).toEqual([]);
+  expect(apiPost).not.toHaveBeenCalled();
+});
+
+it("rejects upload item and total-byte limits while preserving the existing queue", () => {
+  render(<QueueHarness />);
+  const input = screen.getByLabelText("files");
+  const files = Array.from({ length: 100 }, (_, index) => new File([], `${index}.bin`));
+  fireEvent.change(input, { target: { files } });
+  expect(screen.getByTestId("upload-count")).toHaveTextContent(/^100$/);
+  fireEvent.change(input, { target: { files: [new File([], "extra.bin")] } });
+  expect(screen.getByText(/100 objects or 1 GiB/)).toBeVisible();
+  expect(screen.getByTestId("upload-count")).toHaveTextContent(/^100$/);
+  fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+  const largeFiles = Array.from({ length: 3 }, (_, index) => {
+    const file = new File([], `large-${index}.bin`);
+    Object.defineProperty(file, "size", { value: 512 * 1024 * 1024 });
+    return file;
+  });
+  fireEvent.change(input, { target: { files: largeFiles.slice(0, 2) } });
+  expect(screen.getByTestId("upload-count")).toHaveTextContent(/^2$/);
+  fireEvent.change(input, { target: { files: largeFiles.slice(2) } });
+  expect(screen.getByTestId("upload-count")).toHaveTextContent(/^2$/);
+  expect(screen.getByTestId("uploads")).toHaveTextContent(/^large-0\.bin,large-1\.bin$/);
+});
+
+it("resets both file inputs and restores upload mode after folder selection", async () => {
+  const user = userEvent.setup();
+  render(<QueueHarness />);
+  await user.upload(screen.getByLabelText("folder files"), new File(["folder"], "folder.txt"));
+  expect(screen.getByTestId("uploads")).toHaveTextContent("folder.txt");
+  await user.click(screen.getByRole("button", { name: "Download mode" }));
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+  expect(screen.getByTestId("mode")).toHaveTextContent("upload");
+  expect(screen.getByTestId("upload-count")).toHaveTextContent(/^0$/);
+  expect(screen.getByLabelText("files")).toHaveValue("");
+  expect(screen.getByLabelText("folder files")).toHaveValue("");
+});
+
+it("clears populated file and folder input references on reset", async () => {
+  const user = userEvent.setup();
+  const { result } = renderHook(() => useTransferQueues(queueOptions()));
+  render(
+    <>
+      <input ref={result.current.fileInputRef} aria-label="file selection" type="file" />
+      <input ref={result.current.folderInputRef} aria-label="folder selection" type="file" />
+    </>,
+  );
+  const fileInput = screen.getByLabelText("file selection");
+  const folderInput = screen.getByLabelText("folder selection");
+  await user.upload(fileInput, new File(["file"], "file.txt"));
+  await user.upload(folderInput, new File(["folder"], "folder.txt"));
+  expect(fileInput).not.toHaveValue("");
+  expect(folderInput).not.toHaveValue("");
+  act(() => result.current.resetQueues());
+  expect(fileInput).toHaveValue("");
+  expect(folderInput).toHaveValue("");
 });

@@ -298,3 +298,87 @@ it("creates and refreshes an owned download batch", async () => {
   expect(apiGet).toHaveBeenCalledWith("/api/file-transfer-batches/22", { signal: expect.any(AbortSignal) });
   expect(await screen.findByTestId("download-status")).toHaveTextContent("completed");
 });
+
+function batchOptions(overrides: Partial<Parameters<typeof useTransferBatch>[0]> = {}): Parameters<typeof useTransferBatch>[0] {
+  const file = new File(["payload"], "a.txt");
+  return {
+    open: true,
+    runtimeTarget: { id: 7 },
+    mode: "upload",
+    remoteDir: "/tmp",
+    uploadQueue: [{ id: "a", name: "a.txt", file }],
+    downloadQueue: [],
+    queue: [{ id: "a" }],
+    onNotice: vi.fn(),
+    ...overrides,
+  };
+}
+
+it("updates a paused queue using only pending item identities", async () => {
+  const paused = {
+    id: 12,
+    status: "paused" as const,
+    direction: "upload" as const,
+    items: [
+      { id: 1, status: "pending" as const },
+      { id: 2, status: "pending" as const },
+      { id: 3, status: "completed" as const },
+    ],
+  };
+  const reordered = { ...paused, items: [paused.items[1], paused.items[0], paused.items[2]] };
+  vi.mocked(apiPost).mockResolvedValue(reordered);
+  const { result } = renderHook(() => useTransferBatch(batchOptions()));
+  act(() => result.current.setBatch({ state: "ready", item: paused, error: null }));
+  expect(result.current.pausedQueueWithout(1)).toEqual([2]);
+  expect(result.current.movePausedQueueItem(1, 1)).toEqual([2, 1]);
+  expect(result.current.movePausedQueueItem(1, -1)).toBeNull();
+  expect(result.current.movePausedQueueItem(3, -1)).toBeNull();
+  await act(async () => result.current.updatePausedBatchQueue([2, 1]));
+  expect(apiPost).toHaveBeenCalledWith("/api/file-transfer-batches/12/queue", { item_ids: [2, 1] }, { signal: expect.any(AbortSignal) });
+  expect(result.current.batch.state).toBe("ready");
+  expect(result.current.batch.item).toEqual(reordered);
+});
+
+it("reports a current paused-queue failure without discarding the batch", async () => {
+  vi.mocked(apiPost).mockRejectedValue(new Error("Queue unavailable"));
+  const { result } = renderHook(() => useTransferBatch(batchOptions()));
+  act(() => result.current.setBatch({ state: "ready", item: { id: 12, status: "paused", direction: "upload" }, error: null }));
+  await act(async () => result.current.updatePausedBatchQueue([1]));
+  expect(result.current.batch).toMatchObject({ state: "error", item: { id: 12 }, error: "Queue unavailable" });
+});
+
+it.each(["success", "failure"])("does not revive a reset batch after a delayed queue update %s", async (outcome) => {
+  const pending = deferred();
+  vi.mocked(apiPost).mockReturnValue(pending.promise);
+  const { result } = renderHook(() => useTransferBatch(batchOptions()));
+  act(() => result.current.setBatch({ state: "ready", item: { id: 12, status: "paused", direction: "upload" }, error: null }));
+  let update!: Promise<void>;
+  act(() => {
+    update = result.current.updatePausedBatchQueue([1]);
+  });
+  const signal = vi.mocked(apiPost).mock.calls[0][2]?.signal;
+  act(() => result.current.clearBatch());
+  expect(signal?.aborted).toBe(true);
+  await act(async () => {
+    if (outcome === "success") pending.resolve({ id: 12, status: "paused", direction: "upload" });
+    else pending.reject(new Error("Late queue failure"));
+    await update;
+  });
+  expect(result.current.batch).toEqual({ state: "idle", item: null, error: null });
+});
+
+it.each([
+  { label: "runtime", options: { runtimeTarget: null } },
+  { label: "queue", options: { queue: [] } },
+])("does not send starts or transitions without a $label or existing batch", async ({ options }) => {
+  const { result } = renderHook(() => useTransferBatch(batchOptions(options)));
+  await act(async () => {
+    await result.current.startQueue();
+    await result.current.pauseBatch();
+    await result.current.refreshBatch();
+    await result.current.updatePausedBatchQueue([]);
+  });
+  expect(apiPost).not.toHaveBeenCalled();
+  expect(apiGet).not.toHaveBeenCalled();
+  expect(apiPostForm).not.toHaveBeenCalled();
+});

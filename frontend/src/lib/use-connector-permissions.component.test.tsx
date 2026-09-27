@@ -20,12 +20,12 @@ function deferred() {
   return { promise, resolve };
 }
 
-describe("useConnectorPermissions", () => {
-  beforeEach(() => {
-    vi.mocked(apiGet).mockReset();
-    vi.mocked(apiPut).mockReset();
-  });
+beforeEach(() => {
+  vi.mocked(apiGet).mockReset();
+  vi.mocked(apiPut).mockReset();
+});
 
+describe("useConnectorPermissions", () => {
   it("does not let an older permission load overwrite the latest token set", async () => {
     const first = deferred();
     const second = deferred();
@@ -237,5 +237,67 @@ describe("useConnectorPermissions", () => {
 
     expect(result.current.connectorPermissionState.state).toBe("ready");
     expect(result.current.connectorPermissionState.data[1]).toEqual([permission({ action_name: "read", execution_rule: "always_run" })]);
+  });
+});
+
+it("reads the initial token list and resets it without transport when it becomes empty", async () => {
+  vi.mocked(apiGet).mockResolvedValue(snapshot([permission()], "permissions-1"));
+  const { result } = renderHook(() => useConnectorPermissions([{ id: 3 }]));
+  await act(async () => result.current.loadAllConnectorPermissions());
+  expect(result.current.connectorPermissionState.data).toEqual({ 3: [permission()] });
+  await act(async () => result.current.loadAllConnectorPermissions([]));
+  expect(result.current.connectorPermissionState).toMatchObject({ state: "ready", data: {}, revisionsByToken: {}, error: null });
+  expect(apiGet).toHaveBeenCalledOnce();
+});
+
+it("loads actions using a sole profile but never guesses between multiple profiles", async () => {
+  vi.mocked(apiGet).mockResolvedValue({ items: [{ name: "inspect", risk: "read" }] });
+  const { result } = renderHook(() => useConnectorPermissions());
+  await act(async () => result.current.loadConnectorActions({ id: 3, connector_kind: "example", profiles: [{ id: 7 }] }));
+  expect(apiGet).toHaveBeenCalledExactlyOnceWith("/api/connector-targets/3/profiles/7/actions", { signal: expect.any(AbortSignal) });
+  expect(result.current.connectorPermissionState.actionsByTargetRef["example:3:7"]).toEqual([{ name: "inspect", risk: "read" }]);
+  for (const target of [null, undefined, "example", {}, { id: 3, profiles: [{ id: 7 }, { id: 8 }] }]) {
+    await act(async () => expect(await result.current.loadConnectorActions(target)).toEqual([]));
+  }
+  expect(apiGet).toHaveBeenCalledOnce();
+  expect(connectorActionCacheKey(undefined, null)).toBe("connector::");
+});
+
+it.each([new Error("Catalog unavailable"), null])("reports a current action catalog transport failure safely: %s", async (failure) => {
+  vi.mocked(apiGet).mockRejectedValue(failure);
+  const { result } = renderHook(() => useConnectorPermissions());
+  await act(async () => result.current.loadConnectorActions({ target_id: 3, profile_id: 7 }));
+  expect(result.current.connectorPermissionState).toMatchObject({
+    state: "error",
+    actionsByTargetRef: {},
+    error: failure instanceof Error ? failure.message : "Failed to load connector actions.",
+  });
+});
+
+it("returns an empty failed non-strict refresh while retaining the authoritative previous grants", async () => {
+  vi.mocked(apiGet)
+    .mockResolvedValueOnce(snapshot([permission()], "r1"))
+    .mockRejectedValueOnce(null);
+  const { result } = renderHook(() => useConnectorPermissions());
+  await act(async () => result.current.loadAllConnectorPermissions([{ id: 3 }]));
+  await act(async () => expect(await result.current.loadAllConnectorPermissions([{ id: 3 }])).toEqual({}));
+  expect(result.current.connectorPermissionState).toMatchObject({
+    state: "error",
+    data: { 3: [permission()] },
+    error: "Failed to load connector permissions.",
+  });
+});
+
+it.each([new Error("Write unavailable"), null])("preserves grants and the original current mutation rejection: %s", async (failure) => {
+  vi.mocked(apiGet).mockResolvedValue(snapshot([permission()], "r1"));
+  vi.mocked(apiPut).mockRejectedValue(failure);
+  const { result } = renderHook(() => useConnectorPermissions());
+  await act(async () => result.current.loadAllConnectorPermissions([{ id: 3 }]));
+  await act(async () => expect(result.current.replaceTokenConnectorPermissions(3, [])).rejects.toBe(failure));
+  expect(result.current.connectorPermissionState).toMatchObject({
+    state: "error",
+    data: { 3: [permission()] },
+    revisionsByToken: { 3: "r1" },
+    error: failure instanceof Error ? failure.message : "Failed to update connector permissions.",
   });
 });
