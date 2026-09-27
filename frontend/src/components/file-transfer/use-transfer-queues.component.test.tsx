@@ -15,6 +15,7 @@ import {
   transferProgress,
 } from "../../lib/file-transfer-utils";
 import { useTransferQueues } from "./use-transfer-queues";
+import type { RemoteEntry } from "./transfer-contracts";
 
 vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
 
@@ -74,7 +75,7 @@ it("retains queue ownership while moving and removing downloads", async () => {
   const { result } = renderHook(() =>
     useTransferQueues({ runtimeTarget: { id: 7 }, defaultRemoteDir: "/tmp", recursive: true, joinRemotePath, onNotice }),
   );
-  const entries = [
+  const entries: RemoteEntry[] = [
     { type: "file", path: "/remote/a.txt", name: "a.txt", size: 1 },
     { type: "file", path: "/remote/b.txt", name: "b.txt", size: 2 },
   ];
@@ -84,11 +85,11 @@ it("retains queue ownership while moving and removing downloads", async () => {
   act(() => result.current.moveQueueItem("missing", 1));
   act(() => result.current.moveQueueItem("remote-/remote/a.txt", -1));
   act(() => result.current.moveQueueItem("remote-/remote/b.txt", 1));
-  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/a.txt", "/remote/b.txt"]);
+  expect(result.current.queue.map((item) => ("path" in item ? item.path : undefined))).toEqual(["/remote/a.txt", "/remote/b.txt"]);
   act(() => result.current.moveQueueItem("remote-/remote/b.txt", -1));
-  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/b.txt", "/remote/a.txt"]);
+  expect(result.current.queue.map((item) => ("path" in item ? item.path : undefined))).toEqual(["/remote/b.txt", "/remote/a.txt"]);
   act(() => result.current.removeQueueItem("remote-/remote/b.txt"));
-  expect(result.current.queue.map((item) => item.path)).toEqual(["/remote/a.txt"]);
+  expect(result.current.queue.map((item) => ("path" in item ? item.path : undefined))).toEqual(["/remote/a.txt"]);
   expect(apiPost).not.toHaveBeenCalled();
   expect(onNotice).not.toHaveBeenCalled();
 });
