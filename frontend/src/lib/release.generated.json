@@ -1,6 +1,41 @@
 {
-  "version": "0.2.60",
+  "version": "0.2.61",
   "entries": [
+    {
+      "version": "0.2.61",
+      "label": "Complete frontend TypeScript migration",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Every production module and colocated test in frontend/src uses strict TypeScript; source discovery rejects JavaScript migration regressions.",
+            "Connector-owned credential, editor, console presentation and runtime recovery models preserve their native types through shared captured providers.",
+            "Shared SQL, resource browser, transfer, backup and session workflows retain runtime response validation and stale-operation guards."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Audit payload previews preserve zero-valued fields."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Typed behavioral tests, import boundaries, test discovery and measured per-owner coverage protect the completed migration."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "JavaScript build and browser-test tooling outside frontend/src remains supported.",
+            "Runtime authorization and database formats are unchanged.",
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.60",
       "label": "Typed frontend workflows",
@@ -259,42 +294,6 @@
           "items": [
             "The frontend test stack moves past its reviewed advisory while preserving changed-owner coverage, architecture, duplication, and initial-bundle ratchets.",
             "The SQLCipher 4.19.0 upstream release review is recorded while the pinned runtime remains unchanged until a coordinated native dependency upgrade."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.53",
-      "label": "Runtime contracts and verification parity",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Frontend connector action status, retry classification, and required-field contracts are generated from the backend REST contract and untrusted responses are validated at the caller boundary.",
-            "Local release checks and CI now share one ratcheted verification policy, command context, tooling ownership model, and frontend release gate inventory."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Retention setting mutations are serialized so stale completions cannot replace newer UI state.",
-            "The MCP bridge preserves request identity, Retry-After metadata, timeout classification, bounded configuration values, and source-archive test coverage.",
-            "MCP setup commands preserve explicitly configured local gateway origins instead of silently returning to the default origin.",
-            "Postgres read-only policy parsing accepts declaration column lists, derived-table aliases, and EXPLAIN options while continuing to reject explicit casts and prohibited function calls.",
-            "Recovered file transfers detach unsafe foreign temporary-path references without deleting files outside the active workspace."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Generated verification recipe digests use a narrow semantic Gitleaks allowlist while default secret-detection rules and complete-history scanning remain active."
           ]
         },
         {
