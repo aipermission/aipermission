@@ -3,6 +3,7 @@ import { kafkaConsoleTarget } from "./console-target";
 import * as model from "./model";
 
 export const kafkaConsoleModel = captureConsolePresentation({
+  kind: "kafka",
   decodeTarget: (target) => ({ ...consolePresentationIdentity(target), ...kafkaConsoleTarget(target) }),
   model,
 });

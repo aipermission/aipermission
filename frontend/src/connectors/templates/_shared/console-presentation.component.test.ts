@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { captureConsolePresentation, consolePresentationIdentity } from "./console-presentation";
+import { captureConsolePresentation, consolePresentationIdentity, isConsolePresentationModel } from "./console-presentation";
 import type { ConsolePresentationTarget } from "./console-presentation-types";
 
 const target: ConsolePresentationTarget = {
@@ -28,11 +28,17 @@ function fixture(customSubtitle = false) {
     model,
     decodeTarget,
     subtitle,
-    captured: captureConsolePresentation({ decodeTarget, model, ...(customSubtitle ? { subtitle } : {}) }),
+    captured: captureConsolePresentation({ kind: "example", decodeTarget, model, ...(customSubtitle ? { subtitle } : {}) }),
   };
 }
 
 describe("captured console presentation", () => {
+  it("accepts only captured model identities, not structural lookalikes", () => {
+    const { captured, model, decodeTarget } = fixture();
+    expect(isConsolePresentationModel(captured)).toBe(true);
+    for (const value of [null, undefined, false, [], () => {}, { ...captured }]) expect(isConsolePresentationModel(value)).toBe(false);
+    expect(() => captureConsolePresentation({ kind: " ", model, decodeTarget })).toThrow("requires a connector kind");
+  });
   it("delegates each presentation operation through the native decoder", () => {
     const { captured, model, decodeTarget } = fixture();
     expect(captured.targetDisplayName({ target })).toBe("native");
@@ -66,11 +72,31 @@ describe("captured console presentation", () => {
   it("does not hide native decoding failures", () => {
     const captured = captureConsolePresentation({
       ...fixture(),
+      kind: "example",
       decodeTarget() {
         throw new Error("Invalid native config");
       },
     });
     expect(() => captured.targetSubtitle({ target })).toThrow("Invalid native config");
+  });
+
+  it("exposes only explicitly registered read services and forwards request options intact", async () => {
+    const { model, decodeTarget } = fixture();
+    const loadCredentialResources = vi.fn().mockResolvedValue([{ id: 3, name: "Credential" }]);
+    const runtimeTarget = vi.fn();
+    const captured = captureConsolePresentation({
+      kind: "example",
+      decodeTarget,
+      model: { ...model, loadCredentialResources },
+      runtimeTarget,
+    });
+    const options = { signal: new AbortController().signal, timeoutMs: 4000 };
+    await expect(captured.loadCredentialResources?.(options)).resolves.toEqual([{ id: 3, name: "Credential" }]);
+    expect(loadCredentialResources).toHaveBeenCalledWith(options);
+    expect(loadCredentialResources.mock.calls[0][0]).toBe(options);
+    expect(captured.liveConsoleRuntimeTarget).toBe(runtimeTarget);
+    expect(fixture().captured).not.toHaveProperty("loadCredentialResources");
+    expect(fixture().captured).not.toHaveProperty("liveConsoleRuntimeTarget");
   });
 
   it("copies presentation identity without manufacturing persistence identities", () => {

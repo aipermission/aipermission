@@ -12,6 +12,7 @@ export type SSHModelTarget = SSHTarget & {
   target_id?: number;
   profile_id?: number;
 };
+export type SSHPresentationTarget = Pick<SSHModelTarget, "config" | "public" | "target_name" | "profile_label"> & { name?: string };
 export type SSHCredentialResource = SSHKey & { resource_kind?: string; resource_ref?: string; connector_kind?: string };
 export type SSHCredentialRow = {
   id: number;

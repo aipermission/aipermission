@@ -21,6 +21,7 @@ import type {
   SSHCredentialPropsContext,
   SSHCredentialFormProps,
   SSHModelTarget,
+  SSHPresentationTarget,
   SSHHostKeyContext,
   SSHHostKeyAction,
   SSHPayload,
@@ -267,18 +268,24 @@ export function targetEndpoint({ target, profile }: { target: SSHModelTarget; pr
   return `${username}@${host}:${port}`;
 }
 
-export function targetDisplayName({ target }: { target?: SSHModelTarget | null }) {
+export function targetDisplayName({ target }: { target?: SSHPresentationTarget | null }) {
   return target?.target_name || target?.name || "SSH target";
 }
 
-export function targetSubtitle({ target, runtimeTarget }: { target?: SSHModelTarget | null; runtimeTarget?: Partial<SSHForm> | null }) {
+export function targetSubtitle({
+  target,
+  runtimeTarget,
+}: {
+  target?: SSHPresentationTarget | null;
+  runtimeTarget?: Partial<SSHForm> | null;
+}) {
   const username = target?.public?.username || runtimeTarget?.username || "ssh";
   const host = target?.config?.host || runtimeTarget?.host || "host";
   const port = target?.config?.port || runtimeTarget?.port || 22;
   return `${username}@${host}:${port}`;
 }
 
-export function targetProfileLabel({ target }: { target?: SSHModelTarget | null } = {}) {
+export function targetProfileLabel({ target }: { target?: SSHPresentationTarget | null } = {}) {
   return target?.profile_label || target?.public?.username || "terminal";
 }
 
@@ -290,7 +297,11 @@ export function recoverableRunningActions() {
   return ["exec"];
 }
 
-export function liveConsoleRuntimeTarget({ target }: { target: SSHModelTarget }) {
+export function liveConsoleRuntimeTarget({
+  target,
+}: {
+  target: SSHPresentationTarget & Pick<SSHModelTarget, "runtime_id" | "ref" | "connector_kind" | "target_id" | "profile_id">;
+}) {
   const profile = target.public || {};
   return {
     id: target.runtime_id,

@@ -3,8 +3,9 @@ import { optionalConsolePort, optionalConsoleText } from "./console-target-confi
 import type { NativeConsolePresentation } from "./console-presentation-types";
 import type { DatabasePresentationTarget } from "./database-model-types";
 
-export function captureDatabaseConsolePresentation(model: NativeConsolePresentation<DatabasePresentationTarget>["model"]) {
+export function captureDatabaseConsolePresentation(kind: string, model: NativeConsolePresentation<DatabasePresentationTarget>["model"]) {
   return captureConsolePresentation({
+    kind,
     model,
     decodeTarget(target): DatabasePresentationTarget {
       const config = target.config || {};

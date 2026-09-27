@@ -6,7 +6,7 @@ import type { DatabasePresentationTarget } from "./database-model-types";
 
 it("passes only decoded presentation fields to the native database model", () => {
   const targetDisplayName = vi.fn(({ target }: { target?: DatabasePresentationTarget | null }) => target?.name || "Unnamed");
-  const model = captureDatabaseConsolePresentation({
+  const model = captureDatabaseConsolePresentation("database", {
     targetDisplayName,
     targetSubtitle: () => "Endpoint",
     targetProfileLabel: () => "Profile",
