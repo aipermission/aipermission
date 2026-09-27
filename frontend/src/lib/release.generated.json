@@ -1,6 +1,39 @@
 {
-  "version": "0.2.58",
+  "version": "0.2.59",
   "entries": [
+    {
+      "version": "0.2.59",
+      "label": "Typed frontend security contracts",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Generated frontend TypeScript contracts derive security-sensitive API models from the canonical OpenAPI schema.",
+            "Strict type checks cover permission, approval, Vault, connector action, token and project scope contracts."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Permission and Vault draft helpers use shared typed contracts while preserving the existing user workflows and runtime validation."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Generated-contract drift checks and compile-time regression tests protect the first phase of the frontend TypeScript migration."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "This release introduces the TypeScript foundations; the remaining frontend workflows and source modules migrate in subsequent releases.",
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.58",
       "label": "Connector and Vault reliability hardening",
@@ -266,49 +299,6 @@
           "title": "Maintenance",
           "items": [
             "Audit documentation now describes bounded permission snapshots and immutable project attribution."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.51",
-      "label": "Frontend reliability and assurance",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Security-sensitive connector, token, approval, Vault, and API response models now have typed frontend boundaries with runtime response validation.",
-            "Settings loads its maintenance terminal only when opened, with a ratcheted startup JavaScript budget."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Retention settings cannot be saved before a successful load, and a failed database lock no longer appears successful or clears the open database.",
-            "Deferred SQL editor loading preserves the latest controlled text and disabled state, while Project mutations cannot close or clear a newer draft.",
-            "Destructive S3 confirmations remain open and focused through pending approval or failure, with result feedback inside the dialog.",
-            "History label suggestions are keyboard-operable, and connector, Vault, Project, and permission controls remain usable at supported mobile widths."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Typed frontend models complement, rather than replace, runtime validation and the gateway's authoritative permission checks.",
-            "Stale UI completions cannot overwrite a newer editor draft or disguise a failed destructive operation as success."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "CI ratchets TypeScript security-model migration, shared-owner duplicate-code limits, startup chunk size, critical coverage floors, and mobile accessibility checks.",
-            "Connector transfer validation and store scanning share bounded contracts, with regression fixtures for real frontend imports and runtime authority."
           ]
         },
         {
