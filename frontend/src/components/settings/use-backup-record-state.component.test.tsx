@@ -1,24 +1,43 @@
 import { act, renderHook } from "@testing-library/react";
+import type { FormEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDownload, apiGet, apiPost } from "../../lib/api";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { suggestedRestoreDatabaseName, useBackupRecordState } from "./use-backup-record-state";
+import type { BackupProvider, BackupRecord } from "./backup-contracts";
 
 vi.mock("../../lib/api", () => ({ apiDownload: vi.fn(), apiGet: vi.fn(), apiPost: vi.fn() }));
 
-const provider = { id: 7, name: "Remote" };
-const records = [
+const provider: BackupProvider = { id: 7, name: "Remote" };
+const records: BackupRecord[] = [
   { id: 3, filename: "latest.aipdb", database_name: "Team Database" },
   { id: 2, filename: "older.aipdb" },
   { id: 1, filename: "oldest.aipdb" },
 ];
-const event = () => ({ preventDefault: vi.fn() });
+const event = () =>
+  ({
+    nativeEvent: new Event("submit"),
+    currentTarget: document.createElement("form"),
+    target: document.createElement("form"),
+    bubbles: true,
+    cancelable: true,
+    defaultPrevented: false,
+    eventPhase: 2,
+    isTrusted: false,
+    preventDefault: vi.fn(),
+    isDefaultPrevented: () => false,
+    stopPropagation: vi.fn(),
+    isPropagationStopped: () => false,
+    persist: vi.fn(),
+    timeStamp: 0,
+    type: "submit",
+  }) satisfies FormEvent;
 const idle = { state: "idle", error: null, message: null };
 
 function deferred() {
-  let resolve;
-  let reject;
-  const promise = new Promise((yes, no) => {
+  let resolve!: (_value: unknown) => void;
+  let reject!: (_reason: unknown) => void;
+  const promise = new Promise<unknown>((yes, no) => {
     resolve = yes;
     reject = no;
   });
@@ -41,9 +60,9 @@ function setup() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  apiGet.mockResolvedValue({ items: records });
-  apiPost.mockResolvedValue({ deleted_count: 1, keep_latest: 2 });
-  apiDownload.mockResolvedValue({ saved: true });
+  vi.mocked(apiGet).mockResolvedValue({ items: records });
+  vi.mocked(apiPost).mockResolvedValue({ deleted_count: 1, keep_latest: 2 });
+  vi.mocked(apiDownload).mockResolvedValue({ saved: true, method: "picker" });
 });
 
 describe("backup record browsing", () => {
@@ -53,8 +72,8 @@ describe("backup record browsing", () => {
     await act(async () => result.current.refreshBackupRecords());
     expect(apiGet).not.toHaveBeenCalled();
     const loading = deferred();
-    apiGet.mockReturnValueOnce(loading.promise);
-    let opening;
+    vi.mocked(apiGet).mockReturnValueOnce(loading.promise);
+    let opening: Promise<void> | undefined;
     act(() => {
       opening = result.current.openBackupRecordsDialog(provider);
     });
@@ -66,7 +85,7 @@ describe("backup record browsing", () => {
     });
     expect(result.current.backupRecords).toEqual({ state: "ready", data: records, error: null });
     act(() => result.current.toggleBackupRecordSelection(2));
-    apiGet.mockResolvedValueOnce({ items: [records[0], records[2]] });
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: [records[0], records[2]] });
     await act(async () => result.current.refreshBackupRecords());
     expect(apiGet).toHaveBeenLastCalledWith("/api/backup/providers/7/records");
     expect(result.current.backupRecords.data).toEqual([records[0], records[2]]);
@@ -104,7 +123,7 @@ describe("backup record browsing", () => {
     expect(result.current.backupDeleteRecords).toEqual([]);
     act(() => result.current.requestDeleteBackupRecords(records));
     expect(result.current.backupDeleteRecords).toEqual([]);
-    apiGet.mockResolvedValueOnce({ items: Array.from({ length: 120 }, (_, index) => ({ id: 120 - index })) });
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: Array.from({ length: 120 }, (_, index) => ({ id: 120 - index })) });
     await act(async () => result.current.refreshBackupRecords());
     act(() => result.current.selectOlderBackupRecords());
     expect(result.current.selectedBackupRecordIDs).toEqual(Array.from({ length: 100 }, (_, index) => 119 - index));
@@ -114,8 +133,8 @@ describe("backup record browsing", () => {
   it.each([new Error("Records offline"), { items: [{ id: "broken" }] }, { items: null }])(
     "reports transport or malformed-list failures (%s)",
     async (response) => {
-      if (response instanceof Error) apiGet.mockRejectedValueOnce(response);
-      else apiGet.mockResolvedValueOnce(response);
+      if (response instanceof Error) vi.mocked(apiGet).mockRejectedValueOnce(response);
+      else vi.mocked(apiGet).mockResolvedValueOnce(response);
       const { result } = setup();
       await act(async () => result.current.openBackupRecordsDialog(provider));
       expect(result.current.backupRecords.state).toBe("error");
@@ -126,11 +145,11 @@ describe("backup record browsing", () => {
     },
   );
 
-  it.each(["resolve", "reject"])("ignores stale %s responses after provider switch or close", async (settle) => {
+  it.each(["resolve", "reject"] as const)("ignores stale %s responses after provider switch or close", async (settle) => {
     const old = deferred();
-    apiGet.mockReturnValueOnce(old.promise);
+    vi.mocked(apiGet).mockReturnValueOnce(old.promise);
     const { result } = setup();
-    let opening;
+    let opening: Promise<void> | undefined;
     act(() => {
       opening = result.current.openBackupRecordsDialog({ id: 1, name: "Old" });
     });
@@ -142,7 +161,7 @@ describe("backup record browsing", () => {
     expect(result.current.backupRecordsProvider).toEqual(provider);
     expect(result.current.backupRecords).toEqual({ state: "ready", data: records, error: null });
     const closing = deferred();
-    apiGet.mockReturnValueOnce(closing.promise);
+    vi.mocked(apiGet).mockReturnValueOnce(closing.promise);
     act(() => {
       opening = result.current.refreshBackupRecords();
     });
@@ -193,8 +212,8 @@ describe("backup record actions", () => {
     expect(result.current.backupDeleteRecords).toEqual([]);
     act(() => result.current.requestDeleteBackupRecords(deleting));
     const pending = deferred();
-    apiPost.mockReturnValueOnce(pending.promise);
-    let submitting;
+    vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
+    let submitting: Promise<void> | undefined;
     act(() => {
       submitting = result.current.deleteBackupRecords(event());
     });
@@ -213,8 +232,8 @@ describe("backup record actions", () => {
     expect(result.current.backupDeleteRecords).toEqual(deleting);
     expect(result.current.selectedBackupRecordIDs).toEqual([2, 1]);
     expect(apiGet).toHaveBeenCalledTimes(1);
-    apiPost.mockResolvedValueOnce({ deleted_count: count });
-    apiGet.mockResolvedValueOnce({ items: [records[0]] });
+    vi.mocked(apiPost).mockResolvedValueOnce({ deleted_count: count });
+    vi.mocked(apiGet).mockResolvedValueOnce({ items: [records[0]] });
     await act(async () => result.current.deleteBackupRecords(event()));
     expect(apiPost).toHaveBeenLastCalledWith("/api/backup/providers/7/records/delete", { record_ids: deleting.map((record) => record.id) });
     expect(result.current.backupDeleteRecords).toEqual([]);
@@ -238,8 +257,8 @@ describe("backup record actions", () => {
     act(() => result.current.setBackupPruneKeepLatest(" 2 "));
     expect(result.current.parsedBackupPruneKeepLatest).toBe(2);
     const pending = deferred();
-    apiPost.mockReturnValueOnce(pending.promise);
-    let submitting;
+    vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
+    let submitting: Promise<void> | undefined;
     act(() => {
       submitting = result.current.pruneBackupRecords(event());
     });
@@ -258,7 +277,7 @@ describe("backup record actions", () => {
     expect(result.current.backupPruneTarget).toEqual(provider);
     expect(result.current.backupPruneKeepLatest).toBe(" 2 ");
     expect(apiGet).toHaveBeenCalledTimes(1);
-    apiPost.mockResolvedValueOnce({ deleted_count: count, keep_latest: 2 });
+    vi.mocked(apiPost).mockResolvedValueOnce({ deleted_count: count, keep_latest: 2 });
     await act(async () => result.current.pruneBackupRecords(event()));
     expect(apiPost).toHaveBeenLastCalledWith("/api/backup/providers/7/prune", { keep_latest: 2 });
     expect(result.current.backupPruneTarget).toBeNull();
@@ -276,14 +295,14 @@ describe("backup record actions", () => {
       requireStreaming: true,
     });
     expect(result.current.actionState.message).toBe("Downloaded latest.aipdb.");
-    apiDownload.mockResolvedValueOnce({ canceled: true });
+    vi.mocked(apiDownload).mockResolvedValueOnce({ saved: false, canceled: true, method: "picker" });
     await act(async () => result.current.downloadBackupRecord({ id: 1 }));
     expect(apiDownload).toHaveBeenLastCalledWith("/api/backup/providers/7/records/1/download", "aipermission-backup.aipdb", {
       picker: true,
       requireStreaming: true,
     });
     expect(result.current.actionState).toEqual(idle);
-    apiDownload.mockRejectedValueOnce(new Error("Stream interrupted"));
+    vi.mocked(apiDownload).mockRejectedValueOnce(new Error("Stream interrupted"));
     await act(async () => result.current.downloadBackupRecord(records[0]));
     expect(result.current.actionState).toEqual({ state: "error", error: "Stream interrupted", message: null });
     act(() => result.current.requestRestoreBackupRecord(records[0]));
@@ -297,8 +316,8 @@ describe("backup record actions", () => {
     expect(result.current.restoreRecordForm).toEqual({ database_name: "Team-Database-restore", database_password: "" });
     act(() => result.current.setRestoreRecordForm({ database_name: "Recovered", database_password: "restore-secret" }));
     const pending = deferred();
-    apiPost.mockReturnValueOnce(pending.promise);
-    let submitting;
+    vi.mocked(apiPost).mockReturnValueOnce(pending.promise);
+    let submitting: Promise<void> | undefined;
     act(() => {
       submitting = result.current.restoreBackupRecord(event());
     });
@@ -316,7 +335,8 @@ describe("backup record actions", () => {
     expect(result.current.actionState.error).toBe("Wrong password");
     expect(result.current.restoreRecordForm.database_password).toBe("restore-secret");
     expect(result.current.restoreRecordTarget).toEqual(records[0]);
-    const timeout = vi.spyOn(window, "setTimeout").mockImplementation(() => 1);
+    vi.useFakeTimers();
+    const timeout = vi.spyOn(window, "setTimeout");
     await act(async () => result.current.restoreBackupRecord(event()));
     expect(apiPost).toHaveBeenLastCalledWith("/api/backup/providers/7/records/3/restore", {
       database_name: "Recovered",
@@ -328,21 +348,23 @@ describe("backup record actions", () => {
     expect(timeout).toHaveBeenCalledWith(expect.any(Function), 800);
     // Execute the scheduled callback against a stub, never the real browser location.
     const reload = vi.fn();
-    const callback = timeout.mock.calls.find(([, delay]) => delay === 800)[0];
+    const callback = timeout.mock.calls.find(([, delay]) => delay === 800)?.[0];
+    if (typeof callback !== "function") throw new Error("Expected the scheduled reload callback.");
     vi.stubGlobal("window", { location: { reload } });
     callback();
     expect(reload).toHaveBeenCalledOnce();
     vi.unstubAllGlobals();
     timeout.mockRestore();
+    vi.useRealTimers();
     expect(apiGet).toHaveBeenCalledTimes(1);
   });
 
   it.each([
-    [{ database_name: "  Team / Data!  " }, "Team-Data-restore"],
-    [{ database_id: "db_123" }, "db_123-restore"],
-    [{ database_name: "***" }, "restored-backup-restore"],
+    [{ id: 3, database_name: "  Team / Data!  " }, "Team-Data-restore"],
+    [{ id: 3, database_id: "db_123" }, "db_123-restore"],
+    [{ id: 3, database_name: "***" }, "restored-backup-restore"],
     [null, "restored-backup-restore"],
-  ])("suggests a sanitized restore name for %s", (record, name) => {
+  ] satisfies [BackupRecord | null, string][])("suggests a sanitized restore name for %s", (record, name) => {
     expect(suggestedRestoreDatabaseName(record)).toBe(name);
   });
 });
