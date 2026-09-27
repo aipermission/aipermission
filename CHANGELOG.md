@@ -9,6 +9,30 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.60] - 2026-09-27
+
+### Changed
+
+- Console permission, target selection, session coordination and live socket workflows
+  use strict TypeScript contracts.
+- Token and Vault permission dialogs, connector and credential editors, file-transfer
+  queues and backup workflows use typed state and validated responses.
+- Connector profile forms share lifecycle defaults while preserving connector-owned
+  configuration and UI behavior.
+
+### Maintenance
+
+- Async ownership, stale completion, project scope validation and typed workflow
+  coverage have regression tests and enforced checks.
+
+### Notes
+
+- This release continues the frontend TypeScript migration; the remaining source modules
+  migrate in the next release.
+- Runtime authorization and database formats are unchanged.
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.59] - 2026-09-27
 
 ### Added
