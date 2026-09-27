@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet, apiPost, apiPostForm } from "../../lib/api";
 import { useTransferBatch } from "./use-transfer-batch";
+import type { TransferBatch } from "./transfer-contracts";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPostForm: vi.fn() }));
 
@@ -111,7 +112,7 @@ it("owns paused queue edits and preserves batch identity on failure", async () =
     await result.current.startQueue();
   });
   expect(apiPost).not.toHaveBeenCalled();
-  const item = {
+  const item: TransferBatch = {
     id: 12,
     status: "paused",
     direction: "download",
@@ -127,11 +128,11 @@ it("owns paused queue edits and preserves batch identity on failure", async () =
   expect(result.current.movePausedQueueItem(1, -1)).toBeNull();
   expect(result.current.movePausedQueueItem(3, 1)).toBeNull();
   expect(result.current.movePausedQueueItem(99, 1)).toBeNull();
-  apiPost.mockResolvedValueOnce({ ...item, items: [{ id: 3, status: "pending" }] });
+  vi.mocked(apiPost).mockResolvedValueOnce({ ...item, items: [{ id: 3, status: "pending" }] });
   await act(async () => result.current.updatePausedBatchQueue([3]));
   expect(apiPost).toHaveBeenLastCalledWith("/api/file-transfer-batches/12/queue", { item_ids: [3] }, { signal: expect.any(AbortSignal) });
-  expect(result.current.batch.item.items).toEqual([{ id: 3, status: "pending" }]);
-  apiPost.mockRejectedValueOnce(new Error("queue unavailable"));
+  expect(result.current.batch.item?.items).toEqual([{ id: 3, status: "pending" }]);
+  vi.mocked(apiPost).mockRejectedValueOnce(new Error("queue unavailable"));
   await act(async () => result.current.updatePausedBatchQueue([3]));
   expect(result.current.batch).toMatchObject({ state: "error", item: { id: 12 }, error: "queue unavailable" });
 });
