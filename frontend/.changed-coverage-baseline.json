@@ -9,41 +9,41 @@
     "lines": 75
   },
   "files": {
-    "src/App.jsx": {
-      "statements": 83.87,
-      "branches": 81.25,
+    "src/App.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/app-mobile-navigation.tsx": {
+      "statements": 80,
+      "branches": 100,
       "functions": 75,
+      "lines": 80
+    },
+    "src/components/app-shell-runtime.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/app-shell.tsx": {
+      "statements": 89.09,
+      "branches": 75,
+      "functions": 78.57,
       "lines": 92
     },
-    "src/components/app-mobile-navigation.jsx": {
-      "statements": 75,
-      "branches": 100,
-      "functions": 70,
-      "lines": 75
+    "src/components/app-sidebar.tsx": {
+      "statements": 90.32,
+      "branches": 86.04,
+      "functions": 84.61,
+      "lines": 90.32
     },
-    "src/components/app-shell-runtime.js": {
-      "statements": 81.08,
-      "branches": 64.86,
-      "functions": 87.5,
-      "lines": 87.87
-    },
-    "src/components/app-shell.jsx": {
-      "statements": 85.45,
-      "branches": 67.85,
-      "functions": 64.28,
-      "lines": 90
-    },
-    "src/components/app-sidebar.jsx": {
-      "statements": 54.83,
-      "branches": 51.11,
-      "functions": 53.84,
-      "lines": 54.83
-    },
-    "src/components/backup-freshness-notices.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/components/backup-freshness-notices.tsx": {
+      "statements": 100,
+      "branches": 91.66,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/connectors/connector-rule-button.tsx": {
       "statements": 100,
@@ -51,117 +51,129 @@
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/connector-action-approval-dialog.jsx": {
+    "src/components/console/connector-action-approval-dialog.tsx": {
       "statements": 91.66,
       "branches": 78.72,
       "functions": 85.71,
       "lines": 91.66
     },
-    "src/components/console/connector-activity-dialog.jsx": {
-      "statements": 32.81,
-      "branches": 12.53,
-      "functions": 31,
-      "lines": 36.29
+    "src/components/console/connector-activity-dialog.tsx": {
+      "statements": 95.45,
+      "branches": 73.07,
+      "functions": 100,
+      "lines": 94.11
+    },
+    "src/components/console/connector-slot-boundary.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/connector-token-permission-controls.tsx": {
+      "statements": 96,
+      "branches": 80.95,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/console/connector-token-permission-model.ts": {
-      "statements": 93.02,
-      "branches": 80.48,
+      "statements": 93.61,
+      "branches": 89.36,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/connector-token-permission-panel.jsx": {
-      "statements": 89.18,
-      "branches": 82.97,
-      "functions": 82.97,
-      "lines": 88.73
+    "src/components/console/connector-token-permission-panel.tsx": {
+      "statements": 95.91,
+      "branches": 86,
+      "functions": 95.83,
+      "lines": 97.82
     },
-    "src/components/console/console-layout.js": {
+    "src/components/console/console-layout.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/console-page-dialogs.jsx": {
+    "src/components/console/console-page-dialogs.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/console-recovery-panel.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/console/console-responsive-shell.jsx": {
-      "statements": 83.33,
-      "branches": 62.5,
-      "functions": 70,
-      "lines": 83.33
-    },
-    "src/components/console/console-target-sidebar.jsx": {
-      "statements": 64.21,
-      "branches": 44.36,
-      "functions": 54.54,
-      "lines": 65.75
-    },
-    "src/components/console/console-workspace-panel.jsx": {
-      "statements": 64.1,
-      "branches": 42.85,
-      "functions": 91.66,
-      "lines": 75
-    },
-    "src/components/console/empty-session-state.jsx": {
-      "statements": 100,
-      "branches": 60,
+    "src/components/console/console-recovery-panel.tsx": {
+      "statements": 96.15,
+      "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/helpers.js": {
+    "src/components/console/console-responsive-shell.tsx": {
       "statements": 100,
-      "branches": 83.33,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/messages-dialog.jsx": {
-      "statements": 31.57,
-      "branches": 29.62,
-      "functions": 22.22,
-      "lines": 33.33
+    "src/components/console/console-target-sidebar.tsx": {
+      "statements": 88.34,
+      "branches": 71.12,
+      "functions": 82.05,
+      "lines": 94.93
     },
-    "src/components/console/no-live-session.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
-    },
-    "src/components/console/pty-console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/console/terminal-transcript.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/console/token-permission-panel.jsx": {
-      "statements": 100,
-      "branches": 0,
+    "src/components/console/console-workspace-panel.tsx": {
+      "statements": 94.87,
+      "branches": 79.36,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/use-connector-approval-dialog.js": {
-      "statements": 91.17,
-      "branches": 78.82,
-      "functions": 90.9,
-      "lines": 98.26
+    "src/components/console/empty-session-state.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
-    "src/components/console/use-connector-token-permission-state.js": {
-      "statements": 95,
-      "branches": 72.72,
+    "src/components/console/helpers.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/messages-dialog.tsx": {
+      "statements": 84.21,
+      "branches": 85.18,
+      "functions": 88.88,
+      "lines": 86.66
+    },
+    "src/components/console/no-live-session.tsx": {
+      "statements": 87.5,
+      "branches": 85.71,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/pty-console.tsx": {
+      "statements": 96.22,
+      "branches": 84.21,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/terminal-transcript.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/token-permission-panel.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/use-connector-approval-dialog.ts": {
+      "statements": 96.45,
+      "branches": 87.12,
+      "functions": 100,
+      "lines": 99.15
+    },
+    "src/components/console/use-connector-token-permission-state.ts": {
+      "statements": 95.85,
+      "branches": 79.25,
       "functions": 100,
       "lines": 100
     },
@@ -171,41 +183,41 @@
       "functions": 89.65,
       "lines": 96.58
     },
-    "src/components/console/use-console-connector-view.js": {
+    "src/components/console/use-console-connector-view.ts": {
       "statements": 100,
-      "branches": 93.33,
+      "branches": 96.15,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/use-console-messages.js": {
-      "statements": 83.78,
-      "branches": 70.27,
-      "functions": 75,
-      "lines": 91.8
-    },
-    "src/components/console/use-console-page-state.js": {
-      "statements": 95.23,
-      "branches": 71.42,
+    "src/components/console/use-console-messages.ts": {
+      "statements": 98.64,
+      "branches": 89.74,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/use-console-permission-view.js": {
+    "src/components/console/use-console-page-state.ts": {
+      "statements": 100,
+      "branches": 95.23,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/use-console-permission-view.ts": {
       "statements": 100,
       "branches": 85.71,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/use-console-recovery-state.js": {
+    "src/components/console/use-console-recovery-state.ts": {
       "statements": 93.75,
-      "branches": 80,
+      "branches": 90,
       "functions": 100,
       "lines": 100
     },
     "src/components/console/use-console-session-coordinator.ts": {
-      "statements": 83.06,
-      "branches": 64.17,
+      "statements": 85.82,
+      "branches": 69.56,
       "functions": 88,
-      "lines": 89.89
+      "lines": 92.07
     },
     "src/components/console/use-console-target-selection.ts": {
       "statements": 91.17,
@@ -215,75 +227,75 @@
     },
     "src/components/console/use-console-workspace-session.ts": {
       "statements": 82.05,
-      "branches": 78.12,
+      "branches": 78.46,
       "functions": 83.33,
       "lines": 91.8
     },
-    "src/components/console/use-vault-session-items.js": {
-      "statements": 95.55,
-      "branches": 86.36,
+    "src/components/console/use-vault-session-items.ts": {
+      "statements": 95.65,
+      "branches": 90,
       "functions": 100,
       "lines": 100
     },
-    "src/components/console/vault-session-dialog.jsx": {
-      "statements": 73.33,
-      "branches": 67.74,
-      "functions": 63.88,
-      "lines": 74.24
+    "src/components/console/vault-session-dialog.tsx": {
+      "statements": 97.36,
+      "branches": 74.24,
+      "functions": 97.22,
+      "lines": 98.52
     },
-    "src/components/database-lock-dialog.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
-    },
-    "src/components/database-switch-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/file-transfer/file-transfer-actions.js": {
-      "statements": 90.47,
-      "branches": 60,
-      "functions": 84.61,
-      "lines": 89.47
-    },
-    "src/components/file-transfer/file-transfer-browser-dialog.jsx": {
-      "statements": 82.05,
-      "branches": 78.46,
-      "functions": 80,
-      "lines": 88.57
-    },
-    "src/components/file-transfer/file-transfer-confirm-dialogs.jsx": {
+    "src/components/database-lock-dialog.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/file-transfer/file-transfer-dialog.jsx": {
-      "statements": 34,
-      "branches": 55.55,
-      "functions": 26.31,
-      "lines": 34.04
-    },
-    "src/components/file-transfer/file-transfer-list-state.js": {
-      "statements": 96.29,
-      "branches": 87.5,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/components/file-transfer/file-transfer-panels.jsx": {
+    "src/components/database-switch-dialog.tsx": {
       "statements": 100,
-      "branches": 94,
+      "branches": 80.76,
       "functions": 100,
       "lines": 100
     },
-    "src/components/file-transfer/file-transfer-queue.jsx": {
-      "statements": 85,
-      "branches": 62.71,
-      "functions": 62.5,
-      "lines": 84.21
+    "src/components/file-transfer/file-transfer-actions.ts": {
+      "statements": 90.47,
+      "branches": 60,
+      "functions": 84.61,
+      "lines": 90
+    },
+    "src/components/file-transfer/file-transfer-browser-dialog.tsx": {
+      "statements": 89.65,
+      "branches": 80.24,
+      "functions": 80,
+      "lines": 92.3
+    },
+    "src/components/file-transfer/file-transfer-confirm-dialogs.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/file-transfer/file-transfer-dialog.tsx": {
+      "statements": 52,
+      "branches": 62.96,
+      "functions": 36.84,
+      "lines": 51.06
+    },
+    "src/components/file-transfer/file-transfer-list-state.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/file-transfer/file-transfer-panels.tsx": {
+      "statements": 100,
+      "branches": 94.23,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/file-transfer/file-transfer-queue.tsx": {
+      "statements": 95,
+      "branches": 93.22,
+      "functions": 87.5,
+      "lines": 94.73
     },
     "src/components/file-transfer/transfer-contracts.ts": {
       "statements": 100,
@@ -292,132 +304,138 @@
       "lines": 100
     },
     "src/components/file-transfer/use-transfer-batch.ts": {
-      "statements": 88.14,
-      "branches": 74.57,
+      "statements": 89.17,
+      "branches": 77.96,
       "functions": 90.24,
       "lines": 94.23
     },
-    "src/components/file-transfer/use-transfer-browser.js": {
-      "statements": 66.66,
-      "branches": 33.33,
-      "functions": 70,
-      "lines": 72.41
+    "src/components/file-transfer/use-transfer-browser.ts": {
+      "statements": 82.92,
+      "branches": 65.95,
+      "functions": 80,
+      "lines": 88.23
     },
-    "src/components/file-transfer/use-transfer-center-state.js": {
-      "statements": 88,
-      "branches": 60,
-      "functions": 78.57,
-      "lines": 89.47
+    "src/components/file-transfer/use-transfer-center-state.ts": {
+      "statements": 96.42,
+      "branches": 100,
+      "functions": 93.33,
+      "lines": 95.45
     },
     "src/components/file-transfer/use-transfer-download.ts": {
       "statements": 79.16,
-      "branches": 75,
+      "branches": 77.77,
       "functions": 75,
       "lines": 81.25
     },
     "src/components/file-transfer/use-transfer-queues.ts": {
-      "statements": 90.9,
-      "branches": 78.78,
-      "functions": 100,
-      "lines": 92.39
-    },
-    "src/components/history/history-components.jsx": {
-      "statements": 83.41,
-      "branches": 75.84,
-      "functions": 91.52,
-      "lines": 88.3
-    },
-    "src/components/history/use-history-transfer-download.js": {
-      "statements": 100,
-      "branches": 87.5,
+      "statements": 97.52,
+      "branches": 90.9,
       "functions": 100,
       "lines": 100
     },
-    "src/components/local-action-reconciliation-dialog.jsx": {
-      "statements": 75,
-      "branches": 50,
-      "functions": 75,
-      "lines": 75
+    "src/components/history/history-components.tsx": {
+      "statements": 92.18,
+      "branches": 84.88,
+      "functions": 96.49,
+      "lines": 95.26
     },
-    "src/components/security/security-settings-panels.jsx": {
-      "statements": 88.88,
-      "branches": 81.81,
-      "functions": 83.33,
-      "lines": 88.23
+    "src/components/history/use-history-transfer-download.ts": {
+      "statements": 100,
+      "branches": 92.85,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/local-action-reconciliation-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/security/security-settings-panels.tsx": {
+      "statements": 100,
+      "branches": 95.83,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/settings/backup-contracts.ts": {
-      "statements": 88.88,
-      "branches": 96.55,
+      "statements": 96.55,
+      "branches": 98.55,
       "functions": 100,
       "lines": 100
     },
-    "src/components/settings/backup-provider-dialogs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/components/settings/backup-provider-dialogs.tsx": {
+      "statements": 72,
+      "branches": 66.66,
+      "functions": 60,
+      "lines": 75
     },
-    "src/components/settings/backup-provider-panel.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/settings/backup-record-dialogs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/settings/backup-retention-panel.jsx": {
-      "statements": 68.88,
-      "branches": 67.7,
-      "functions": 70,
-      "lines": 76.71
-    },
-    "src/components/settings/backup-state.js": {
-      "statements": 66.66,
-      "branches": 50,
+    "src/components/settings/backup-provider-panel.tsx": {
+      "statements": 54.54,
+      "branches": 54.34,
       "functions": 50,
-      "lines": 80
+      "lines": 54.54
     },
-    "src/components/settings/database-settings-panel.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/components/settings/backup-record-dialogs.tsx": {
+      "statements": 75.75,
+      "branches": 81.31,
+      "functions": 61.9,
+      "lines": 80.64
     },
-    "src/components/settings/diagnostics-panel.jsx": {
+    "src/components/settings/backup-retention-contracts.ts": {
       "statements": 100,
-      "branches": 83.33,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/settings/history-labels-panel.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/components/settings/backup-retention-panel.tsx": {
+      "statements": 70.83,
+      "branches": 69.81,
+      "functions": 70,
+      "lines": 78.2
     },
-    "src/components/settings/history-retention-panel.jsx": {
-      "statements": 85.36,
+    "src/components/settings/backup-state.ts": {
+      "statements": 83.33,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/settings/database-settings-panel.tsx": {
+      "statements": 87.8,
       "branches": 84.37,
+      "functions": 88.23,
+      "lines": 100
+    },
+    "src/components/settings/diagnostics-panel.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/settings/history-labels-panel.tsx": {
+      "statements": 91.48,
+      "branches": 88.46,
+      "functions": 92.3,
+      "lines": 97.36
+    },
+    "src/components/settings/history-retention-panel.tsx": {
+      "statements": 90.38,
+      "branches": 86.84,
       "functions": 85,
-      "lines": 90.9
+      "lines": 92.85
     },
-    "src/components/settings/local-action-retry-panel.jsx": {
-      "statements": 74,
-      "branches": 70,
-      "functions": 75,
-      "lines": 78.04
+    "src/components/settings/local-action-retry-panel.tsx": {
+      "statements": 94.11,
+      "branches": 93.61,
+      "functions": 83.33,
+      "lines": 95.23
     },
-    "src/components/settings/maintenance-console-panel.jsx": {
-      "statements": 90.41,
-      "branches": 73.63,
-      "functions": 86.66,
-      "lines": 96.32
+    "src/components/settings/maintenance-console-panel.tsx": {
+      "statements": 90.69,
+      "branches": 77.04,
+      "functions": 87.5,
+      "lines": 96.42
     },
-    "src/components/settings/password-settings-panel.jsx": {
+    "src/components/settings/password-settings-panel.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -437,23 +455,29 @@
     },
     "src/components/tokens/connector-permission-dialog.tsx": {
       "statements": 89.28,
-      "branches": 73.19,
+      "branches": 74.19,
       "functions": 84.21,
       "lines": 92.39
     },
-    "src/components/tokens/created-token-notice.jsx": {
+    "src/components/tokens/created-token-notice.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/tokens/token-install-dialog.jsx": {
-      "statements": 68.42,
-      "branches": 28.94,
-      "functions": 37.5,
-      "lines": 70.58
+    "src/components/tokens/token-create-drawer.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
-    "src/components/tokens/token-revoke-dialog.jsx": {
+    "src/components/tokens/token-install-dialog.tsx": {
+      "statements": 100,
+      "branches": 84.21,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/tokens/token-revoke-dialog.tsx": {
       "statements": 100,
       "branches": 83.33,
       "functions": 100,
@@ -461,19 +485,19 @@
     },
     "src/components/tokens/vault-permission-dialog.tsx": {
       "statements": 88.54,
-      "branches": 82.85,
+      "branches": 83.49,
       "functions": 89.47,
       "lines": 93.45
     },
-    "src/components/transfer-center.jsx": {
+    "src/components/transfer-center.tsx": {
       "statements": 87.96,
-      "branches": 84.37,
+      "branches": 84.78,
       "functions": 90.9,
       "lines": 92.22
     },
-    "src/components/ui/action-menu.jsx": {
+    "src/components/ui/action-menu.tsx": {
       "statements": 91.83,
-      "branches": 69.76,
+      "branches": 74.46,
       "functions": 100,
       "lines": 95.23
     },
@@ -489,37 +513,37 @@
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/card.jsx": {
+    "src/components/ui/card.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/copy-button.jsx": {
-      "statements": 36.36,
-      "branches": 47.61,
-      "functions": 60,
-      "lines": 35
+    "src/components/ui/copy-button.tsx": {
+      "statements": 75,
+      "branches": 80,
+      "functions": 80,
+      "lines": 80.95
     },
-    "src/components/ui/date-time-picker.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/components/ui/dialog.jsx": {
-      "statements": 100,
-      "branches": 93.1,
+    "src/components/ui/date-time-picker.tsx": {
+      "statements": 92.85,
+      "branches": 68.42,
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/drawer.jsx": {
+    "src/components/ui/dialog.tsx": {
+      "statements": 100,
+      "branches": 95.65,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/ui/drawer.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/form.jsx": {
+    "src/components/ui/form.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -531,1231 +555,1777 @@
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/pagination-bar.jsx": {
+    "src/components/ui/pagination-bar.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/progress-bar.jsx": {
-      "statements": 100,
-      "branches": 75,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/components/ui/terminal-block.jsx": {
+    "src/components/ui/progress-bar.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/ui/use-dialog-frame.js": {
+    "src/components/ui/terminal-block.tsx": {
       "statements": 100,
-      "branches": 87.5,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/use-database-lifecycle.js": {
-      "statements": 90.56,
+    "src/components/ui/use-dialog-frame.ts": {
+      "statements": 100,
       "branches": 92.3,
       "functions": 100,
-      "lines": 90.24
+      "lines": 100
     },
-    "src/components/use-gateway-activity-resources.js": {
-      "statements": 84.74,
-      "branches": 57.69,
-      "functions": 90,
-      "lines": 96
+    "src/components/use-database-lifecycle.ts": {
+      "statements": 92.59,
+      "branches": 100,
+      "functions": 100,
+      "lines": 90.47
     },
-    "src/components/use-gateway-core-resources.js": {
-      "statements": 87.12,
-      "branches": 73.21,
-      "functions": 93.75,
-      "lines": 96.29
-    },
-    "src/components/use-gateway-resources.js": {
-      "statements": 100,
-      "branches": 66.66,
+    "src/components/use-gateway-activity-resources.ts": {
+      "statements": 93.22,
+      "branches": 81.81,
       "functions": 100,
       "lines": 100
     },
-    "src/components/use-local-action-reconciliation.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/components/use-gateway-core-resources.ts": {
+      "statements": 89.42,
+      "branches": 78.84,
+      "functions": 94.11,
+      "lines": 96.42
     },
-    "src/components/vault/pending-vault-approval-notice.jsx": {
+    "src/components/use-gateway-resources.ts": {
       "statements": 100,
-      "branches": 60,
+      "branches": 83.33,
       "functions": 100,
       "lines": 100
     },
-    "src/components/vault/use-vault-action-approvals.js": {
+    "src/components/use-local-action-reconciliation.ts": {
+      "statements": 90.9,
+      "branches": 72.22,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/vault/pending-vault-approval-notice.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/vault/use-vault-action-approvals.ts": {
       "statements": 91,
-      "branches": 84.93,
+      "branches": 85.89,
       "functions": 100,
       "lines": 100
     },
-    "src/components/vault/use-vault-bindings.js": {
-      "statements": 64.28,
-      "branches": 40.9,
-      "functions": 65,
-      "lines": 77.5
+    "src/components/vault/use-vault-bindings.ts": {
+      "statements": 93.33,
+      "branches": 74.19,
+      "functions": 94.44,
+      "lines": 98.14
     },
-    "src/components/vault/use-vault-collection.js": {
-      "statements": 95.49,
-      "branches": 88,
-      "functions": 88,
-      "lines": 97.82
+    "src/components/vault/use-vault-collection.ts": {
+      "statements": 98.24,
+      "branches": 91.78,
+      "functions": 96,
+      "lines": 98.94
     },
-    "src/components/vault/use-vault-value-actions.js": {
-      "statements": 72.72,
-      "branches": 53.84,
-      "functions": 64.28,
-      "lines": 83.13
+    "src/components/vault/use-vault-value-actions.ts": {
+      "statements": 82.78,
+      "branches": 77.35,
+      "functions": 71.42,
+      "lines": 90.42
     },
-    "src/components/vault/vault-action-approval-dialog.jsx": {
+    "src/components/vault/vault-action-approval-dialog.tsx": {
       "statements": 100,
       "branches": 95.83,
       "functions": 100,
       "lines": 100
     },
-    "src/components/vault/vault-binding-utils.js": {
-      "statements": 50,
-      "branches": 40,
-      "functions": 50,
-      "lines": 50
-    },
-    "src/components/vault/vault-options.js": {
+    "src/components/vault/vault-binding-utils.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/vault/vault-page-content.jsx": {
+    "src/components/vault/vault-options.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/components/vault/vault-row.jsx": {
-      "statements": 100,
-      "branches": 71.42,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/components/vault/vault-value-dialogs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/editor/connector-page-dialogs.jsx": {
-      "statements": 90.47,
-      "branches": 79.31,
-      "functions": 86.66,
-      "lines": 89.47
-    },
-    "src/connectors/editor/connector-target-groups.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/editor/connector-targets-table.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/editor/editor-support.js": {
-      "statements": 100,
-      "branches": 50,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/editor/use-connector-connection-tests.js": {
-      "statements": 82.6,
-      "branches": 64.7,
-      "functions": 85.71,
-      "lines": 87.17
-    },
-    "src/connectors/editor/use-connector-editor.ts": {
-      "statements": 84.07,
-      "branches": 66.03,
-      "functions": 86.36,
-      "lines": 85.85
-    },
-    "src/connectors/editor/use-connector-inventory.js": {
-      "statements": 94.5,
-      "branches": 57.44,
-      "functions": 100,
-      "lines": 97.14
-    },
-    "src/connectors/editor/use-credential-profile-editor.ts": {
-      "statements": 94.2,
-      "branches": 80.76,
-      "functions": 100,
-      "lines": 93.65
-    },
-    "src/connectors/templates/_shared/action-result.js": {
-      "statements": 94.11,
-      "branches": 77.27,
-      "functions": 80,
-      "lines": 93.33
-    },
-    "src/connectors/templates/_shared/action-runner.js": {
-      "statements": 92.72,
-      "branches": 72.91,
-      "functions": 100,
-      "lines": 97.67
-    },
-    "src/connectors/templates/_shared/action-state.js": {
+    "src/components/vault/vault-page-content.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/_shared/console-theme.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/_shared/credential-profile-fields.jsx": {
-      "statements": 66.66,
-      "branches": 100,
-      "functions": 66.66,
-      "lines": 66.66
-    },
-    "src/connectors/templates/_shared/database-connector-model.js": {
-      "statements": 7.14,
-      "branches": 7.29,
-      "functions": 10.25,
-      "lines": 8.45
-    },
-    "src/connectors/templates/_shared/endpoint-footer.jsx": {
+    "src/components/vault/vault-row.tsx": {
       "statements": 100,
-      "branches": 100,
+      "branches": 78.57,
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/_shared/highlighted-text.jsx": {
-      "statements": 94.44,
-      "branches": 50,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/live-console-panel.jsx": {
-      "statements": 100,
-      "branches": 75,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/network-transport-contract.js": {
-      "statements": 98.27,
-      "branches": 96.92,
-      "functions": 100,
-      "lines": 97.82
-    },
-    "src/connectors/templates/_shared/network-transport-fields.jsx": {
-      "statements": 100,
-      "branches": 74.41,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/result-sections.jsx": {
-      "statements": 60,
-      "branches": 56.25,
-      "functions": 60,
-      "lines": 60
-    },
-    "src/connectors/templates/_shared/sql-console-chrome.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
-    },
-    "src/connectors/templates/_shared/sql-console-config.js": {
-      "statements": 56.09,
-      "branches": 55.46,
-      "functions": 48.27,
-      "lines": 61.76
-    },
-    "src/connectors/templates/_shared/sql-console-data.js": {
-      "statements": 78.57,
-      "branches": 68.38,
-      "functions": 89.28,
-      "lines": 79.38
-    },
-    "src/connectors/templates/_shared/sql-console-workspace.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/_shared/sql-console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/_shared/sql-editor-completions.js": {
-      "statements": 74.57,
-      "branches": 56.52,
-      "functions": 100,
-      "lines": 80
-    },
-    "src/connectors/templates/_shared/sql-editor-runtime.js": {
-      "statements": 6.25,
-      "branches": 0,
-      "functions": 0,
-      "lines": 6.66
-    },
-    "src/connectors/templates/_shared/sql-editor.jsx": {
-      "statements": 98.48,
-      "branches": 79.16,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/sql-left-panel.jsx": {
-      "statements": 9.09,
-      "branches": 0,
-      "functions": 0,
-      "lines": 9.09
-    },
-    "src/connectors/templates/_shared/sql-query-form.jsx": {
-      "statements": 28.57,
-      "branches": 50,
-      "functions": 16.66,
-      "lines": 28.57
-    },
-    "src/connectors/templates/_shared/sql-request-detail.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/_shared/sql-result-output.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/_shared/sql-schema-browser.jsx": {
-      "statements": 100,
-      "branches": 62.5,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/structured-session-empty.jsx": {
-      "statements": 100,
-      "branches": 55.55,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/target-profile-lifecycle.js": {
-      "statements": 100,
-      "branches": 93.54,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/_shared/use-sql-console.js": {
-      "statements": 74.35,
-      "branches": 47.82,
-      "functions": 65,
-      "lines": 80
-    },
-    "src/connectors/templates/_shared/use-sql-metadata.js": {
-      "statements": 78.26,
-      "branches": 61.53,
-      "functions": 84.21,
-      "lines": 83.92
-    },
-    "src/connectors/templates/catalog.js": {
-      "statements": 93.75,
-      "branches": 75,
-      "functions": 100,
-      "lines": 93.75
-    },
-    "src/connectors/templates/clickhouse/console.jsx": {
-      "statements": 71.42,
-      "branches": 50,
-      "functions": 60,
-      "lines": 71.42
-    },
-    "src/connectors/templates/clickhouse/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/clickhouse/form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/clickhouse/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/clickhouse/model.js": {
-      "statements": 41.66,
-      "branches": 0,
-      "functions": 0,
-      "lines": 41.66
-    },
-    "src/connectors/templates/common.jsx": {
-      "statements": 33.33,
-      "branches": 13.33,
-      "functions": 20,
-      "lines": 36.36
-    },
-    "src/connectors/templates/docker/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/docker/container-console-panel.jsx": {
-      "statements": 33.33,
-      "branches": 12.5,
-      "functions": 50,
-      "lines": 33.33
-    },
-    "src/connectors/templates/docker/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/docker/form.jsx": {
-      "statements": 100,
-      "branches": 66.66,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/docker/helpers.js": {
-      "statements": 25.56,
-      "branches": 16.66,
-      "functions": 37.5,
-      "lines": 27.77
-    },
-    "src/connectors/templates/docker/lifecycle-dialog.jsx": {
-      "statements": 100,
-      "branches": 50,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/docker/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/docker/model.js": {
-      "statements": 36.95,
-      "branches": 56.56,
-      "functions": 40.74,
-      "lines": 38.09
-    },
-    "src/connectors/templates/docker/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/docker/resource-browser.jsx": {
-      "statements": 100,
-      "branches": 68.42,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/docker/resource-pane.jsx": {
-      "statements": 81.81,
-      "branches": 65.11,
-      "functions": 100,
-      "lines": 81.81
-    },
-    "src/connectors/templates/docker/result-view.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/docker/use-docker-browser.js": {
-      "statements": 63.58,
-      "branches": 45.85,
-      "functions": 64.15,
-      "lines": 70.1
-    },
-    "src/connectors/templates/docker/use-docker-lifecycle.js": {
-      "statements": 70.37,
-      "branches": 55,
-      "functions": 66.66,
-      "lines": 80.95
-    },
-    "src/connectors/templates/host-ping-button.jsx": {
-      "statements": 75,
-      "branches": 50,
-      "functions": 87.5,
-      "lines": 89.28
-    },
-    "src/connectors/templates/kafka/console-helpers.js": {
-      "statements": 30.76,
-      "branches": 33.33,
-      "functions": 60,
-      "lines": 27.27
-    },
-    "src/connectors/templates/kafka/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kafka/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kafka/form.jsx": {
-      "statements": 88.88,
-      "branches": 81.81,
-      "functions": 84.61,
-      "lines": 88.88
-    },
-    "src/connectors/templates/kafka/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kafka/model-helpers.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kafka/model.js": {
-      "statements": 54,
-      "branches": 65.88,
-      "functions": 40,
-      "lines": 54.34
-    },
-    "src/connectors/templates/kafka/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kafka/resource-browser.jsx": {
+    "src/components/vault/vault-value-dialogs.tsx": {
       "statements": 77.77,
-      "branches": 50,
-      "functions": 77.77,
-      "lines": 77.77
-    },
-    "src/connectors/templates/kafka/resource-detail.jsx": {
-      "statements": 62.5,
-      "branches": 46.93,
-      "functions": 58.33,
-      "lines": 69.23
-    },
-    "src/connectors/templates/kafka/sasl-fields.jsx": {
-      "statements": 66.66,
-      "branches": 83.33,
-      "functions": 50,
-      "lines": 66.66
-    },
-    "src/connectors/templates/kafka/use-kafka-browser.js": {
-      "statements": 83.5,
-      "branches": 49.27,
-      "functions": 82.35,
-      "lines": 90.24
-    },
-    "src/connectors/templates/kafka/use-kafka-writes.js": {
-      "statements": 42.37,
-      "branches": 26.92,
-      "functions": 47.36,
-      "lines": 46.93
-    },
-    "src/connectors/templates/kafka/write-dialogs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/console.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/form.jsx": {
-      "statements": 100,
-      "branches": 66.66,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/kubernetes/helpers.js": {
-      "statements": 44.18,
-      "branches": 29.09,
-      "functions": 77.77,
-      "lines": 55.76
-    },
-    "src/connectors/templates/kubernetes/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/model.js": {
-      "statements": 37.77,
-      "branches": 58.58,
-      "functions": 40.74,
-      "lines": 38.09
-    },
-    "src/connectors/templates/kubernetes/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/pod-console-panel.jsx": {
-      "statements": 33.33,
-      "branches": 30,
-      "functions": 50,
-      "lines": 33.33
-    },
-    "src/connectors/templates/kubernetes/resource-browser.jsx": {
-      "statements": 80,
-      "branches": 50,
-      "functions": 90,
-      "lines": 84.61
-    },
-    "src/connectors/templates/kubernetes/resource-detail.jsx": {
-      "statements": 67.34,
-      "branches": 58.46,
-      "functions": 90,
-      "lines": 69.04
-    },
-    "src/connectors/templates/kubernetes/resource-workspace.jsx": {
-      "statements": 75,
-      "branches": 64.7,
-      "functions": 66.66,
-      "lines": 75
-    },
-    "src/connectors/templates/kubernetes/restart-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/kubernetes/use-kubernetes-browser.js": {
-      "statements": 81.16,
-      "branches": 62.37,
-      "functions": 81.81,
-      "lines": 85.48
-    },
-    "src/connectors/templates/kubernetes/use-rollout-restart.js": {
-      "statements": 71.42,
-      "branches": 70,
+      "branches": 88.37,
       "functions": 71.42,
-      "lines": 86.66
+      "lines": 81.25
     },
-    "src/connectors/templates/mail/action-result-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/connectors/editor/capture-connector-family.tsx": {
+      "statements": 92.24,
+      "branches": 82.85,
+      "functions": 100,
+      "lines": 98.09
     },
-    "src/connectors/templates/mail/compose-dialog.jsx": {
-      "statements": 28.8,
-      "branches": 35.44,
-      "functions": 25,
-      "lines": 31.53
-    },
-    "src/connectors/templates/mail/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/mail/credential-form.jsx": {
-      "statements": 87.5,
-      "branches": 57.14,
-      "functions": 83.33,
-      "lines": 83.33
-    },
-    "src/connectors/templates/mail/form.jsx": {
-      "statements": 100,
-      "branches": 50,
+    "src/connectors/editor/capture-credential-family.tsx": {
+      "statements": 94.66,
+      "branches": 87.75,
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/mail/helpers.js": {
-      "statements": 20,
-      "branches": 20.35,
-      "functions": 41.37,
-      "lines": 20.53
-    },
-    "src/connectors/templates/mail/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/mail/mailbox-pane.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/mail/message-detail.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/mail/message-dialogs.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/mail/model.js": {
-      "statements": 60.27,
-      "branches": 69.79,
-      "functions": 54.54,
-      "lines": 64.91
-    },
-    "src/connectors/templates/mail/profile-fields.jsx": {
-      "statements": 88.46,
-      "branches": 50,
-      "functions": 90.47,
-      "lines": 92
-    },
-    "src/connectors/templates/mail/rich-text.js": {
-      "statements": 4.1,
-      "branches": 0,
-      "functions": 0,
-      "lines": 5.26
-    },
-    "src/connectors/templates/mail/use-mail-action-runner.js": {
-      "statements": 76.28,
-      "branches": 57.4,
-      "functions": 75,
-      "lines": 78.31
-    },
-    "src/connectors/templates/mail/use-mail-compose.js": {
-      "statements": 64,
-      "branches": 29.78,
-      "functions": 53.84,
-      "lines": 73.8
-    },
-    "src/connectors/templates/mail/use-mail-workspace.js": {
-      "statements": 88.46,
-      "branches": 87.5,
-      "functions": 90.9,
-      "lines": 85.71
-    },
-    "src/connectors/templates/mail/use-mailbox.js": {
-      "statements": 57.89,
-      "branches": 42.85,
-      "functions": 55.26,
-      "lines": 62.71
-    },
-    "src/connectors/templates/postgres/backup-restore-dialog.jsx": {
-      "statements": 54.54,
-      "branches": 54.54,
-      "functions": 44.44,
-      "lines": 54.54
-    },
-    "src/connectors/templates/postgres/console.jsx": {
-      "statements": 50,
-      "branches": 100,
-      "functions": 0,
-      "lines": 50
-    },
-    "src/connectors/templates/postgres/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/postgres/form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/postgres/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/postgres/model.js": {
-      "statements": 60.6,
-      "branches": 25,
-      "functions": 50,
-      "lines": 65.38
-    },
-    "src/connectors/templates/postgres/operations.jsx": {
-      "statements": 75,
-      "branches": 83.33,
-      "functions": 50,
-      "lines": 75
-    },
-    "src/connectors/templates/postgres/postgres-restore-identity.js": {
+    "src/connectors/editor/connector-family-providers.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/postgres/provision-scope-picker.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/postgres/provision-user-dialog.jsx": {
-      "statements": 56.55,
-      "branches": 65.38,
-      "functions": 51,
-      "lines": 63.5
-    },
-    "src/connectors/templates/postgres/provisioning.js": {
-      "statements": 72.07,
-      "branches": 52.8,
-      "functions": 65.78,
-      "lines": 75.55
-    },
-    "src/connectors/templates/postgres/use-postgres-backup-restore.js": {
-      "statements": 96.25,
-      "branches": 86.56,
-      "functions": 100,
-      "lines": 98.63
-    },
-    "src/connectors/templates/postgres/use-postgres-provisioning.js": {
-      "statements": 88.73,
-      "branches": 75.51,
-      "functions": 100,
-      "lines": 91.8
-    },
-    "src/connectors/templates/rabbitmq/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/rabbitmq/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/rabbitmq/form.jsx": {
+    "src/connectors/editor/connector-page-dialogs.tsx": {
       "statements": 100,
-      "branches": 50,
+      "branches": 94.64,
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/rabbitmq/helpers.js": {
-      "statements": 29.41,
-      "branches": 29.41,
-      "functions": 21.42,
-      "lines": 29.62
-    },
-    "src/connectors/templates/rabbitmq/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/rabbitmq/model.js": {
-      "statements": 46.15,
-      "branches": 56.47,
-      "functions": 41.66,
-      "lines": 48.93
-    },
-    "src/connectors/templates/rabbitmq/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/rabbitmq/publish-form.jsx": {
-      "statements": 38.46,
-      "branches": 64.7,
-      "functions": 27.27,
-      "lines": 45.45
-    },
-    "src/connectors/templates/rabbitmq/queue-browser.jsx": {
-      "statements": 80,
-      "branches": 64,
-      "functions": 100,
-      "lines": 84.61
-    },
-    "src/connectors/templates/rabbitmq/queue-detail.jsx": {
-      "statements": 80,
-      "branches": 79.48,
-      "functions": 66.66,
-      "lines": 80
-    },
-    "src/connectors/templates/rabbitmq/routing-key-picker.jsx": {
-      "statements": 1,
-      "branches": 1,
-      "functions": 1,
-      "lines": 1
-    },
-    "src/connectors/templates/rabbitmq/use-rabbitmq-browser.js": {
-      "statements": 91.89,
-      "branches": 67.92,
-      "functions": 95.23,
-      "lines": 94.4
-    },
-    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.js": {
-      "statements": 96.42,
-      "branches": 86.66,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/redis/browser-helpers.js": {
-      "statements": 65,
-      "branches": 46.15,
-      "functions": 80,
-      "lines": 80
-    },
-    "src/connectors/templates/redis/confirm-dialog.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/console.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/endpoint-footer.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/form.jsx": {
-      "statements": 100,
-      "branches": 50,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/redis/key-browser.jsx": {
-      "statements": 55.55,
-      "branches": 48.27,
-      "functions": 66.66,
-      "lines": 62.5
-    },
-    "src/connectors/templates/redis/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/model.js": {
-      "statements": 59.32,
-      "branches": 65.62,
-      "functions": 53.57,
-      "lines": 63.46
-    },
-    "src/connectors/templates/redis/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/redis/use-redis-browser.js": {
-      "statements": 88.5,
-      "branches": 67.18,
-      "functions": 71.42,
-      "lines": 96
-    },
-    "src/connectors/templates/redis/use-redis-mutations.js": {
-      "statements": 59.09,
-      "branches": 55.55,
-      "functions": 55.55,
-      "lines": 66.03
-    },
-    "src/connectors/templates/redis/value-workspace.jsx": {
-      "statements": 66.66,
-      "branches": 71.92,
-      "functions": 63.63,
-      "lines": 70
-    },
-    "src/connectors/templates/registry.jsx": {
-      "statements": 77.08,
-      "branches": 62.79,
-      "functions": 100,
-      "lines": 76.59
-    },
-    "src/connectors/templates/s3/console.jsx": {
-      "statements": 39.02,
-      "branches": 21.73,
-      "functions": 9.09,
-      "lines": 41.02
-    },
-    "src/connectors/templates/s3/credential-form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/s3/dialogs.jsx": {
-      "statements": 6.55,
-      "branches": 1,
-      "functions": 1,
-      "lines": 8.69
-    },
-    "src/connectors/templates/s3/endpoint-footer.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/s3/form.jsx": {
-      "statements": 100,
-      "branches": 62.5,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/helpers.js": {
-      "statements": 52.38,
-      "branches": 25.53,
-      "functions": 63.63,
-      "lines": 59.57
-    },
-    "src/connectors/templates/s3/lifecycle-dialog.jsx": {
-      "statements": 2.56,
-      "branches": 0,
-      "functions": 4.54,
-      "lines": 2.85
-    },
-    "src/connectors/templates/s3/list-item.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/s3/metadata-panel.jsx": {
-      "statements": 33.33,
-      "branches": 5.55,
-      "functions": 100,
-      "lines": 33.33
-    },
-    "src/connectors/templates/s3/model.js": {
-      "statements": 50,
-      "branches": 60.95,
-      "functions": 42.3,
-      "lines": 50.81
-    },
-    "src/connectors/templates/s3/object-browser.jsx": {
-      "statements": 100,
-      "branches": 66.66,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/object-detail-pane.jsx": {
-      "statements": 100,
-      "branches": 84.21,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/operations.jsx": {
-      "statements": 0,
-      "branches": 100,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/s3/presign-dialog.jsx": {
-      "statements": 69.38,
-      "branches": 48.83,
-      "functions": 44.44,
-      "lines": 71.73
-    },
-    "src/connectors/templates/s3/transfer-paths.js": {
-      "statements": 83.33,
-      "branches": 62.5,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/use-s3-browser.js": {
-      "statements": 80.45,
-      "branches": 62.03,
-      "functions": 80.95,
-      "lines": 85.08
-    },
-    "src/connectors/templates/s3/use-s3-object-delete.js": {
-      "statements": 93.33,
-      "branches": 85.71,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/use-s3-upload.js": {
-      "statements": 90.47,
-      "branches": 76.47,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/connectors/templates/s3/versions-dialog.jsx": {
-      "statements": 73.43,
-      "branches": 68.49,
-      "functions": 69.23,
-      "lines": 77.58
-    },
-    "src/connectors/templates/ssh/bulk-command-dialog.jsx": {
-      "statements": 71.15,
-      "branches": 55.23,
-      "functions": 67.3,
-      "lines": 80.16
-    },
-    "src/connectors/templates/ssh/console.jsx": {
-      "statements": 69.23,
-      "branches": 66.66,
-      "functions": 50,
-      "lines": 66.66
-    },
-    "src/connectors/templates/ssh/credential-form.jsx": {
-      "statements": 7.69,
-      "branches": 0,
-      "functions": 0,
-      "lines": 7.69
-    },
-    "src/connectors/templates/ssh/credential-row-actions.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/ssh/form.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/ssh/list-item.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
-    },
-    "src/connectors/templates/ssh/model.js": {
-      "statements": 10.19,
-      "branches": 9.95,
-      "functions": 13.79,
-      "lines": 12.03
-    },
-    "src/connectors/templates/ssh/operations.jsx": {
-      "statements": 67.82,
-      "branches": 56.84,
-      "functions": 60.71,
-      "lines": 75
-    },
-    "src/connectors/templates/target-profile-save.js": {
-      "statements": 83.33,
-      "branches": 66.66,
-      "functions": 100,
-      "lines": 100
-    },
-    "src/lib/api.js": {
-      "statements": 94.22,
-      "branches": 85.63,
-      "functions": 100,
-      "lines": 95.16
-    },
-    "src/lib/async-resource.js": {
+    "src/connectors/editor/connector-target-groups.ts": {
       "statements": 100,
       "branches": 80,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/browser-storage.js": {
+    "src/connectors/editor/connector-targets-table.tsx": {
+      "statements": 100,
+      "branches": 94.11,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/credential-delete-dialog.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/connector-action-risks.js": {
+    "src/connectors/editor/credential-family-boundary.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/credential-menu.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/credential-row.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/editor-support.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-connector-connection-tests.ts": {
+      "statements": 96.61,
+      "branches": 84.84,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-connector-editor.ts": {
+      "statements": 84.07,
+      "branches": 70.9,
+      "functions": 86.36,
+      "lines": 85.85
+    },
+    "src/connectors/editor/use-connector-family-host.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-connector-inventory.ts": {
+      "statements": 98.85,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-credential-family-host.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-credential-inventory.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/use-credential-profile-editor.ts": {
+      "statements": 94.36,
+      "branches": 83.33,
+      "functions": 100,
+      "lines": 93.75
+    },
+    "src/connectors/editor/use-family-command-host.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/action-result.ts": {
+      "statements": 96.29,
+      "branches": 86.27,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/action-runner.ts": {
+      "statements": 96.72,
+      "branches": 89.04,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/action-state.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/connector-family-registration.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-presentation.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-recovery.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-runtime-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-slot-session.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-target-config.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-template.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/console-theme.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/credential-display-row.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/credential-family-registration.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/credential-profile-fields.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/database-connector-model.ts": {
+      "statements": 92.85,
+      "branches": 78.21,
+      "functions": 97.36,
+      "lines": 97.18
+    },
+    "src/connectors/templates/_shared/database-console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/database-credential-targets.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/endpoint-footer.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/highlighted-text.tsx": {
+      "statements": 100,
+      "branches": 70,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/live-console-panel.tsx": {
+      "statements": 100,
+      "branches": 95,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/network-transport-contract.ts": {
+      "statements": 98.27,
+      "branches": 97.01,
+      "functions": 100,
+      "lines": 97.82
+    },
+    "src/connectors/templates/_shared/network-transport-fields.tsx": {
+      "statements": 100,
+      "branches": 82.22,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/result-sections.tsx": {
+      "statements": 100,
+      "branches": 94.44,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/runtime-console-slot.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-console-chrome.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-console-config.ts": {
+      "statements": 86.74,
+      "branches": 73.68,
+      "functions": 93.1,
+      "lines": 91.3
+    },
+    "src/connectors/templates/_shared/sql-console-data.ts": {
+      "statements": 100,
+      "branches": 90.96,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-console-slot.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-console-workspace.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-console.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-editor-completions.ts": {
+      "statements": 75.8,
+      "branches": 60,
+      "functions": 100,
+      "lines": 80.76
+    },
+    "src/connectors/templates/_shared/sql-editor-runtime.ts": {
+      "statements": 100,
+      "branches": 96.42,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-editor.tsx": {
+      "statements": 100,
+      "branches": 86.36,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-left-panel.tsx": {
+      "statements": 90.9,
+      "branches": 69.23,
+      "functions": 85.71,
+      "lines": 90.9
+    },
+    "src/connectors/templates/_shared/sql-query-form.tsx": {
+      "statements": 57.14,
+      "branches": 75,
+      "functions": 50,
+      "lines": 57.14
+    },
+    "src/connectors/templates/_shared/sql-request-detail.tsx": {
+      "statements": 80,
+      "branches": 55,
+      "functions": 100,
+      "lines": 80
+    },
+    "src/connectors/templates/_shared/sql-result-output.tsx": {
+      "statements": 100,
+      "branches": 85,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-schema-browser.tsx": {
+      "statements": 100,
+      "branches": 78.12,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/structured-console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/structured-session-empty.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/target-profile-lifecycle.ts": {
+      "statements": 100,
+      "branches": 93.54,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/use-sql-console.ts": {
+      "statements": 87.17,
+      "branches": 67.39,
+      "functions": 85,
+      "lines": 90
+    },
+    "src/connectors/templates/_shared/use-sql-metadata.ts": {
+      "statements": 82.85,
+      "branches": 69.23,
+      "functions": 90,
+      "lines": 84.74
+    },
+    "src/connectors/templates/catalog.ts": {
+      "statements": 93.75,
+      "branches": 75,
+      "functions": 100,
+      "lines": 93.75
+    },
+    "src/connectors/templates/clickhouse/connector-family.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 83.33
+    },
+    "src/connectors/templates/clickhouse/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/clickhouse/console.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/clickhouse/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/clickhouse/credential-form.tsx": {
+      "statements": 100,
+      "branches": 82.35,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/clickhouse/form.tsx": {
+      "statements": 66.66,
+      "branches": 100,
+      "functions": 62.5,
+      "lines": 66.66
+    },
+    "src/connectors/templates/clickhouse/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/clickhouse/model.ts": {
+      "statements": 100,
+      "branches": 64.7,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/common.tsx": {
+      "statements": 100,
+      "branches": 93.33,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/connector-family-registry.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/console-model-registry.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/console-recovery-registry.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/credential-registry.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/connector-family.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 83.33
+    },
+    "src/connectors/templates/docker/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/console.tsx": {
+      "statements": 72.72,
+      "branches": 50,
+      "functions": 57.14,
+      "lines": 72.72
+    },
+    "src/connectors/templates/docker/container-console-panel.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/credential-form.tsx": {
+      "statements": 100,
+      "branches": 94.11,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/form.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/helpers.ts": {
+      "statements": 97.1,
+      "branches": 91.45,
+      "functions": 100,
+      "lines": 96.84
+    },
+    "src/connectors/templates/docker/lifecycle-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/model.ts": {
+      "statements": 91.3,
+      "branches": 71.57,
+      "functions": 88.88,
+      "lines": 92.85
+    },
+    "src/connectors/templates/docker/operations.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/resource-browser.tsx": {
+      "statements": 100,
+      "branches": 84.21,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/resource-output.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/docker/resource-pane.tsx": {
+      "statements": 95.45,
+      "branches": 81.39,
+      "functions": 100,
+      "lines": 95.45
+    },
+    "src/connectors/templates/docker/result-view.tsx": {
+      "statements": 96.72,
+      "branches": 68.67,
+      "functions": 92.3,
+      "lines": 98.21
+    },
+    "src/connectors/templates/docker/use-docker-browser.ts": {
+      "statements": 89.74,
+      "branches": 71.79,
+      "functions": 89.74,
+      "lines": 96.21
+    },
+    "src/connectors/templates/docker/use-docker-lifecycle.ts": {
+      "statements": 97.77,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/host-ping-button.tsx": {
+      "statements": 97.43,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/connector-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/console-helpers.ts": {
+      "statements": 81.25,
+      "branches": 88.88,
+      "functions": 100,
+      "lines": 92.3
+    },
+    "src/connectors/templates/kafka/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/console-target.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/console.tsx": {
+      "statements": 53.33,
+      "branches": 5.88,
+      "functions": 33.33,
+      "lines": 57.14
+    },
+    "src/connectors/templates/kafka/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/credential-form.tsx": {
+      "statements": 100,
+      "branches": 92.3,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/form.tsx": {
+      "statements": 100,
+      "branches": 95.83,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/model-helpers.ts": {
+      "statements": 100,
+      "branches": 76.19,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/model.ts": {
+      "statements": 95.83,
+      "branches": 69.87,
+      "functions": 95.45,
+      "lines": 97.72
+    },
+    "src/connectors/templates/kafka/operations.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/resource-browser.tsx": {
+      "statements": 88.88,
+      "branches": 75,
+      "functions": 88.88,
+      "lines": 88.88
+    },
+    "src/connectors/templates/kafka/resource-detail.tsx": {
+      "statements": 81.25,
+      "branches": 71.42,
+      "functions": 75,
+      "lines": 84.61
+    },
+    "src/connectors/templates/kafka/resource-output.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/sasl-fields.tsx": {
+      "statements": 100,
+      "branches": 83.33,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kafka/use-kafka-browser.ts": {
+      "statements": 92.07,
+      "branches": 77.27,
+      "functions": 88.88,
+      "lines": 97.64
+    },
+    "src/connectors/templates/kafka/use-kafka-writes.ts": {
+      "statements": 81.6,
+      "branches": 73.68,
+      "functions": 76,
+      "lines": 86.66
+    },
+    "src/connectors/templates/kafka/write-dialogs.tsx": {
+      "statements": 76.19,
+      "branches": 69.49,
+      "functions": 66.66,
+      "lines": 73.68
+    },
+    "src/connectors/templates/kubernetes/connector-family.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 83.33
+    },
+    "src/connectors/templates/kubernetes/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/console.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/credential-form.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/form.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/helpers.ts": {
+      "statements": 98.83,
+      "branches": 95.75,
+      "functions": 100,
+      "lines": 98.07
+    },
+    "src/connectors/templates/kubernetes/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/model.ts": {
+      "statements": 91.11,
+      "branches": 73.68,
+      "functions": 88.88,
+      "lines": 92.85
+    },
+    "src/connectors/templates/kubernetes/operations.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/pod-console-panel.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/resource-browser.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/resource-detail.tsx": {
+      "statements": 94.11,
+      "branches": 91.42,
+      "functions": 100,
+      "lines": 95.45
+    },
+    "src/connectors/templates/kubernetes/resource-output.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/resource-workspace.tsx": {
       "statements": 87.5,
-      "branches": 73.33,
+      "branches": 88.23,
+      "functions": 83.33,
+      "lines": 87.5
+    },
+    "src/connectors/templates/kubernetes/restart-dialog.tsx": {
+      "statements": 100,
+      "branches": 50,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/kubernetes/use-kubernetes-browser.ts": {
+      "statements": 88.19,
+      "branches": 71,
+      "functions": 87.87,
+      "lines": 93.02
+    },
+    "src/connectors/templates/kubernetes/use-rollout-restart.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/action-result-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/compose-dialog.tsx": {
+      "statements": 82.25,
+      "branches": 79.01,
+      "functions": 64.44,
+      "lines": 84.54
+    },
+    "src/connectors/templates/mail/connector-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/console-target.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/console.tsx": {
+      "statements": 62.5,
+      "branches": 74.46,
+      "functions": 36.36,
+      "lines": 65.21
+    },
+    "src/connectors/templates/mail/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/credential-form.tsx": {
+      "statements": 87.5,
+      "branches": 68.75,
+      "functions": 83.33,
+      "lines": 83.33
+    },
+    "src/connectors/templates/mail/form.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/helpers.ts": {
+      "statements": 99.31,
+      "branches": 93.97,
+      "functions": 100,
+      "lines": 99.11
+    },
+    "src/connectors/templates/mail/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/mailbox-pane.tsx": {
+      "statements": 81.81,
+      "branches": 78.57,
+      "functions": 75,
+      "lines": 81.81
+    },
+    "src/connectors/templates/mail/message-detail.tsx": {
+      "statements": 100,
+      "branches": 77.04,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/message-dialogs.tsx": {
+      "statements": 100,
+      "branches": 81.25,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/message-output.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/mail/model.ts": {
+      "statements": 88.73,
+      "branches": 82.75,
+      "functions": 93.93,
+      "lines": 98.21
+    },
+    "src/connectors/templates/mail/profile-fields.tsx": {
+      "statements": 92.3,
+      "branches": 95.83,
+      "functions": 90.47,
+      "lines": 92
+    },
+    "src/connectors/templates/mail/rich-text.ts": {
+      "statements": 91.78,
+      "branches": 72.15,
+      "functions": 100,
+      "lines": 94.73
+    },
+    "src/connectors/templates/mail/use-mail-action-runner.ts": {
+      "statements": 92.85,
+      "branches": 78.84,
+      "functions": 85.71,
+      "lines": 94.11
+    },
+    "src/connectors/templates/mail/use-mail-compose.ts": {
+      "statements": 80.39,
+      "branches": 57.77,
+      "functions": 69.23,
+      "lines": 90.69
+    },
+    "src/connectors/templates/mail/use-mail-workspace.ts": {
+      "statements": 88.46,
+      "branches": 87.5,
+      "functions": 90.9,
+      "lines": 85.71
+    },
+    "src/connectors/templates/mail/use-mailbox.ts": {
+      "statements": 90.13,
+      "branches": 72.22,
+      "functions": 94.59,
+      "lines": 89.16
+    },
+    "src/connectors/templates/native-family-registry.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ping-result-contract.ts": {
+      "statements": 93.75,
+      "branches": 92.85,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/backup-restore-dialog.tsx": {
+      "statements": 100,
+      "branches": 95.83,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/connector-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/console.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/credential-form.tsx": {
+      "statements": 100,
+      "branches": 96,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/form.tsx": {
+      "statements": 66.66,
+      "branches": 100,
+      "functions": 62.5,
+      "lines": 66.66
+    },
+    "src/connectors/templates/postgres/list-item.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/model.ts": {
+      "statements": 93.93,
+      "branches": 63.46,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/operations.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/postgres-restore-identity.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/provision-result-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/provision-scope-picker.tsx": {
+      "statements": 100,
+      "branches": 95.83,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/provision-user-dialog.tsx": {
+      "statements": 88.88,
+      "branches": 85.71,
+      "functions": 87.5,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/provisioning.ts": {
+      "statements": 93.8,
+      "branches": 73.22,
+      "functions": 100,
+      "lines": 94.56
+    },
+    "src/connectors/templates/postgres/use-postgres-backup-restore.ts": {
+      "statements": 97.75,
+      "branches": 90.47,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/use-postgres-provisioning.ts": {
+      "statements": 94.36,
+      "branches": 80.85,
+      "functions": 100,
+      "lines": 98.36
+    },
+    "src/connectors/templates/rabbitmq/connector-family.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 83.33
+    },
+    "src/connectors/templates/rabbitmq/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/console-target.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/console.tsx": {
+      "statements": 87.5,
+      "branches": 87.5,
       "functions": 100,
       "lines": 87.5
     },
-    "src/lib/connector-permissions.js": {
-      "statements": 95.74,
-      "branches": 74.54,
+    "src/connectors/templates/rabbitmq/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/date-time.js": {
-      "statements": 53.33,
-      "branches": 43.33,
-      "functions": 80,
-      "lines": 61.29
+    "src/connectors/templates/rabbitmq/credential-form.tsx": {
+      "statements": 100,
+      "branches": 91.3,
+      "functions": 100,
+      "lines": 100
     },
-    "src/lib/downloads/download-buffer.js": {
-      "statements": 75,
-      "branches": 60,
-      "functions": 70,
-      "lines": 75
+    "src/connectors/templates/rabbitmq/form.tsx": {
+      "statements": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
     },
-    "src/lib/errors.js": {
-      "statements": 17.24,
-      "branches": 28.12,
-      "functions": 33.33,
-      "lines": 15.78
+    "src/connectors/templates/rabbitmq/helpers.ts": {
+      "statements": 97.56,
+      "branches": 89.13,
+      "functions": 100,
+      "lines": 96.87
     },
-    "src/lib/file-digest.js": {
+    "src/connectors/templates/rabbitmq/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/model.ts": {
+      "statements": 90,
+      "branches": 76.54,
+      "functions": 80.95,
+      "lines": 91.11
+    },
+    "src/connectors/templates/rabbitmq/operations.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/publish-form.tsx": {
+      "statements": 100,
+      "branches": 88.23,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/queue-browser.tsx": {
+      "statements": 80,
+      "branches": 64,
+      "functions": 100,
+      "lines": 84.61
+    },
+    "src/connectors/templates/rabbitmq/queue-detail.tsx": {
+      "statements": 100,
+      "branches": 94.87,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/routing-key-picker.tsx": {
+      "statements": 97.95,
+      "branches": 94.73,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": {
       "statements": 95.45,
+      "branches": 80.5,
+      "functions": 100,
+      "lines": 97.69
+    },
+    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.ts": {
+      "statements": 98.94,
+      "branches": 95.12,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/browser-helpers.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/browser-output.ts": {
+      "statements": 100,
+      "branches": 95.23,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/confirm-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/connector-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/console-target.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/console.tsx": {
+      "statements": 87.5,
+      "branches": 50,
+      "functions": 100,
+      "lines": 87.5
+    },
+    "src/connectors/templates/redis/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/credential-form.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/endpoint-footer.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/form.tsx": {
+      "statements": 100,
+      "branches": 62.5,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/key-browser.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/model.ts": {
+      "statements": 94.91,
+      "branches": 79.78,
+      "functions": 96.42,
+      "lines": 98.07
+    },
+    "src/connectors/templates/redis/operations.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/redis/use-redis-browser.ts": {
+      "statements": 93.02,
       "branches": 83.33,
-      "functions": 85.71,
+      "functions": 92.85,
+      "lines": 97.29
+    },
+    "src/connectors/templates/redis/use-redis-mutations.ts": {
+      "statements": 88.6,
+      "branches": 78.66,
+      "functions": 88.88,
+      "lines": 93.65
+    },
+    "src/connectors/templates/redis/value-workspace.tsx": {
+      "statements": 95.23,
+      "branches": 84.21,
+      "functions": 100,
+      "lines": 95
+    },
+    "src/connectors/templates/registry.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
       "lines": 100
     },
-    "src/lib/file-transfer-utils.js": {
-      "statements": 71.79,
+    "src/connectors/templates/s3/connector-family.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 80,
+      "lines": 83.33
+    },
+    "src/connectors/templates/s3/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/console-target.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/console.tsx": {
+      "statements": 80,
+      "branches": 64,
+      "functions": 77.27,
+      "lines": 83.33
+    },
+    "src/connectors/templates/s3/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/credential-form.tsx": {
+      "statements": 100,
+      "branches": 92.59,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/dialogs.tsx": {
+      "statements": 38.88,
+      "branches": 74.13,
+      "functions": 12.5,
+      "lines": 46.15
+    },
+    "src/connectors/templates/s3/endpoint-footer.tsx": {
+      "statements": 100,
+      "branches": 71.42,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/form.tsx": {
+      "statements": 100,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/helpers.ts": {
+      "statements": 85.91,
       "branches": 61.9,
-      "functions": 72.72,
-      "lines": 75.8
+      "functions": 86.95,
+      "lines": 90.56
     },
-    "src/lib/gateway-context.js": {
+    "src/connectors/templates/s3/lifecycle-dialog.tsx": {
+      "statements": 58.58,
+      "branches": 52.74,
+      "functions": 50,
+      "lines": 59.75
+    },
+    "src/connectors/templates/s3/list-item.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/gateway-contracts/connector-action-contract.js": {
+    "src/connectors/templates/s3/metadata-panel.tsx": {
+      "statements": 100,
+      "branches": 88.88,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/model.ts": {
+      "statements": 84.37,
+      "branches": 70.47,
+      "functions": 84.61,
+      "lines": 86.88
+    },
+    "src/connectors/templates/s3/object-browser.tsx": {
+      "statements": 100,
+      "branches": 83.33,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/object-detail-pane.tsx": {
+      "statements": 100,
+      "branches": 94.73,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/operations.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/gateway-contracts/generated-connector-contract.js": {
+    "src/connectors/templates/s3/output.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/presign-dialog.tsx": {
+      "statements": 85.18,
+      "branches": 80,
+      "functions": 66.66,
+      "lines": 85.71
+    },
+    "src/connectors/templates/s3/transfer-paths.ts": {
+      "statements": 83.33,
+      "branches": 62.5,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/use-s3-browser.ts": {
+      "statements": 90.64,
+      "branches": 76,
+      "functions": 95.23,
+      "lines": 96.61
+    },
+    "src/connectors/templates/s3/use-s3-object-delete.ts": {
+      "statements": 93.33,
+      "branches": 85.71,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/use-s3-upload.ts": {
+      "statements": 90.47,
+      "branches": 76.47,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/s3/versions-dialog.tsx": {
+      "statements": 91.66,
+      "branches": 85.71,
+      "functions": 92.85,
+      "lines": 97.18
+    },
+    "src/connectors/templates/ssh/bulk-command-contracts.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/bulk-command-dialog.tsx": {
+      "statements": 84.27,
+      "branches": 70.87,
+      "functions": 88.46,
+      "lines": 93.49
+    },
+    "src/connectors/templates/ssh/connector-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/console-recovery.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/console-runtime.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/console.tsx": {
+      "statements": 80,
+      "branches": 75,
+      "functions": 62.5,
+      "lines": 80
+    },
+    "src/connectors/templates/ssh/credential-family.tsx": {
+      "statements": 100,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/credential-form.tsx": {
+      "statements": 84.61,
+      "branches": 80,
+      "functions": 80,
+      "lines": 84.61
+    },
+    "src/connectors/templates/ssh/credential-row-actions.tsx": {
+      "statements": 75,
+      "branches": 50,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/form.tsx": {
+      "statements": 58.33,
+      "branches": 100,
+      "functions": 54.54,
+      "lines": 58.33
+    },
+    "src/connectors/templates/ssh/list-item.tsx": {
+      "statements": 100,
+      "branches": 85.71,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/model-helpers.ts": {
+      "statements": 88.46,
+      "branches": 94.82,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/model.ts": {
+      "statements": 61,
+      "branches": 52.13,
+      "functions": 76.92,
+      "lines": 63.63
+    },
+    "src/connectors/templates/ssh/operation-contracts.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/operations.tsx": {
+      "statements": 76.66,
+      "branches": 64.24,
+      "functions": 75.86,
+      "lines": 81
+    },
+    "src/connectors/templates/target-profile-save.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/template-registration.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/activity-date.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/api-types.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/api.ts": {
+      "statements": 96.13,
+      "branches": 87.09,
+      "functions": 100,
+      "lines": 96.75
+    },
+    "src/lib/async-resource.ts": {
+      "statements": 100,
+      "branches": 80,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/browser-storage.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/connector-action-risks.ts": {
+      "statements": 100,
+      "branches": 92.3,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/connector-permissions.ts": {
+      "statements": 95.74,
+      "branches": 80,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/date-time.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/downloads/download-buffer.ts": {
+      "statements": 96.66,
+      "branches": 90,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/errors.ts": {
+      "statements": 86.2,
+      "branches": 84.37,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/file-digest.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/file-transfer-utils.ts": {
+      "statements": 100,
+      "branches": 97.61,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-context.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/activity-resource-contracts.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/audit-resource-contract.ts": {
+      "statements": 95.65,
+      "branches": 97.05,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/connector-action-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/connector-catalog-contract.ts": {
+      "statements": 88.88,
+      "branches": 90.9,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/connector-inventory-contract.ts": {
+      "statements": 87.23,
+      "branches": 80,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/connector-management-contracts.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/core-resource-contracts.ts": {
+      "statements": 96.96,
+      "branches": 98.61,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/database-status-contract.ts": {
+      "statements": 100,
+      "branches": 83.78,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/generated-connector-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/history-resource-contract.ts": {
+      "statements": 88.46,
+      "branches": 88.05,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/project-list-contract.ts": {
+      "statements": 90.9,
+      "branches": 96.66,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/retention-settings-contract.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -1767,37 +2337,79 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/history-pagination.js": {
-      "statements": 47.05,
-      "branches": 15.38,
-      "functions": 80,
-      "lines": 53.84
-    },
-    "src/lib/load-project-options.js": {
-      "statements": 80,
-      "branches": 33.33,
-      "functions": 100,
-      "lines": 85.71
-    },
-    "src/lib/local-action-retry.js": {
-      "statements": 80.48,
-      "branches": 77.27,
-      "functions": 100,
-      "lines": 83.82
-    },
-    "src/lib/mcp-package.js": {
+    "src/lib/gateway-contracts/security-settings-contract.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/mcp-setup-command.js": {
+    "src/lib/gateway-contracts/settings-database-contract.ts": {
       "statements": 100,
-      "branches": 66.66,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/password.js": {
+    "src/lib/gateway-contracts/vault-binding-contract.ts": {
+      "statements": 93.54,
+      "branches": 92.85,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/vault-item-list-contract.ts": {
+      "statements": 88.23,
+      "branches": 95.45,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/vault-management-contract.ts": {
+      "statements": 97.29,
+      "branches": 97.87,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/vault-session-options-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/history-pagination.ts": {
+      "statements": 100,
+      "branches": 93.33,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/load-gateway-collection.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/load-project-options.ts": {
+      "statements": 100,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/local-action-retry.ts": {
+      "statements": 83.52,
+      "branches": 81.25,
+      "functions": 100,
+      "lines": 87.5
+    },
+    "src/lib/mcp-package.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/mcp-setup-command.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/password.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -1815,7 +2427,7 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/release.js": {
+    "src/lib/release.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -1827,29 +2439,29 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/theme.js": {
+    "src/lib/theme.ts": {
       "statements": 92.85,
       "branches": 62.5,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/token-status.js": {
+    "src/lib/token-status.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/ui-cookie.js": {
-      "statements": 45.45,
-      "branches": 38.46,
-      "functions": 66.66,
-      "lines": 62.5
-    },
-    "src/lib/update-check.js": {
-      "statements": 93.65,
-      "branches": 81.35,
+    "src/lib/ui-cookie.ts": {
+      "statements": 100,
+      "branches": 92.3,
       "functions": 100,
-      "lines": 95.83
+      "lines": 100
+    },
+    "src/lib/update-check.ts": {
+      "statements": 100,
+      "branches": 94.2,
+      "functions": 100,
+      "lines": 100
     },
     "src/lib/use-async-action.ts": {
       "statements": 100,
@@ -1858,30 +2470,36 @@
       "lines": 100
     },
     "src/lib/use-connector-permissions.ts": {
-      "statements": 89.38,
-      "branches": 72.61,
-      "functions": 95,
-      "lines": 91.39
-    },
-    "src/lib/use-media-query.js": {
-      "statements": 75,
-      "branches": 60,
-      "functions": 70,
-      "lines": 75
-    },
-    "src/lib/use-token-expiry-clock.js": {
-      "statements": 100,
-      "branches": 87.5,
+      "statements": 98.07,
+      "branches": 95.65,
       "functions": 100,
-      "lines": 100
+      "lines": 98.8
     },
-    "src/lib/utils.js": {
+    "src/lib/use-media-query.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/lib/vault-approval-poll.js": {
+    "src/lib/use-token-expiry-clock.ts": {
+      "statements": 100,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/use-unlock-status.ts": {
+      "statements": 95.83,
+      "branches": 92.85,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/utils.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/vault-approval-poll.ts": {
       "statements": 93.33,
       "branches": 91.66,
       "functions": 100,
@@ -1893,149 +2511,155 @@
       "functions": 100,
       "lines": 100
     },
-    "src/lib/vault-session-selection.js": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/lib/vault-session-selection.ts": {
+      "statements": 69.23,
+      "branches": 18.18,
+      "functions": 75,
+      "lines": 75
     },
-    "src/main.jsx": {
-      "statements": 0,
+    "src/main.tsx": {
+      "statements": 100,
       "branches": 100,
       "functions": 100,
-      "lines": 0
+      "lines": 100
     },
-    "src/pages/audit-logs.jsx": {
-      "statements": 81.06,
-      "branches": 63.47,
-      "functions": 87.5,
-      "lines": 88.46
+    "src/pages/audit-logs.tsx": {
+      "statements": 84.37,
+      "branches": 65.56,
+      "functions": 88.88,
+      "lines": 91.12
     },
-    "src/pages/connectors.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/pages/connectors.tsx": {
+      "statements": 78.57,
+      "branches": 61.11,
+      "functions": 71.42,
+      "lines": 80.95
     },
-    "src/pages/console.jsx": {
-      "statements": 79.16,
-      "branches": 55.88,
-      "functions": 52.94,
-      "lines": 82.22
+    "src/pages/console.tsx": {
+      "statements": 88.88,
+      "branches": 63.88,
+      "functions": 70.58,
+      "lines": 88.88
     },
-    "src/pages/credentials.jsx": {
-      "statements": 55.88,
-      "branches": 37.5,
-      "functions": 36.66,
-      "lines": 57.37
+    "src/pages/credentials.tsx": {
+      "statements": 94.11,
+      "branches": 84.61,
+      "functions": 88.88,
+      "lines": 92.3
     },
-    "src/pages/dashboard.jsx": {
+    "src/pages/dashboard.tsx": {
       "statements": 100,
-      "branches": 50,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/history.jsx": {
+    "src/pages/history.tsx": {
       "statements": 100,
-      "branches": 80.76,
+      "branches": 96.42,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/mcp-setup.jsx": {
-      "statements": 63.63,
-      "branches": 40,
-      "functions": 42.85,
-      "lines": 60
-    },
-    "src/pages/projects.jsx": {
-      "statements": 77.33,
-      "branches": 54.38,
-      "functions": 89.47,
-      "lines": 82.08
-    },
-    "src/pages/remote-restore-helpers.js": {
+    "src/pages/mcp-setup.tsx": {
       "statements": 100,
-      "branches": 77.77,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/remote-restore-panel.jsx": {
+    "src/pages/projects.tsx": {
+      "statements": 89.33,
+      "branches": 69.09,
+      "functions": 100,
+      "lines": 94.02
+    },
+    "src/pages/remote-restore-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/pages/remote-restore-helpers.ts": {
+      "statements": 100,
+      "branches": 83.33,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/pages/remote-restore-panel.tsx": {
       "statements": 87.17,
-      "branches": 71.95,
+      "branches": 73.07,
       "functions": 100,
       "lines": 91.58
     },
-    "src/pages/security.jsx": {
+    "src/pages/security.tsx": {
       "statements": 100,
       "branches": 92.3,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/settings.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/pages/settings.tsx": {
+      "statements": 100,
+      "branches": 75,
+      "functions": 100,
+      "lines": 100
     },
-    "src/pages/tokens.jsx": {
-      "statements": 81.89,
-      "branches": 77.21,
-      "functions": 68.51,
-      "lines": 81.81
+    "src/pages/tokens.tsx": {
+      "statements": 86.95,
+      "branches": 81.48,
+      "functions": 77.08,
+      "lines": 87.5
     },
-    "src/pages/unlock-create-panel.jsx": {
+    "src/pages/unlock-create-panel.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/unlock-database-panel.jsx": {
+    "src/pages/unlock-database-panel.tsx": {
       "statements": 97.95,
-      "branches": 86.11,
+      "branches": 92,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/unlock-import-panel.jsx": {
+    "src/pages/unlock-import-panel.tsx": {
       "statements": 100,
       "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/unlock.jsx": {
-      "statements": 95.58,
-      "branches": 85.96,
+    "src/pages/unlock.tsx": {
+      "statements": 98.48,
+      "branches": 95.45,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/use-history-page-state.js": {
-      "statements": 84.41,
-      "branches": 56,
-      "functions": 74.5,
-      "lines": 90.59
+    "src/pages/use-history-page-state.ts": {
+      "statements": 88.19,
+      "branches": 67.69,
+      "functions": 81.63,
+      "lines": 92
     },
-    "src/pages/use-security-page-state.js": {
-      "statements": 96.15,
-      "branches": 82.35,
-      "functions": 100,
-      "lines": 97.95
-    },
-    "src/pages/use-unlock-lifecycle-mutation.js": {
-      "statements": 95.23,
-      "branches": 87.5,
+    "src/pages/use-security-page-state.ts": {
+      "statements": 97.82,
+      "branches": 92.3,
       "functions": 100,
       "lines": 100
     },
-    "src/pages/vault-components.jsx": {
-      "statements": 41.53,
-      "branches": 63.38,
-      "functions": 34.61,
-      "lines": 41.37
+    "src/pages/use-unlock-lifecycle-mutation.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
-    "src/pages/vault.jsx": {
-      "statements": 0,
-      "branches": 0,
-      "functions": 0,
-      "lines": 0
+    "src/pages/vault-components.tsx": {
+      "statements": 46.15,
+      "branches": 75,
+      "functions": 36.53,
+      "lines": 43.1
+    },
+    "src/pages/vault.tsx": {
+      "statements": 90,
+      "branches": 78.57,
+      "functions": 83.33,
+      "lines": 90
     }
   }
 }
