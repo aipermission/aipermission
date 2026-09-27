@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
+const { parse } = require("yaml");
 const root = path.resolve(__dirname, "../..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const [workflow, makefile] = [
@@ -78,4 +79,9 @@ test("frontend ratchets derive trusted bases from the GitHub event", () => {
   ]) {
     assert.doesNotMatch(workflow, new RegExp(`${variable}:`));
   }
+});
+
+test("full-source frontend verification has a bounded thirty-minute budget", () => {
+  const frontend = parse(workflow).jobs.frontend;
+  assert.equal(frontend["timeout-minutes"], 30);
 });
