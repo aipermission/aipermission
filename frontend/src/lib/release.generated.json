@@ -1,6 +1,35 @@
 {
-  "version": "0.2.59",
+  "version": "0.2.60",
   "entries": [
+    {
+      "version": "0.2.60",
+      "label": "Typed frontend workflows",
+      "sections": [
+        {
+          "title": "Changed",
+          "items": [
+            "Console permission, target selection, session coordination and live socket workflows use strict TypeScript contracts.",
+            "Token and Vault permission dialogs, connector and credential editors, file-transfer queues and backup workflows use typed state and validated responses.",
+            "Connector profile forms share lifecycle defaults while preserving connector-owned configuration and UI behavior."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Async ownership, stale completion, project scope validation and typed workflow coverage have regression tests and enforced checks."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "This release continues the frontend TypeScript migration; the remaining source modules migrate in the next release.",
+            "Runtime authorization and database formats are unchanged.",
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.59",
       "label": "Typed frontend security contracts",
@@ -266,39 +295,6 @@
           "title": "Security",
           "items": [
             "Generated verification recipe digests use a narrow semantic Gitleaks allowlist while default secret-detection rules and complete-history scanning remain active."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.52",
-      "label": "Audit integrity and private storage",
-      "sections": [
-        {
-          "title": "Fixed",
-          "items": [
-            "Vault records preserve JSON integer precision while decrypting structured metadata instead of silently rounding large numeric values.",
-            "Connector action audit records retain the project snapshot captured at request time even when the target later moves to another project."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Permission audit snapshots are bounded before persistence so oversized action catalogs cannot produce unbounded audit records.",
-            "Encrypted database artifacts and related sidecar files are created and reopened with owner-only file permissions."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Audit documentation now describes bounded permission snapshots and immutable project attribution."
           ]
         },
         {
