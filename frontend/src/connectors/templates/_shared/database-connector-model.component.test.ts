@@ -1,7 +1,7 @@
 import { beforeEach, expect, expectTypeOf, it, vi } from "vitest";
 import { apiDelete, apiPost, apiPut } from "../../../lib/api";
 import { createDatabaseConnectorModel } from "./database-connector-model";
-import type { DatabaseModelForm, DatabaseTarget, DatabaseTargetDefaults } from "./database-model-types";
+import type { DatabaseModelForm, DatabasePresentationTarget, DatabaseTarget, DatabaseTargetDefaults } from "./database-model-types";
 
 vi.mock("../../../lib/api", () => ({ apiDelete: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn() }));
 
@@ -30,7 +30,7 @@ function model(includeEmptyPassword = false) {
     includeEmptyPassword,
     targetForm: () => targetDefaults,
     targetConfig: (form) => ({ host: form.host, port: Number(form.port) }),
-    targetEndpoint: ({ target }) => target.name,
+    targetEndpoint: ({ target }) => target.name || "Unnamed database",
   });
 }
 
@@ -160,7 +160,16 @@ it("widens normalized transport fields without erasing unrelated form types", ()
   expect(complete.host).toBe("127.0.0.1");
 });
 
+it("keeps presentation-only targets out of persistence and connection-test operations", () => {
+  const connector = model();
+  expectTypeOf<DatabasePresentationTarget>().not.toExtend<NonNullable<Parameters<typeof connector.save>[0]["target"]>>();
+  expectTypeOf<DatabasePresentationTarget>().not.toExtend<Parameters<typeof connector.deleteTarget>[0]["target"]>();
+  expectTypeOf<DatabasePresentationTarget>().not.toExtend<Parameters<typeof connector.test>[0]["target"]>();
+});
+
 it("types connector-specific credential and target serializers independently", async () => {
+  expectTypeOf<DatabaseTarget["id"]>().toEqualTypeOf<number>();
+  expectTypeOf<DatabaseTarget["connector_kind"]>().toEqualTypeOf<string>();
   const connector = createDatabaseConnectorModel({
     kind: "database",
     label: "Database",
@@ -169,7 +178,7 @@ it("types connector-specific credential and target serializers independently", a
     credentialDefaults: { ...credentialDefaults, tenant_id: "default-tenant" },
     targetForm: () => ({ ...targetDefaults, organization: "target-organization" }),
     targetConfig: (form) => ({ host: form.host }),
-    targetEndpoint: ({ target }) => target.name,
+    targetEndpoint: ({ target }) => target.name || "Unnamed database",
     credentialPublic: (form) => ({ username: form.username, tenant_id: form.tenant_id }),
     targetCredentialPublic: (form) => ({ username: form.username, organization: form.organization }),
   });

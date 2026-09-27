@@ -8,6 +8,7 @@ import {
 import type {
   KubernetesCredentialForm,
   KubernetesModelForm,
+  KubernetesPresentationTarget,
   KubernetesProfile,
   KubernetesRuntimeTarget,
   KubernetesTarget,
@@ -131,23 +132,23 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }: { target: KubernetesTarget }) {
+export function targetEndpoint({ target }: { target: KubernetesPresentationTarget }) {
   const profile = target.config?.transport_target_ref || "no transport";
   const context = target.config?.context ? ` · context ${target.config.context}` : "";
   const namespace = target.config?.default_namespace ? ` · ns ${target.config.default_namespace}` : "";
   return `${target.config?.kubectl_command || "kubectl"} · ${profile}${context}${namespace}`;
 }
 
-export function targetDisplayName({ target }: { target?: KubernetesTarget | null }) {
+export function targetDisplayName({ target }: { target?: KubernetesPresentationTarget | null }) {
   if (!target) return "Kubernetes target";
   return target.target_name || target.name || "Kubernetes target";
 }
 
-export function targetSubtitle({ target }: { target: KubernetesTarget }) {
+export function targetSubtitle({ target }: { target: KubernetesPresentationTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }: { target?: KubernetesTarget | null }) {
+export function targetProfileLabel({ target }: { target?: KubernetesPresentationTarget | null }) {
   return target?.profile_label || "namespace scope";
 }
 

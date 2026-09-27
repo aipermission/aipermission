@@ -19,3 +19,4 @@ export default Object.freeze({
   Operations: S3ConnectorOperationsTemplate,
   RowActions: S3ConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { s3ConsoleModel as consoleModel } from "./console-model";

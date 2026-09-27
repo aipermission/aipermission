@@ -18,3 +18,4 @@ export default Object.freeze({
   RowActions: ClickHouseConnectorRowActionsTemplate,
   ToolbarActions: ClickHouseConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { clickhouseConsoleModel as consoleModel } from "./console-model";

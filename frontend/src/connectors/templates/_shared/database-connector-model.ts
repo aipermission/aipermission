@@ -9,6 +9,7 @@ import type {
   DatabaseCredentialRow,
   DatabaseModelConfig,
   DatabaseModelForm,
+  DatabasePresentationTarget,
   DatabaseProfile,
   DatabaseTarget,
   DatabaseTargetDefaults,
@@ -189,16 +190,16 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     return { ok: data.ok, error: data.message || null, data };
   }
 
-  function targetDisplayName({ target }: { target?: DatabaseTarget | null }): string {
+  function targetDisplayName({ target }: { target?: DatabasePresentationTarget | null }): string {
     if (!target) return `${label} target`;
     return target.target_name || target.name || `${label} target`;
   }
 
-  function targetSubtitle({ target }: { target: DatabaseTarget }): string {
+  function targetSubtitle({ target }: { target: DatabasePresentationTarget }): string {
     return targetEndpoint({ target });
   }
 
-  function targetProfileLabel({ target }: { target?: DatabaseTarget | null }): string {
+  function targetProfileLabel({ target }: { target?: DatabasePresentationTarget | null }): string {
     return target?.profile_label || "default";
   }
 

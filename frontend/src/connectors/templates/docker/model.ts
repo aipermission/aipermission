@@ -5,7 +5,14 @@ import {
   createTargetProfileLifecycle,
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
-import type { DockerCredentialForm, DockerModelForm, DockerProfile, DockerRuntimeTarget, DockerTarget } from "./form-types";
+import type {
+  DockerCredentialForm,
+  DockerModelForm,
+  DockerPresentationTarget,
+  DockerProfile,
+  DockerRuntimeTarget,
+  DockerTarget,
+} from "./form-types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyDockerCredentialForm = {
@@ -125,21 +132,21 @@ export function credentialHint() {
   return null;
 }
 
-export function targetEndpoint({ target }: { target: DockerTarget }) {
+export function targetEndpoint({ target }: { target: DockerPresentationTarget }) {
   const profile = target.config?.transport_target_ref || "no transport";
   return `${target.config?.docker_command || "docker"} · ${profile}`;
 }
 
-export function targetDisplayName({ target }: { target?: DockerTarget | null }) {
+export function targetDisplayName({ target }: { target?: DockerPresentationTarget | null }) {
   if (!target) return "Docker target";
   return target.target_name || target.name || "Docker target";
 }
 
-export function targetSubtitle({ target }: { target: DockerTarget }) {
+export function targetSubtitle({ target }: { target: DockerPresentationTarget }) {
   return targetEndpoint({ target });
 }
 
-export function targetProfileLabel({ target }: { target?: DockerTarget | null }) {
+export function targetProfileLabel({ target }: { target?: DockerPresentationTarget | null }) {
   return target?.profile_label || "container scope";
 }
 

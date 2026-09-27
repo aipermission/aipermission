@@ -35,3 +35,4 @@ export interface KubernetesTarget extends LifecycleTarget<KubernetesProfile> {
   };
 }
 export type KubernetesRuntimeTarget = KubernetesTarget & ConnectorRuntimeIdentity;
+export type KubernetesPresentationTarget = Pick<KubernetesTarget, "config" | "target_name" | "profile_label"> & { name?: string };

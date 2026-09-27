@@ -20,3 +20,4 @@ export default Object.freeze({
   RowActions: PostgresConnectorRowActionsTemplate,
   ToolbarActions: PostgresConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
+export { postgresConsoleModel as consoleModel } from "./console-model";
