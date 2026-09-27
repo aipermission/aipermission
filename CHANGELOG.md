@@ -9,6 +9,33 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.61] - 2026-09-27
+
+### Changed
+
+- Every production module and colocated test in frontend/src uses strict TypeScript;
+  source discovery rejects JavaScript migration regressions.
+- Connector-owned credential, editor, console presentation and runtime recovery models
+  preserve their native types through shared captured providers.
+- Shared SQL, resource browser, transfer, backup and session workflows retain runtime
+  response validation and stale-operation guards.
+
+### Fixed
+
+- Audit payload previews preserve zero-valued fields.
+
+### Maintenance
+
+- Typed behavioral tests, import boundaries, test discovery and measured per-owner
+  coverage protect the completed migration.
+
+### Notes
+
+- JavaScript build and browser-test tooling outside frontend/src remains supported.
+- Runtime authorization and database formats are unchanged.
+- AIPermission remains local-only, single-user, and developer-focused.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.60] - 2026-09-27
 
 ### Changed
