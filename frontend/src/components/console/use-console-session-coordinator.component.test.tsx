@@ -43,18 +43,18 @@ const vaultOptions = {
   projects: [{ id: 4, name: "My Project" }],
 };
 
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.mocked(apiGet).mockReset();
+  vi.mocked(apiPost).mockReset();
+  vi.mocked(useConsoleConnections).mockReset();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("useConsoleSessionCoordinator", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.mocked(apiGet).mockReset();
-    vi.mocked(apiPost).mockReset();
-    vi.mocked(useConsoleConnections).mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("creates and activates a plain console with the stable request contract", async () => {
     vi.mocked(apiGet).mockResolvedValue({ supported: false });
     vi.mocked(apiPost).mockResolvedValue({ id: 10, runtime_id: 7, status: "connecting" });
@@ -310,5 +310,51 @@ describe("useConsoleSessionCoordinator", () => {
     expect(session).toMatchObject({ id: 10, runtime_id: 7 });
     expect(connections.attachSession).toHaveBeenCalledWith(10);
     expect(apiPost).not.toHaveBeenCalled();
+  });
+});
+
+describe("explicit console session initialization", () => {
+  it("creates a session when ensureSession finds no current runtime session", async () => {
+    vi.mocked(apiGet).mockResolvedValue({ supported: false });
+    vi.mocked(apiPost).mockResolvedValue({ id: 12, runtime_id: 7, status: "connecting" });
+    const { result, connections } = renderCoordinator();
+    await act(async () => {
+      expect(await result.current.ensureSession(runtime)).toMatchObject({ id: 12, runtime_id: 7 });
+    });
+    await act(async () => vi.runAllTimersAsync());
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(connections.attachSession).toHaveBeenCalledExactlyOnceWith(12);
+  });
+
+  it("skips the optional Vault probe for explicit selections and preserves deferred activation", async () => {
+    vi.mocked(apiPost).mockResolvedValue({ id: 12, runtime_id: 7, status: "connecting" });
+    const { result, connections } = renderCoordinator();
+    await act(async () => {
+      expect(
+        await result.current.newSession(runtime, { vaultItems: [], name: "Debug", closeExisting: false, deferActivation: true }),
+      ).toMatchObject({ id: 12, runtime_id: 7 });
+    });
+    await act(async () => vi.runAllTimersAsync());
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(apiPost).toHaveBeenCalledWith(
+      "/api/console/sessions",
+      { runtime_id: 7, name: "Debug", close_existing: false, params: undefined, vault_items: [] },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(connections.attachSession).not.toHaveBeenCalled();
+    expect(result.current.sessions.data).toEqual([]);
+  });
+
+  it("falls back once to ordinary console creation after an optional Vault probe failure", async () => {
+    vi.mocked(apiGet).mockRejectedValue(new Error("Vault options unavailable"));
+    vi.mocked(apiPost).mockResolvedValue({ id: 12, runtime_id: 7, status: "connected" });
+    const { result, connections } = renderCoordinator();
+    await act(async () => result.current.newSession(runtime));
+    await act(async () => vi.runAllTimersAsync());
+    expect(apiGet).toHaveBeenCalledOnce();
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(result.current.vaultDialog.open).toBe(false);
+    expect(result.current.sessions.data).toMatchObject([{ id: 12, runtime_id: 7 }]);
+    expect(connections.attachSession).toHaveBeenCalledExactlyOnceWith(12);
   });
 });
