@@ -9,8 +9,9 @@ import { KubernetesConnectorRowActionsTemplate } from "./list-item";
 import { KubernetesConnectorOperationsTemplate } from "./operations";
 import * as model from "./model";
 import type { ConsoleTemplateContract } from "../console-template-contract";
+import { defineConsoleTemplate } from "../_shared/console-template";
 
-export default Object.freeze({
+export default defineConsoleTemplate({
   credentialFamily: kubernetesCredentialFamily,
   Console: KubernetesConnectorConsoleTemplate,
   CredentialForm: KubernetesCredentialFormTemplate,

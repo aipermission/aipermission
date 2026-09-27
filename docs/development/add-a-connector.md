@@ -347,7 +347,7 @@ frontend/src/connectors/templates/<kind>/
 ```
 
 The folder is discovered automatically. Do not manually edit
-`frontend/src/connectors/templates/registry.jsx` or
+`frontend/src/connectors/templates/registry.tsx` or
 `frontend/src/connectors/templates/catalog.ts` for a normal connector. The Vite
 bundle discovers `index.ts` and `metadata.json` through `import.meta.glob`.
 
@@ -380,7 +380,13 @@ Template slots:
 
 Each `index.ts` must preserve its native model/form inference while checking
 the shared console slots with `satisfies ConsoleTemplateContract` from
-`frontend/src/connectors/templates/console-template-contract.d.ts`. `Console`
+`frontend/src/connectors/templates/console-template-contract.d.ts`. Wrap its
+default export in `defineConsoleTemplate` from `_shared/console-template`.
+The factory freezes the native registration and captures only `Console` and
+optional `ToolbarActions`; copied or structural lookalikes are rejected. The
+common registry does not expose native forms or models. Editor and credential
+pages use their captured family registries; console presentation reads and
+session recovery use their respective captured registries. `Console`
 accepts `ConsoleWorkspaceSlotProps`; optional `ToolbarActions` accepts
 `ConsoleToolbarSlotProps`. Do not cast a native component to this contract.
 Decode connector-owned fields from the public target's `config` and `public`

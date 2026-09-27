@@ -29,7 +29,8 @@ test("frontend connector templates expose complete metadata", () => {
   for (const kind of connectorTemplateKinds) {
     const indexSource = readFileSync(join(connectorTemplatesDir, kind, "index.ts"), "utf8");
     const metadata = JSON.parse(readFileSync(join(connectorTemplatesDir, kind, "metadata.json"), "utf8"));
-    assert.match(indexSource, /export default Object\.freeze/);
+    assert.match(indexSource, /export default defineConsoleTemplate/);
+    assert.match(indexSource, /satisfies ConsoleTemplateContract/);
     assert.equal(metadata.kind, kind);
     assert.ok(metadata.label);
     assert.ok(metadata.version);

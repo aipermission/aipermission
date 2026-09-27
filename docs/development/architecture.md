@@ -298,7 +298,7 @@ Keep token connector-action permission logic in shared hooks such as
 pages.
 
 Route-level pages should render connector-specific UI through
-`src/connectors/templates/registry.jsx`. Avoid adding new `if kind === "..."`
+`src/connectors/templates/registry.tsx`. Avoid adding new `if kind === "..."`
 branches to pages when the behavior belongs to a connector template.
 
 Target and credential editors use the typed native-family registries
