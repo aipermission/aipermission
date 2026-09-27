@@ -20,3 +20,4 @@ export default Object.freeze({
   RowActions: KubernetesConnectorRowActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { kubernetesConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;

@@ -22,3 +22,4 @@ export default Object.freeze({
   ToolbarActions: SSHConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { sshConsoleModel as consoleModel } from "./console-model";
+export { sshConsoleRecovery as consoleRecovery } from "./console-recovery";

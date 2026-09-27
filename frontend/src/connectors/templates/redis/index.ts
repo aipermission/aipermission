@@ -9,6 +9,7 @@ import { redisCredentialFamily } from "./credential-family";
 export { redisCredentialFamily as credentialFamily } from "./credential-family";
 export { redisConnectorFamily as connectorFamily } from "./connector-family";
 export { redisConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;
 
 export default Object.freeze({
   Console: RedisConnectorConsoleTemplate,

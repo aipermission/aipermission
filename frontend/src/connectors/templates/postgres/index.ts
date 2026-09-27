@@ -21,3 +21,4 @@ export default Object.freeze({
   ToolbarActions: PostgresConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);
 export { postgresConsoleModel as consoleModel } from "./console-model";
+export const consoleRecovery = null;

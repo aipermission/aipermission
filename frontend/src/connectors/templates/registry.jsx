@@ -2,6 +2,7 @@ import { Notice } from "../../components/ui/notice";
 import { connectorTemplateMetadata, getConnectorMetadata } from "./catalog";
 import { uniqueNetworkTransportDescriptors } from "./_shared/network-transport-contract";
 import { assertConnectorTemplate, connectorKindFromPath } from "./template-registration";
+import { getConsoleSessionRecovery } from "./console-recovery-registry";
 
 const templateModules = import.meta.glob("./*/index.ts", { eager: true });
 
@@ -16,6 +17,7 @@ export const connectorTemplates = Object.freeze(
           Object.freeze({
             ...template,
             metadata: getConnectorMetadata(kind),
+            Operations: getConsoleSessionRecovery(kind)?.Operations,
           }),
         ];
       })

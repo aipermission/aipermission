@@ -79,6 +79,43 @@ describe("useConsoleWorkspaceSession", () => {
     expect(attachConsoleSession).toHaveBeenLastCalledWith(11);
   });
 
+  it("resolves captured native recovery by default for a verified runtime", async () => {
+    const runtimeTarget = { id: 19, name: "My runtime", connector_kind: "ssh" };
+    const onOpenConnectorOperation = vi.fn<Props["onOpenConnectorOperation"]>(() => true);
+    const hostKeyError = {
+      status: 409,
+      data: {
+        code: "unknown_ssh_host_key",
+        host_key: {
+          host: "endpoint",
+          hostname: "endpoint",
+          port: 22,
+          public_key: "public-key",
+          fingerprint_sha256: "SHA256:example",
+          key_type: "ed25519",
+        },
+      },
+    };
+    const { result } = renderHook(() =>
+      useConsoleWorkspaceSession(
+        props({
+          newConsoleSession: vi.fn().mockRejectedValue(hostKeyError),
+          onOpenConnectorOperation,
+          resolveConnectorModel: undefined,
+          selectedRuntimeTarget: runtimeTarget,
+          selectedTarget: { ref: "ssh:3:7", connector_kind: "ssh" },
+          selectedTargetUsesLiveConsole: true,
+        }),
+      ),
+    );
+    await act(async () => {
+      await result.current.startNew(runtimeTarget);
+    });
+    expect(onOpenConnectorOperation).toHaveBeenCalledWith(expect.objectContaining({ open: true, connector_kind: "ssh", type: "recovery" }));
+    expect(onOpenConnectorOperation.mock.calls[0][0]).not.toHaveProperty("hostKey");
+    expect(result.current.newSessionError).toBe("");
+  });
+
   it("opens connector-owned recovery instead of leaking a session error", async () => {
     const operation = { open: true, connector_kind: "ssh", type: "host-key" };
     const onOpenConnectorOperation = vi.fn(() => true);
