@@ -260,19 +260,25 @@ frontend/src/connectors/templates/<kind>/
 Expected files are:
 
 - `metadata.json`: label, summary, icon, version, and badge tone
-- `model.js`: display helpers such as target name, subtitle, profile label, and
-  whether the target uses a live terminal
-- `form.jsx`: add/edit connector target form
-- `credential-form.jsx`: credential profile form
-- `list-item.jsx`: connector-specific row operations
-- `console.jsx`: connector console/activity surface and toolbar actions
+- `index.ts`: typed manifest for captured connector, credential, and console slots
+- `model.ts`: connector-owned native editor and operation helpers
+- `console-model.ts`: connector-owned target/profile presentation
+- `connector-family.tsx`: captured native target editor registration
+- `credential-family.tsx`: captured native credential editor registration
+- `form.tsx`: add/edit connector target form
+- `credential-form.tsx`: credential profile form
+- `list-item.tsx`: connector-specific row operations
+- `console.tsx`: connector console/activity surface and toolbar actions
 
 The page-level UI renders through the template registry instead of adding
 connector-specific branches to route components. `metadata.json` and
 `index.ts` are auto-discovered with Vite `import.meta.glob`; normal
-structured connectors do not manually edit `registry.jsx` or `catalog.ts`.
-The registry validates required template slots, model exports, and supported
-metadata icons during frontend tests.
+structured connectors do not manually edit `registry.tsx` or `catalog.ts`.
+Typed factories retain native models inside their connector family; generic
+pages receive captured commands and presentation slots instead of dispatching
+raw native operations. The registry validates required slots and supported
+metadata icons during frontend tests. See [Add A Connector](../../../docs/development/add-a-connector.md)
+for the complete factory contracts and required-null slots.
 
 ## Built-In Connector Shape
 

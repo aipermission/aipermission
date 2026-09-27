@@ -105,7 +105,7 @@ New connector PR checklist:
   constructor, following [Add A Connector](docs/development/add-a-connector.md).
   Do not use side-effect imports, package `init()`, or global adapter maps
 - add frontend templates under `frontend/src/connectors/templates/<kind>/`;
-  `metadata.json` and `index.jsx` are auto-discovered by the template registry
+  `metadata.json` and `index.ts` are auto-discovered by the template registry
   and catalog
 - keep secrets in credential profile schemas, not target or action schemas
 - use the shared target/profile/action permission model; do not add connector
