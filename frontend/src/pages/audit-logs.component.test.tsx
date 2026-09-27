@@ -23,6 +23,30 @@ beforeEach(() => {
   apiGet.mockReset();
 });
 
+it("renders bounded payload fields on the row and preserves formatted raw JSON in details", async () => {
+  const payload = {
+    request_id: 12,
+    command: "printf\n  ok",
+    reason: "Smoke test",
+    exit_code: 0,
+    user_note: "",
+    ignored: "not a preview field",
+  };
+  const entry = auditEntryFixture({ action: "connector.completed", payload_json: JSON.stringify(payload) });
+  apiGet.mockImplementation(async (path) => {
+    if (path === "/api/projects") return { items: [] };
+    if (path === `/api/audit-logs/${entry.id}`) return entry;
+    return { items: [entry], total: 1, limit: 50, offset: 0 };
+  });
+  render(<AuditLogsPage />);
+  await act(async () => vi.advanceTimersByTimeAsync(250));
+  expect(screen.getByText("request_id: 12, command: printf ok, reason: Smoke test, exit_code: 0")).toBeVisible();
+  expect(screen.queryByText("not a preview field")).not.toBeInTheDocument();
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Open audit details for connector.completed" })));
+  const dialog = screen.getByRole("dialog", { name: "Audit #1" });
+  expect(within(dialog).getByText(/"ignored": "not a preview field"/)).toHaveTextContent('"request_id": 12');
+});
+
 afterEach(() => {
   vi.useRealTimers();
 });
