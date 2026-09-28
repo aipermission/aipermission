@@ -1,6 +1,7 @@
 package execution
 
 import (
+	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
@@ -11,9 +12,33 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
+
+func TestHostPublicKeySurvivesResponseRedaction(t *testing.T) {
+	const legacyBase64 = "AAAAC3NzaC1lZDI1NTE5AAAAICTzmn8VhLW9meMzeYV8se+skEC4oanx6wL9IRWIX4ND"
+	if securitypolicy.RedactBasic(legacyBase64) == legacyBase64 {
+		t.Fatal("fixture must reproduce the base64 token false positive")
+	}
+	key, err := ParseHostPublicKey(legacyBase64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, encoded := range []string{
+		NewUnknownHostKeyError("[example.test]:22", key).PublicKey,
+		NewChangedHostKeyError("[example.test]:22", key, nil).PublicKey,
+	} {
+		if !strings.HasPrefix(encoded, "hex:") || securitypolicy.RedactBasic(encoded) != encoded {
+			t.Fatalf("host key transport was changed by response redaction: %q", encoded)
+		}
+		parsed, err := ParseHostPublicKey(securitypolicy.RedactBasic(encoded))
+		if err != nil || !bytes.Equal(parsed.Marshal(), key.Marshal()) {
+			t.Fatalf("host key round trip failed: %v", err)
+		}
+	}
+}
 
 func TestHostKeyRequiresExplicitTrustBeforeFirstUse(t *testing.T) {
 	hostKey := generateHostKey(t)
