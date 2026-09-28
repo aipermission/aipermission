@@ -5,6 +5,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1" // #nosec G505 -- OpenSSH known_hosts hashing is fixed to HMAC-SHA1.
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -100,7 +101,7 @@ func NewChangedHostKeyError(hostname string, key ssh.PublicKey, existing []known
 		Hostname:             hostname,
 		KeyType:              key.Type(),
 		FingerprintSHA256:    HostKeyFingerprintSHA256(key),
-		PublicKey:            base64.StdEncoding.EncodeToString(key.Marshal()),
+		PublicKey:            encodeHostPublicKey(key),
 		ExistingFingerprints: fingerprints,
 	}
 }
@@ -110,12 +111,24 @@ func NewUnknownHostKeyError(hostname string, key ssh.PublicKey) *UnknownHostKeyE
 		Hostname:          hostname,
 		KeyType:           key.Type(),
 		FingerprintSHA256: HostKeyFingerprintSHA256(key),
-		PublicKey:         base64.StdEncoding.EncodeToString(key.Marshal()),
+		PublicKey:         encodeHostPublicKey(key),
 	}
 }
 
+func encodeHostPublicKey(key ssh.PublicKey) string {
+	// Hex avoids token-like substrings in base64 that generic response redaction can corrupt.
+	return "hex:" + hex.EncodeToString(key.Marshal())
+}
+
 func ParseHostPublicKey(publicKey string) (ssh.PublicKey, error) {
-	keyBytes, err := base64.StdEncoding.DecodeString(strings.TrimSpace(publicKey))
+	publicKey = strings.TrimSpace(publicKey)
+	var keyBytes []byte
+	var err error
+	if strings.HasPrefix(publicKey, "hex:") {
+		keyBytes, err = hex.DecodeString(strings.TrimPrefix(publicKey, "hex:"))
+	} else {
+		keyBytes, err = base64.StdEncoding.DecodeString(publicKey)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("decode host public key: %w", err)
 	}

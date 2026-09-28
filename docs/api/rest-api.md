@@ -365,12 +365,12 @@ If a test or SSH-backed action reaches an unknown host key, the backend returns:
     "hostname": "159.69.12.186:22",
     "key_type": "ssh-ed25519",
     "fingerprint_sha256": "SHA256:...",
-    "public_key": "BASE64_HOST_PUBLIC_KEY"
+    "public_key": "hex:HOST_PUBLIC_KEY_BYTES"
   }
 }
 ```
 
-The UI asks the user to verify and approve the fingerprint. `POST /api/connectors/ssh/host-keys/approve` records the key in the local `known_hosts` file.
+The UI asks the user to verify and approve the fingerprint. The `public_key` response uses hex-encoded SSH key bytes so token redaction cannot corrupt Base64 substrings. `POST /api/connectors/ssh/host-keys/approve` records the key in the local `known_hosts` file and also accepts the earlier Base64 encoding.
 
 `DELETE /api/connector-targets/{id}` removes the connector from active local
 use by archiving the target and hiding its credential profiles from future
