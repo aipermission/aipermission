@@ -409,7 +409,7 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	}
 
 	callBody := mcpVaultActionCallRequest{
-		ProjectRef: project.Slug,
+		ProjectRef: "id:" + strconv.FormatInt(project.ID, 10),
 		ActionName: vaultrequests.ActionGenerateItem,
 		Input: map[string]any{
 			"name":           "AUTOMATED_API_TOKEN",
@@ -429,6 +429,9 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 	var completed map[string]any
 	if err := json.Unmarshal(call.Body.Bytes(), &completed); err != nil {
 		t.Fatal(err)
+	}
+	if completed["project_ref"] != callBody.ProjectRef {
+		t.Fatalf("Vault call reference = %v, want %s", completed["project_ref"], callBody.ProjectRef)
 	}
 	requestID := int64(completed["request_id"].(float64))
 
@@ -674,7 +677,7 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	}
 
 	callBody := mcpVaultActionCallRequest{
-		ProjectRef: project.Slug, ActionName: vaultrequests.ActionRestartSession,
+		ProjectRef: "slug:" + project.Slug, ActionName: vaultrequests.ActionRestartSession,
 		Input: map[string]any{
 			"target_ref": target.TargetRef,
 			"items": []any{map[string]any{
@@ -693,6 +696,9 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	var alwaysResponse map[string]any
 	if err := json.Unmarshal(always.Body.Bytes(), &alwaysResponse); err != nil {
 		t.Fatal(err)
+	}
+	if alwaysResponse["project_ref"] != callBody.ProjectRef {
+		t.Fatalf("session call reference = %v, want %s", alwaysResponse["project_ref"], callBody.ProjectRef)
 	}
 	alwaysOutput := alwaysResponse["output"].(map[string]any)
 	alwaysSessionID := int64(alwaysOutput["session_id"].(float64))

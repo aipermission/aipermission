@@ -35,6 +35,14 @@ Vault tools accept project references as `id:<id>` or `slug:<slug>`. Prefer
 these explicit forms in stored prompts and automation. Unprefixed references
 remain compatible unless a legacy numeric slug collides with a project ID.
 
+After resolving and authorizing the project, `call_vault_action` returns
+`project_ref` in the same form as the submitted reference, with outer whitespace
+removed. Idempotent replays preserve the reference submitted for that call too;
+aliases for the same project do not create another request. Request reads and
+cancellations are bound by `request_id` and return the stored project slug.
+If a mutation response cannot be validated, reconcile it with the same
+idempotency key and unchanged input instead of blindly creating a new request.
+
 ## Connector Model
 
 Every connector uses the same permission path:

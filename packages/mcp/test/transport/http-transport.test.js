@@ -222,6 +222,86 @@ test("Vault action failures are tool errors but reading a failed request is not"
   assert.equal(JSON.parse(read.content[0].text).status, "failed");
 });
 
+test("packaged MCP binds Vault calls to explicit project references and reads by request id", { timeout: 20000 }, async (t) => {
+  let mismatch = false;
+  let calls = 0;
+  const input = { target_ref: "ssh:1:1", items: [{ item_id: 1, source_project_id: 2 }] };
+  const client = await withGateway(
+    t,
+    async (request, response) => {
+      const chunks = [];
+      for await (const chunk of request) chunks.push(chunk);
+      const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+      const isCall = request.url === "/api/mcp/vault-actions/call";
+      if (isCall) {
+        calls++;
+        assert.deepEqual(body.input, input);
+        assert.equal(body.idempotency_key, "project-reference-replay");
+      }
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          request_id: 17,
+          project_ref: isCall && !mismatch ? body.project_ref : "my-project",
+          action_name: "restart_session_with_environment",
+          input,
+          secret_values_returned: false,
+          output: {
+            session_id: 1,
+            session_generation: 1,
+            runtime_id: 1,
+            status: "active",
+            environment_names: ["PROJECT_KEY"],
+            expires_at: "2026-09-30T18:00:00Z",
+          },
+        }),
+      );
+    },
+    2000,
+  );
+  for (const ref of ["slug:my-project", "id:2", "my-project", "2", "  slug:my-project  "]) {
+    const result = await client.callTool({
+      name: "call_vault_action",
+      arguments: {
+        project_ref: ref,
+        action_name: "restart_session_with_environment",
+        input,
+        reason: "project reference regression",
+        idempotency_key: "project-reference-replay",
+      },
+    });
+    assert.notEqual(result.isError, true, ref);
+    const payload = JSON.parse(result.content[0].text);
+    assert.equal(payload.project_ref, ref.trim());
+    assert.equal(payload.request_id, 17);
+    assert.equal(payload.status, "completed");
+    assert.deepEqual(payload.output.environment_names, ["PROJECT_KEY"]);
+  }
+  const read = await client.callTool({ name: "get_vault_action_request", arguments: { request_id: 17 } });
+  assert.notEqual(read.isError, true);
+  assert.equal(JSON.parse(read.content[0].text).project_ref, "my-project");
+
+  mismatch = true;
+  const rejected = await client.callTool({
+    name: "call_vault_action",
+    arguments: {
+      project_ref: "slug:other-project",
+      action_name: "restart_session_with_environment",
+      input,
+      reason: "project reference regression",
+      idempotency_key: "project-reference-replay",
+    },
+  });
+  assert.equal(rejected.isError, true);
+  const rejectedPayload = JSON.parse(rejected.content[0].text);
+  assert.equal(rejectedPayload.status, "outcome_unknown");
+  assert.equal(rejectedPayload.code, "gateway_response_contract_outcome_unknown");
+  assert.equal(rejectedPayload.idempotency_key, "project-reference-replay");
+  assert.doesNotMatch(rejected.content[0].text, /PROJECT_KEY|my-project/);
+  assert.equal(calls, 6, "the bridge must not automatically retry a rejected mutation");
+});
+
 test("packaged MCP rejects unexpected successful gateway fields without exposing them", { timeout: 10000 }, async (t) => {
   const client = await withGateway(
     t,
