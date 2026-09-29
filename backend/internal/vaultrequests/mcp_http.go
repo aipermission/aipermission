@@ -168,7 +168,8 @@ func (h *MCPHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := owner.DeliverCallResult(r.Context(), item.ID, scope.TokenID, func(view RequestView) {
-		writeMCPResponse(w, view)
+		// Call resolved this reference and bound it to the request before delivery.
+		writeMCPResponse(w, view, strings.TrimSpace(input.ProjectRef))
 	}); err != nil {
 		writeMCPCallError(w, err)
 	}
@@ -190,7 +191,7 @@ func (h *MCPHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) {
 	wrote := false
 	err := owner.DeliverOwned(r.Context(), id, scope.TokenID, func(view RequestView) {
 		wrote = true
-		writeMCPResponse(w, view)
+		writeMCPResponse(w, view, view.Request.ProjectSlug)
 	})
 	if errors.Is(err, ErrNotFound) {
 		httptransport.WriteError(w, http.StatusNotFound, "Vault action request not found")
@@ -260,8 +261,9 @@ func (h *MCPHTTPHandlers) runtime(w http.ResponseWriter, r *http.Request, scope 
 	return owner, true
 }
 
-func writeMCPResponse(w http.ResponseWriter, view RequestView) {
+func writeMCPResponse(w http.ResponseWriter, view RequestView, projectRef string) {
 	response := MCPResponse(view.Request)
+	response["project_ref"] = projectRef
 	if view.Request.Output != nil && !view.OutputAuthorized {
 		delete(response, "output")
 		response["output_withheld"] = true
