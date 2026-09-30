@@ -76,7 +76,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
           setQuery("");
           setActiveIndex(0);
         }}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onBlur={() => setOpen(false)}
         onChange={(event) => {
           setQuery(event.target.value);
           setOpen(true);
