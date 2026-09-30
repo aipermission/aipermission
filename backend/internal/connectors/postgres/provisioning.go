@@ -152,48 +152,6 @@ func verifyProvisionedRole(ctx context.Context, runtime connectors.RuntimeContex
 	return true, nil
 }
 
-func (Connector) PreserveProvisionedCredentialPublic(existing connectors.CredentialProfileView, requested map[string]any) (map[string]any, error) {
-	if requested == nil {
-		requested = map[string]any{}
-	}
-	if !boolPublic(existing.Public, "managed_by_aipermission") {
-		return clonePublicMap(requested), nil
-	}
-	next := clonePublicMap(requested)
-	existingUsername := strings.TrimSpace(publicString(existing.Public, "username"))
-	requestedUsername := strings.TrimSpace(publicString(next, "username"))
-	if requestedUsername != "" && existingUsername != "" && requestedUsername != existingUsername {
-		return nil, fmt.Errorf("managed credential username cannot be changed; create a new managed profile instead")
-	}
-	if existingUsername != "" {
-		next["username"] = existingUsername
-	}
-	for _, key := range []string{
-		"managed_by_aipermission",
-		"managed_role_name",
-		"managed_admin_profile_id",
-		"managed_admin_profile_ref",
-		"managed_preset",
-		"managed_scope",
-	} {
-		if value, ok := existing.Public[key]; ok {
-			next[key] = value
-		}
-	}
-	return next, nil
-}
-
-func (Connector) ProvisionedCredentialAdminProfileID(profile connectors.CredentialProfileView) (int64, bool, error) {
-	if !boolPublic(profile.Public, "managed_by_aipermission") {
-		return 0, false, nil
-	}
-	adminProfileID := int64Public(profile.Public, "managed_admin_profile_id")
-	if adminProfileID < 1 || adminProfileID == profile.ID {
-		return 0, true, fmt.Errorf("managed credential profile is missing a valid admin profile reference")
-	}
-	return adminProfileID, true, nil
-}
-
 func (Connector) CleanupProvisionedCredentialProfile(ctx context.Context, runtime connectors.RuntimeContext, profile connectors.CredentialProfileView) (connectors.ActionResult, error) {
 	if runtime.Target.ConnectorKind != Kind {
 		return connectors.ActionResult{}, fmt.Errorf("target connector kind must be %s", Kind)

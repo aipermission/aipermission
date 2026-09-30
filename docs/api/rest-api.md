@@ -414,6 +414,10 @@ and then stores the generated credential profile encrypted in AIPermission. The
 built-in Postgres connector uses this to create scoped database roles with
 random passwords. Managed profiles carry public metadata so deleting the local
 profile can run connector cleanup before the profile is archived.
+The Postgres `managed_` metadata namespace is connector-owned: ordinary profile
+creation cannot assert managed ownership, and edits preserve recorded fields
+including their absence. A managed profile's username cannot be changed or
+normalized into another role identity through editing.
 
 `GET /api/connector-targets/{id}/profiles/{profile_id}/backup` asks a connector
 with backup support to produce a downloadable backup artifact through the
