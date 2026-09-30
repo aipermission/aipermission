@@ -12,6 +12,7 @@ export function connectorApprovalFixture(overrides: Partial<ConnectorApproval> =
     connector_kind: "example",
     action_name: "example_action",
     status: "approval_pending",
+    approval_context_hash: "synthetic-approval-context",
     retry_policy: { class: "read_only", guidance: "Review the current result before retrying." },
     created_at: "2026-09-26",
     ...overrides,

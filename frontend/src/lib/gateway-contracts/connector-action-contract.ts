@@ -58,6 +58,14 @@ export function isConnectorActionStatus(value: unknown): value is ActionResponse
   return typeof value === "string" && connectorActionStatusSet.has(value);
 }
 
+export function isPendingConnectorActionStatus(value: unknown) {
+  return value === "running" || value === "approval_pending";
+}
+
+export function isDefinitiveConnectorActionStatus(value: unknown) {
+  return isConnectorActionStatus(value) && !isPendingConnectorActionStatus(value) && value !== "outcome_unknown";
+}
+
 export function isConnectorRetryPolicy(value: unknown): value is RetryPolicy {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const policy = value as Record<string, unknown>;

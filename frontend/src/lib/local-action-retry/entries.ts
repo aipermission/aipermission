@@ -1,7 +1,7 @@
 import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
 import { entryID, newActionAttempt, newRetryEntry, sameRetryEntry, validActionAttempt, validRetryEntry } from "./records.ts";
-import type { ActionAttempt, AttemptExpectation, PreparedRetry, RetryEntry, RetryScope } from "./records.ts";
+import type { ActionAttempt, AttemptExpectation, PreparedRetry, RetryEntry, RetryIdentity, RetryScope } from "./records.ts";
 import { notifyChanged, usesIndexedDB } from "./runtime.ts";
 import {
   requireMemorySigningReservation,
@@ -108,7 +108,7 @@ export async function getEntry(scope: RetryScope, signature: string) {
 }
 
 export async function updateEntryIfMatching(
-  prepared: PreparedRetry,
+  prepared: PreparedRetry | RetryIdentity,
   update: (_entry: RetryEntry) => RetryEntry,
   allowNewerRevision = false,
 ) {
@@ -116,7 +116,7 @@ export async function updateEntryIfMatching(
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(prepared.scope.key);
       const entry = entries?.get(prepared.signature);
-      releaseMemoryAttempt(prepared);
+      if ("attemptID" in prepared) releaseMemoryAttempt(prepared);
       removeExpiredMemoryAttempts();
       if (retiredIdentity(entry, prepared)) {
         cleanupRetiredMemoryEntry(prepared.scope, entries, entry);
@@ -135,7 +135,7 @@ export async function updateEntryIfMatching(
     "readwrite",
     async (stores) => {
       const id = entryID(prepared.scope.key, prepared.signature);
-      await releaseStoredAttempt(stores.attempts, prepared);
+      if ("attemptID" in prepared) await releaseStoredAttempt(stores.attempts, prepared);
       const entry = await readStoredEntry(stores.entries, prepared.scope, prepared.signature);
       if (retiredIdentity(entry, prepared)) {
         await cleanupRetiredStoredEntry(stores, prepared.scope, id, entry);
@@ -297,7 +297,7 @@ function attemptExpectation(prepared: PreparedRetry): AttemptExpectation {
   };
 }
 
-function matchingEntry(entry: RetryEntry | undefined, prepared: PreparedRetry, allowNewerRevision = false): entry is RetryEntry {
+function matchingEntry(entry: RetryEntry | undefined, prepared: RetryIdentity, allowNewerRevision = false): entry is RetryEntry {
   if (!entry || entry.key !== prepared.idempotencyKey) return false;
   if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
   return entry.revision === prepared.revision || (allowNewerRevision && entry.revision > prepared.revision);
@@ -312,7 +312,7 @@ function assertTerminalRequestIdentity(entry: RetryEntry, requestID?: number) {
   if (requestID !== undefined && entry.request_id != null && entry.request_id !== requestID) throw retryIdentityChangedError();
 }
 
-function retiredIdentity(entry: RetryEntry | undefined, prepared: PreparedRetry) {
+function retiredIdentity(entry: RetryEntry | undefined, prepared: RetryIdentity) {
   return (
     entry?.state === "retired" && entry.key === prepared.idempotencyKey && validRetryEntry(entry, prepared.scope.key, prepared.signature)
   );

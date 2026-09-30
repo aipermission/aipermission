@@ -1452,8 +1452,17 @@ identity that remains stable across rename but rotates when a database copy is
 imported or restored. Transport failures and acknowledged `running` or
 `approval_pending` connector actions reuse the same identity on the next
 identical submission, including browser storage reconnection. A pending reply
-records the request ID but does not count as terminal completion. Only a
-definitive terminal replay releases that identity. Overlapping attempts merge
+records the request ID, target reference, and action name but does not count as
+terminal completion. A definitive terminal replay or a validated approval read
+can release that identity. Approval reads must match the captured workspace,
+request ID, target reference, and action name, and retain the exact revision
+while active attempts remain protected. The entire list is validated before
+settling any entry. A read reporting `outcome_unknown` promotes the retained
+identity to manual reconciliation without releasing an active attempt.
+Local storage failures do not hide a successful gateway read: the ledger stays
+protected, a fixed diagnostic is emitted, and Settings refreshes its
+reconciliation state. Mutations still fail closed when storage is unavailable.
+Overlapping attempts merge
 their observations atomically without replacing the idempotency key: pending
 replies cannot downgrade an unknown outcome, and a terminal identity stays
 retired until its remaining attempts drain. A different terminal request ID

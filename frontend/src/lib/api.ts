@@ -7,7 +7,7 @@ import {
   retireLocalActionRetryAttempt,
 } from "./local-action-retry.ts";
 import { APIError } from "./errors.ts";
-import { assertConnectorActionResponse } from "./gateway-contracts/connector-action-contract.ts";
+import { assertConnectorActionResponse, isPendingConnectorActionStatus } from "./gateway-contracts/connector-action-contract.ts";
 import { scopedUICookieName } from "./ui-cookie.ts";
 import { readBufferedDownload } from "./downloads/download-buffer.ts";
 import { nativeSaveFilePicker, objectRecord } from "./api-types.ts";
@@ -21,6 +21,7 @@ import type {
   PreparedPost,
 } from "./api-types";
 import type { PreparedRetry } from "./local-action-retry/records";
+import { observeLocalActionRetryResponse } from "./local-action-retry/observations";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
@@ -32,10 +33,14 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path: string, options: APIOptions = {}): Promise<unknown> {
+  const requestWorkspace = currentWorkspaceBinding();
   const request = boundedReadSignal(options.signal, options.timeoutMs);
   try {
     const response = await fetch(`${apiUrl}${path}`, { signal: request.signal, credentials: "include" });
-    return await readResponse(response);
+    const data = await readResponse(response);
+    if (requestWorkspace && response.headers.get(workspaceHeaderName) === requestWorkspace)
+      await observeLocalActionRetryResponse(path, data, requestWorkspace);
+    return data;
   } catch (error) {
     if (request.timedOut()) throw new Error(`Gateway read timed out after ${options.timeoutMs}ms.`, { cause: error });
     throw error;
@@ -137,7 +142,7 @@ function idempotentPostPolicy(path: string, body: unknown): PostPolicy | null {
   if (path === "/api/connector-actions/local-run") {
     return {
       acknowledged: (data) => isAcknowledgedLocalActionResponse(data, body),
-      pending: (data) => objectRecord(data)?.status === "running" || objectRecord(data)?.status === "approval_pending",
+      pending: (data) => isPendingConnectorActionStatus(objectRecord(data)?.status),
       invalidResponseMessage: "Invalid connector action response from gateway.",
     };
   }

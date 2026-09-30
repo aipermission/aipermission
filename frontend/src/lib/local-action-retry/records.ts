@@ -16,6 +16,7 @@ export type PreparedRetry = {
   attemptID: string;
   reused: boolean;
 };
+export type RetryIdentity = Pick<PreparedRetry, "scope" | "signature" | "idempotencyKey" | "revision">;
 export type RetryEntry = {
   id: string;
   scope: string;
@@ -25,6 +26,9 @@ export type RetryEntry = {
   revision: number;
   created_at: string;
   updated_at: string;
+  request_id?: number | null;
+  target_ref?: string;
+  action_name?: string;
   operation_ref?: string;
   [field: string]: unknown;
 };
@@ -91,10 +95,25 @@ export function validRetryEntry(value: unknown, scope: string, signature = ""): 
     typeof entry.revision === "number" &&
     Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
+    validRequestIdentityMetadata(entry) &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
     typeof entry.updated_at === "string"
   );
+}
+
+function validRequestIdentityMetadata(entry: Record<string, unknown>) {
+  return (
+    (entry.request_id === undefined ||
+      entry.request_id === null ||
+      (Number.isSafeInteger(entry.request_id) && (entry.request_id as number) > 0)) &&
+    optionalNonemptyString(entry.target_ref) &&
+    optionalNonemptyString(entry.action_name)
+  );
+}
+
+function optionalNonemptyString(value: unknown) {
+  return value === undefined || (typeof value === "string" && value.length > 0);
 }
 
 export function sameRetryEntry(current: unknown, expected: RetryEntry) {

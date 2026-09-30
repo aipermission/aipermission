@@ -38,7 +38,7 @@ it("renders a request reference without trusting arbitrary persisted metadata", 
   };
   vi.mocked(listLocalActionRetryEntries).mockResolvedValue([
     { ...base, request_id: 42 },
-    { ...base, signature: "b".repeat(64), request_id: {} },
+    { ...base, signature: "b".repeat(64), request_id: {} } as unknown as RetryEntry,
   ]);
   render(<LocalActionRetryPanel />);
   expect(await screen.findByText(/Request 42/)).toBeVisible();
