@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
+import { useLayoutEffect } from "react";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { RoutingKeyPicker } from "./routing-key-picker";
 
@@ -44,6 +45,59 @@ it("does not let an earlier blur close a refocused picker", () => {
   expect(input).toHaveAttribute("aria-expanded", "true");
   view.unmount();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it("keeps pointer and keyboard selection on the same routing option", () => {
+  const onQueue = vi.fn();
+  render(
+    <RoutingKeyPicker
+      queues={[{ name: "jobs.ready" }]}
+      value=""
+      custom={false}
+      onQueue={onQueue}
+      onCustom={vi.fn()}
+      styles={connectorConsoleTheme("dark")}
+    />,
+  );
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  const option = screen.getByRole("option", { name: /jobs.ready/ });
+  fireEvent.mouseEnter(option);
+  expect(option).toHaveAttribute("aria-selected", "true");
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(onQueue).toHaveBeenCalledExactlyOnceWith("jobs.ready");
+  expect(input).toHaveAttribute("aria-expanded", "false");
+});
+
+it("does not choose a removed queue before the refreshed list clamps its active option", async () => {
+  const onQueue = vi.fn();
+  const onCustom = vi.fn();
+  function RefreshingPicker({ empty }: { empty: boolean }) {
+    useLayoutEffect(() => {
+      // A committed queue refresh may precede the picker's passive index update.
+      if (empty) screen.getByRole("combobox").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    }, [empty]);
+    return (
+      <RoutingKeyPicker
+        queues={empty ? [] : [{ name: "jobs.ready" }]}
+        value=""
+        custom={false}
+        onQueue={onQueue}
+        onCustom={onCustom}
+        styles={connectorConsoleTheme("dark")}
+      />
+    );
+  }
+  const view = render(<RefreshingPicker empty={false} />);
+  const input = screen.getByRole("combobox");
+  fireEvent.focus(input);
+  fireEvent.keyDown(input, { key: "ArrowDown" });
+  expect(input).toHaveAttribute("aria-activedescendant", "rabbit-routing-option-1");
+  await act(async () => view.rerender(<RefreshingPicker empty />));
+  expect(onQueue).not.toHaveBeenCalled();
+  expect(onCustom).not.toHaveBeenCalled();
+  expect(input).toHaveAttribute("aria-expanded", "true");
+  expect(input).toHaveAttribute("aria-activedescendant", "rabbit-routing-option-0");
 });
 
 it("selects filtered queue names with keyboard navigation and supports custom routing", async () => {

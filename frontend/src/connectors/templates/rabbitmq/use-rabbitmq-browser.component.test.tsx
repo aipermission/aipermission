@@ -219,6 +219,22 @@ it("rejects non-object publish properties before dispatch", async () => {
   expect(runGuardedConnectorAction).not.toHaveBeenCalled();
 });
 
+it.each([
+  { routingKey: "", payload: "message" },
+  { routingKey: "jobs.ready", payload: "" },
+])("rejects an incomplete publish before dispatch: %j", async (draft) => {
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.publishLocked).toBe(false));
+  act(() => {
+    result.current.startPublish();
+    result.current.setPublish((current) => ({ ...current, ...draft }));
+  });
+  mockedRunner.mockClear();
+  await act(async () => result.current.publishMessage());
+  expect(result.current.state.error).toBe("Routing key and payload are required.");
+  expect(mockedRunner).not.toHaveBeenCalled();
+});
+
 it("does not dispatch queue reads while a vhost is only being edited", async () => {
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.queues).toHaveLength(2));
