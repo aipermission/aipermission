@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -12,6 +13,22 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/projects"
 	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
+
+func setAPITestProjectCapabilities(t *testing.T, fixture apiTestFixture, tokenID int64, capabilities []accesscontrol.ProjectCapabilityInput) {
+	t.Helper()
+	path := "/api/tokens/" + strconv.FormatInt(tokenID, 10) + "/project-capabilities"
+	response := performJSON(fixture.server.Handler(), http.MethodPut, path, "", withCurrentAuthorizationRevision(
+		t, fixture.server.Handler(), path, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: capabilities},
+	))
+	assertAPITestResponseStatus(t, response, http.StatusOK, "set project capabilities")
+}
+
+func assertAPITestResponseStatus(t *testing.T, response *httptest.ResponseRecorder, expected int, operation string) {
+	t.Helper()
+	if response.Code != expected {
+		t.Fatalf("%s: status=%d want=%d body=%s", operation, response.Code, expected, response.Body.String())
+	}
+}
 
 func withCurrentAuthorizationRevision(t *testing.T, handler http.Handler, path string, request any) any {
 	t.Helper()
