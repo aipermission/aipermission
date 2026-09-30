@@ -1,15 +1,19 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { currentWorkspaceBinding } from "../../../lib/api";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { useConnectorMutationOwnership } from "../_shared/use-connector-mutation-ownership";
 import { defaultRedisLimit, defaultRedisPattern, redisScanPattern, uniqueRedisKeys, valueToEditableText } from "./browser-helpers";
 import { serverProductLabel } from "./model";
 import { useRedisMutations } from "./use-redis-mutations";
 import { readRedisKey, readRedisScan } from "./browser-output";
 import type { RedisActionOptions, RedisBrowserProps, RedisKeyResult } from "./browser-types";
 
+const mutationActions = ["set_string", "expire_key", "delete_keys"] as const;
+
 export function useRedisBrowser({ target, approvals, session, onRefreshActivity }: RedisBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
-  const resetKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
+  const resetKey = `${currentWorkspaceBinding()}:${target.ref}:${activeSession.startedAt || "inactive"}`;
   const product = serverProductLabel(target);
   const [pattern, setPattern] = useState(defaultRedisPattern);
   const [cursor, setCursor] = useState("0");
@@ -24,6 +28,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const [resultMode, setResultMode] = useState("value");
   const requestGuard = useRequestGuard(resetKey);
+  const mutationsOwner = useConnectorMutationOwnership(target.ref, mutationActions, approvals?.state);
   const latestAction = useMemo(
     () => (approvals?.data || []).find((item) => item.target_ref === target.ref) || null,
     [approvals?.data, target.ref],
@@ -48,19 +53,23 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     if (activeSession.active) void scanKeysForEffect({ reset: true });
   }, [activeSession.active, resetKey]);
 
-  async function runRedisAction({ actionName, input, reason, busy = "running", channel = actionName }: RedisActionOptions) {
-    return runGuardedConnectorAction({
-      requestGuard,
-      channel,
-      targetRef: target.ref,
-      actionName,
-      input,
-      reason,
-      busy,
-      product,
-      setState,
-      onRefreshActivity,
-    });
+  async function runRedisAction({ actionName, input, reason, busy = "running", channel = actionName, onPending }: RedisActionOptions) {
+    const execute = (pending = onPending) =>
+      runGuardedConnectorAction({
+        requestGuard,
+        channel,
+        targetRef: target.ref,
+        actionName,
+        input,
+        reason,
+        busy,
+        product,
+        setState,
+        onRefreshActivity,
+        onPending: pending,
+        exclusiveMutationActions: mutationActions.some((name) => name === actionName) ? mutationActions : undefined,
+      });
+    return mutationActions.some((name) => name === actionName) ? mutationsOwner.run(execute) : execute();
   }
 
   async function scanKeys({ reset = false } = {}) {
@@ -130,6 +139,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
 
   const mutations = useRedisMutations({
     resetKey,
+    mutationLocked: mutationsOwner.locked,
     product,
     activeKey,
     keyResult,
@@ -176,8 +186,9 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     resultMode,
     setResultMode,
     latestAction,
-    canSaveString: mutations.creatingKey ? newKey !== "" : activeStringIsEditable,
-    canUpdateTTL: activeResultIsCurrent && keyResult?.type !== "none" && state.state === "idle",
+    canSaveString: !mutationsOwner.locked && (mutations.creatingKey ? newKey !== "" : activeStringIsEditable),
+    canUpdateTTL: !mutationsOwner.locked && activeResultIsCurrent && keyResult?.type !== "none" && state.state === "idle",
+    mutationLocked: mutationsOwner.locked,
     canStartNewKey: state.state === "idle" || state.state === "error" || state.state === "reading",
     activeStringIsEditable,
     scanKeys,

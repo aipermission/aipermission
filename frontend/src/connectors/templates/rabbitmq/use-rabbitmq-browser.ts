@@ -1,11 +1,12 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { currentWorkspaceBinding } from "../../../lib/api";
 import { connectorActionBusy } from "../_shared/action-state";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
-import { connectorActionRequestID } from "../_shared/action-result";
 import { filterQueues, isRabbitRecord, parsePublishProperties, readRabbitQueue, readRabbitQueues, readRabbitRecords } from "./helpers";
-import { useRabbitMQPublishOwnership } from "./use-rabbitmq-publish-ownership";
-import type { RabbitActivity, RabbitBrowserProps, RabbitMessage, RabbitQueue } from "./browser-types";
+import { useConnectorMutationOwnership } from "../_shared/use-connector-mutation-ownership";
+import type { RabbitBrowserProps, RabbitMessage, RabbitQueue } from "./browser-types";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 
 type RabbitActionOptions = {
   actionName: string;
@@ -14,13 +15,14 @@ type RabbitActionOptions = {
   busy?: string;
   suppressError?: boolean;
   channel?: string;
-  onPending?: (_item: RabbitActivity) => void;
+  onPending?: (_item: ConnectorActionResponse) => void;
 };
 
 const defaultQueueLimit = 250;
 const defaultPeekCount = 5;
 const defaultPayloadBytes = 65536;
 const defaultProperties = '{"content_type":"application/json"}';
+const mutationActions = ["publish_message"] as const;
 
 export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivity }: RabbitBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -42,7 +44,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     properties: defaultProperties,
   });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const sessionScopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
+  const sessionScopeKey = `${currentWorkspaceBinding()}:${target.ref}:${activeSession.startedAt || "inactive"}`;
   const requestScopeKey = `${sessionScopeKey}:${vhost}`;
   const requestGuard = useRequestGuard(requestScopeKey);
   const filteredQueues = useMemo(() => filterQueues(queues, pattern), [queues, pattern]);
@@ -50,12 +52,9 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
     [approvals?.data, target.ref],
   );
-  const publishOwnership = useRabbitMQPublishOwnership(target.ref, activeItems, approvals?.state);
+  const publishOwnership = useConnectorMutationOwnership(target.ref, mutationActions, approvals?.state);
   const publishOwnerRef = publishOwnership.ownerRef;
   const unresolvedPublish = publishOwnership.unresolved;
-  const beginPublishOwner = publishOwnership.begin;
-  const updatePublishOwner = publishOwnership.update;
-  const releasePublishOwner = publishOwnership.release;
   const refreshForEffect = useEffectEvent(() => refreshQueues());
 
   useEffect(() => {
@@ -105,6 +104,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
       product: "RabbitMQ",
       setState,
       onRefreshActivity,
+      exclusiveMutationActions: actionName === "publish_message" ? mutationActions : undefined,
       suppressError,
       onPending,
     });
@@ -216,40 +216,27 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
       setState({ state: "error", error: properties.error, message: "" });
       return;
     }
-    const attemptID = beginPublishOwner();
-    let pendingRequestID: number | null = null;
     try {
-      const item = await runRabbitAction({
-        actionName: "publish_message",
-        input: {
-          vhost,
-          exchange: publish.exchange.trim() || "amq.default",
-          routing_key: routingKey,
-          payload: publish.payload,
-          payload_encoding: "string",
-          properties: properties.value,
-        },
-        reason: "manual RabbitMQ browser message publish",
-        busy: "publishing",
-        onPending: (pending) => {
-          pendingRequestID = connectorActionRequestID(pending);
-          updatePublishOwner(attemptID, { requestID: pendingRequestID, observed: false });
-        },
-      });
-      if (!item) {
-        if (!pendingRequestID) releasePublishOwner(attemptID);
-        return;
-      }
-      if (!releasePublishOwner(attemptID)) return;
+      const item = await publishOwnership.run((onPending) =>
+        runRabbitAction({
+          actionName: "publish_message",
+          input: {
+            vhost,
+            exchange: publish.exchange.trim() || "amq.default",
+            routing_key: routingKey,
+            payload: publish.payload,
+            payload_encoding: "string",
+            properties: properties.value,
+          },
+          reason: "manual RabbitMQ browser message publish",
+          busy: "publishing",
+          onPending,
+        }),
+      );
+      if (!item) return;
       setPublish((current) => ({ ...current, payload: "" }));
       await refreshQueues();
-    } catch (error) {
-      const uncertain = unknownPublishOutcome(error);
-      if (uncertain) {
-        updatePublishOwner(attemptID, { requestID: uncertain.requestID, observed: false });
-      } else {
-        releasePublishOwner(attemptID);
-      }
+    } catch {
       // The guarded runner owns the visible error state.
     }
   }
@@ -286,12 +273,3 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
 }
 
 export type RabbitBrowser = ReturnType<typeof useRabbitMQBrowser>;
-
-function unknownPublishOutcome(error: unknown): { requestID: number | null } | null {
-  const actionItem: unknown = isRabbitRecord(error) ? error.actionItem : null;
-  const uncertain: unknown =
-    isRabbitRecord(actionItem) && actionItem.status === "outcome_unknown" ? actionItem : isRabbitRecord(error) ? error.data : null;
-  if (!isRabbitRecord(uncertain) || uncertain.status !== "outcome_unknown") return null;
-  const requestID = Number(uncertain.request_id);
-  return { requestID: Number.isInteger(requestID) && requestID > 0 ? requestID : null };
-}

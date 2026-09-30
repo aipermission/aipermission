@@ -20,7 +20,7 @@ export interface KafkaPartition {
 export type KafkaDetail = Record<string, unknown> & { partitions?: KafkaPartition[]; members?: unknown[] };
 export interface KafkaBrowserProps {
   target: { ref: string; config?: KafkaTarget["config"] };
-  approvals?: { data?: ConnectorApproval[] };
+  approvals?: { state?: string; data?: ConnectorApproval[] };
   session?: { active: boolean; startedAt?: string } | null;
   onRefreshActivity?: () => unknown;
 }

@@ -7,8 +7,15 @@ import { useKafkaWrites } from "./use-kafka-writes";
 import { connectorActionFixture } from "../../../test/connector-action-fixtures";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import type { KafkaBrowserProps } from "./console-types";
+import { mutationTestWorkspace, setupMutationRetryStorage } from "../../../test/connector-mutation-test-state";
 
-vi.mock("../../../lib/api.ts", () => ({ apiPost: vi.fn() }));
+setupMutationRetryStorage();
+
+vi.mock("../../../lib/api.ts", () => ({
+  apiPost: vi.fn(),
+  apiGet: vi.fn(async () => []),
+  currentWorkspaceBinding: () => mutationTestWorkspace,
+}));
 
 const topics = [
   { name: "orders", partition_count: 2 },
@@ -28,7 +35,7 @@ beforeEach(() => {
 function useHarness(overrides: Partial<KafkaBrowserProps> = {}) {
   const browser = useKafkaBrowser({
     target: { ref: "kafka:1:1", config: { server_family: "kafka" } },
-    approvals: { data: [] },
+    approvals: { state: "ready", data: [] },
     session: { active: true, startedAt: "now" },
     onRefreshActivity: vi.fn(),
     ...overrides,
@@ -214,10 +221,13 @@ it("does not close a new topic dialog or overwrite detail after an older publish
   });
   await act(async () => result.current.browser.selectItem(topics[1]));
   act(() => result.current.writes.openPublishDialog());
+  expect(result.current.writes.publishDialog.open).toBe(false);
+  expect(result.current.writes.publishPending).toBe(true);
   await act(async () => {
     finishPublish?.(completed("publish_message", { published: true }));
     await old;
   });
+  act(() => result.current.writes.openPublishDialog());
   expect(result.current.writes.publishDialog.open).toBe(true);
   expect(result.current.browser.activeDetail?.name).toBe("events");
   expect(result.current.browser.readForm.partition).toBe("0");
@@ -322,7 +332,7 @@ it.each(["target", "session", "unmount"])("does not resume a Kafka write continu
   expect(detailCount()).toBe(before);
   if (change !== "unmount") {
     expect(result.current.writes.publishDialog.open).toBe(false);
-    expect(result.current.writes.publishPending).toBe(false);
+    await waitFor(() => expect(result.current.writes.publishPending).toBe(false), { timeout: 4500 });
   }
 });
 
@@ -341,7 +351,7 @@ it("releases the Kafka write lock after failure so the same dialog can retry", a
   act(() => result.current.writes.openPublishDialog());
   await act(async () => result.current.writes.publishMessage());
   expect(result.current.browser.state.error).toBe("publish denied");
-  expect(result.current.writes.publishPending).toBe(false);
+  await waitFor(() => expect(result.current.writes.publishPending).toBe(false), { timeout: 4500 });
   expect(result.current.writes.publishDialog.open).toBe(true);
   fail = false;
   await act(async () => result.current.writes.publishMessage());

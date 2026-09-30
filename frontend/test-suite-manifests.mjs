@@ -92,8 +92,8 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.tsx",
   ],
-  "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.ts": [
-    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.component.test.tsx",
+  "src/connectors/templates/_shared/use-connector-mutation-ownership.ts": [
+    "src/connectors/templates/_shared/use-connector-mutation-ownership.component.test.tsx",
   ],
   "src/connectors/templates/redis/use-redis-browser.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
   "src/connectors/templates/redis/use-redis-mutations.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
@@ -108,6 +108,7 @@ export const asyncStateOwnerTests = {
     "src/lib/gateway-contracts/api-transport.component.test.tsx",
     "src/lib/api/pending-mutation.component.test.ts",
     "src/lib/api/mutation-observation.component.test.ts",
+    "src/lib/local-action-retry/mutation-admission.component.test.ts",
   ],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.tsx"],

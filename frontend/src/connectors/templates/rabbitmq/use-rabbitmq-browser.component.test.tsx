@@ -5,9 +5,19 @@ import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { useRabbitMQBrowser } from "./use-rabbitmq-browser";
 import type { RabbitBrowserProps } from "./browser-types";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import { mutationTestWorkspace, setupMutationRetryStorage } from "../../../test/connector-mutation-test-state";
+import { connectorApprovalFixture } from "../../../test/connector-action-fixtures";
+import type { ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
+import { isDefinitiveConnectorActionStatus } from "../../../lib/gateway-contracts/connector-action-contract";
 
-vi.mock("../_shared/action-runner", () => ({ runGuardedConnectorAction: vi.fn() }));
-vi.mock("../../../lib/api", () => ({ apiGet: vi.fn() }));
+setupMutationRetryStorage();
+
+vi.mock("../_shared/action-runner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../_shared/action-runner")>()),
+  runGuardedConnectorAction: vi.fn(),
+}));
+vi.mock("../../../lib/api", () => ({ apiGet: vi.fn(), currentWorkspaceBinding: () => browserWorkspace }));
+let browserWorkspace = mutationTestWorkspace;
 
 const queues = [
   { name: "jobs.ready", vhost: "/", messages: 2 },
@@ -15,6 +25,7 @@ const queues = [
 ];
 const mockedGet = vi.mocked(apiGet);
 const mockedRunner = vi.mocked(runGuardedConnectorAction);
+const remoteRequests = new Map<number, ConnectorApproval>();
 type ActionResolver = (_value: ConnectorActionResponse | null) => void;
 
 function actionResponse(output: unknown, extra: Partial<ConnectorActionResponse> = {}): ConnectorActionResponse {
@@ -31,8 +42,24 @@ function actionResponse(output: unknown, extra: Partial<ConnectorActionResponse>
 }
 
 beforeEach(() => {
+  browserWorkspace = mutationTestWorkspace;
   mockedGet.mockReset();
-  mockedGet.mockResolvedValue([]);
+  remoteRequests.clear();
+  mockedGet.mockImplementation(async (path) => {
+    const url = new URL(path, "http://localhost");
+    const id = Number(url.pathname.split("/").at(-1));
+    if (id) {
+      const item = remoteRequests.get(id);
+      if (!item) throw new Error("Synthetic request has not been observed");
+      return item;
+    }
+    return [...remoteRequests.values()].filter(
+      (item) =>
+        item.target_ref === url.searchParams.get("target_ref") &&
+        item.action_name === url.searchParams.get("action_name") &&
+        !isDefinitiveConnectorActionStatus(item.status),
+    );
+  });
   mockedRunner.mockReset();
   mockedRunner.mockImplementation(async ({ actionName, input }) => responseFor(actionName, input));
 });
@@ -43,16 +70,44 @@ function renderBrowser(approvals: NonNullable<RabbitBrowserProps["approvals"]> =
     targetRef: "rabbitmq:1:1",
   };
   return renderHook(
-    ({ activity, targetRef = "rabbitmq:1:1" }) =>
-      useRabbitMQBrowser({
+    ({ activity, targetRef = "rabbitmq:1:1" }) => {
+      recordRemoteActivity(activity);
+      return useRabbitMQBrowser({
         target: { ref: targetRef, config: { vhost: "/" } },
         approvals: activity,
         session: { active: true, startedAt: "now" },
         onRefreshActivity: vi.fn(),
-      }),
+      });
+    },
     { initialProps },
   );
 }
+
+it("does not clear a new workspace draft when an old workspace publish completes", async () => {
+  let finish!: ActionResolver;
+  mockedRunner.mockImplementation(async ({ actionName, input }) =>
+    actionName === "publish_message"
+      ? new Promise((resolve) => {
+          finish = resolve;
+        })
+      : responseFor(actionName, input),
+  );
+  const rendered = renderBrowser();
+  await waitFor(() => expect(rendered.result.current.publishLocked).toBe(false));
+  act(() => rendered.result.current.setPublish((current) => ({ ...current, routingKey: "jobs.ready", payload: "old workspace draft" })));
+  act(() => {
+    void rendered.result.current.publishMessage();
+  });
+  await waitFor(() => expect(finish).toBeTypeOf("function"));
+  browserWorkspace = "next-rabbit-workspace";
+  rendered.rerender({ activity: { state: "ready", data: [] }, targetRef: "rabbitmq:1:1" });
+  await waitFor(() => expect(rendered.result.current.publishLocked).toBe(false));
+  act(() => rendered.result.current.setPublish((current) => ({ ...current, routingKey: "jobs.ready", payload: "new workspace draft" })));
+  await act(async () => {
+    finish(actionResponse({ routed: true }));
+  });
+  expect(rendered.result.current.publish.payload).toBe("new workspace draft");
+});
 
 it("keeps malformed remote identities out of the queue workspace", async () => {
   mockedRunner.mockImplementation(async ({ actionName }) =>
@@ -236,7 +291,7 @@ it("keeps an approval-pending publish locked until activity becomes terminal", a
   rerender({ activity: { state: "ready", data: [{ id: 91, target_ref: "rabbitmq:1:1", status: "approval_pending" }] } });
   await waitFor(() => expect(result.current.publishLocked).toBe(true));
   rerender({ activity: { state: "ready", data: [{ id: 91, target_ref: "rabbitmq:1:1", status: "completed" }] } });
-  await waitFor(() => expect(result.current.publishLocked).toBe(false));
+  await waitFor(() => expect(result.current.publishLocked).toBe(false), { timeout: 4500 });
 });
 
 it("keeps an outcome-unknown publish locked for explicit reconciliation", async () => {
@@ -258,13 +313,15 @@ it("keeps an outcome-unknown publish locked for explicit reconciliation", async 
   rerender({ activity: { state: "ready", data: [{ id: 92, target_ref: "rabbitmq:1:1", status: "outcome_unknown" }] } });
   await waitFor(() => expect(result.current.publishLocked).toBe(true));
   rerender({ activity: { state: "ready", data: [{ id: 92, target_ref: "rabbitmq:1:1", status: "failed" }] } });
-  await waitFor(() => expect(result.current.publishLocked).toBe(false));
+  await waitFor(() => expect(result.current.publishLocked).toBe(false), { timeout: 4500 });
 });
 
 it("releases publish ownership after a definitive publish failure", async () => {
   mockedRunner.mockImplementation(async (options) => {
     if (options.actionName !== "publish_message") return responseFor(options.actionName, options.input);
-    throw new Error("publish rejected");
+    throw Object.assign(new Error("publish rejected"), {
+      actionItem: actionResponse({}, { status: "failed", action_name: "publish_message", error: "publish rejected" }),
+    });
   });
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.queues).toHaveLength(2));
@@ -352,6 +409,7 @@ it("reconstructs pending publish ownership after remount", async () => {
 
 it("keeps pending publish ownership across structured session changes", async () => {
   const pending = { id: 94, target_ref: "rabbitmq:1:1", action_name: "publish_message", status: "approval_pending" };
+  recordRemoteActivity({ state: "ready", data: [pending] });
   const { result, rerender } = renderHook(
     ({ startedAt }) =>
       useRabbitMQBrowser({
@@ -366,6 +424,22 @@ it("keeps pending publish ownership across structured session changes", async ()
   rerender({ startedAt: "second" });
   await waitFor(() => expect(result.current.publishLocked).toBe(true));
 });
+
+function recordRemoteActivity(activity: NonNullable<RabbitBrowserProps["approvals"]>) {
+  for (const item of activity.data || []) {
+    if (!item.id || !item.target_ref) continue;
+    remoteRequests.set(
+      item.id,
+      connectorApprovalFixture({
+        id: item.id,
+        target_ref: item.target_ref,
+        connector_kind: "rabbitmq",
+        action_name: item.action_name || "publish_message",
+        status: item.status as ConnectorApproval["status"],
+      }),
+    );
+  }
+}
 
 function responseFor(actionName: string, input?: Record<string, unknown>) {
   const output =

@@ -1,6 +1,11 @@
 import type { PreparedRetry } from "./local-action-retry/records";
 
-export type APIOptions = { signal?: AbortSignal; timeoutMs?: number; workspaceBinding?: string };
+export type APIOptions = {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  workspaceBinding?: string;
+  exclusiveMutationActions?: readonly string[];
+};
 export type DownloadOptions = APIOptions & { picker?: boolean; requireStreaming?: boolean };
 export type DownloadResult = { saved: boolean; method: "picker" | "anchor"; canceled?: boolean };
 export type NativeFileWriter = WritableStream<Uint8Array> & {

@@ -1,6 +1,6 @@
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { apiGet, apiPost } from "../api";
+import { apiGet, apiPost, currentWorkspaceBinding } from "../api";
 import {
   listLocalActionRetryEntries,
   prepareLocalActionRetry,
@@ -81,6 +81,66 @@ it.each(["another-workspace", ""])("ignores observations without the captured wo
   await apiPost("/api/connector-actions/local-run", body);
   await apiGet(observationPath("detail"));
   expect(await listLocalActionRetryEntries()).toHaveLength(1);
+});
+
+it.each(["another-workspace", ""])(
+  "rejects an explicitly bound observation from workspace %j without settling its identity",
+  async (responseWorkspace) => {
+    installGateway(approval({ status: "completed" }), "detail", responseWorkspace);
+    await apiPost("/api/connector-actions/local-run", body);
+    await expect(apiGet(observationPath("detail"), { workspaceBinding: workspace })).rejects.toThrow(/workspace binding mismatch/);
+    expect(await entries.allEntries({ key: workspace })).toHaveLength(1);
+  },
+);
+
+it("sends the captured binding only for explicit reads and settles a matching observation", async () => {
+  installGateway(approval({ status: "completed" }), "detail");
+  await apiPost("/api/connector-actions/local-run", body);
+  const read = vi.fn(async (_url: string, _options?: RequestInit) => json(approval({ status: "completed" })));
+  vi.stubGlobal("fetch", read);
+  await apiGet("/api/status");
+  expect(read.mock.calls[0]?.[1]).not.toHaveProperty("headers");
+  await apiGet(observationPath("detail"), { workspaceBinding: workspace });
+  expect(read).toHaveBeenLastCalledWith(
+    expect.stringContaining(observationPath("detail")),
+    expect.objectContaining({
+      headers: { "X-AIPermission-Workspace": workspace },
+    }),
+  );
+  expect(await listLocalActionRetryEntries()).toEqual([]);
+});
+
+it("does not let a late explicitly bound read replace the current workspace", async () => {
+  installGateway(approval({ status: "completed" }), "detail");
+  await apiPost("/api/connector-actions/local-run", body);
+  const reply = deferred<Response>();
+  vi.stubGlobal("fetch", () => reply.promise);
+  const reading = apiGet(observationPath("detail"), { workspaceBinding: workspace });
+  const nextWorkspace = "next-explicit-workspace";
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response("{}", {
+        headers: {
+          "Content-Type": "application/json",
+          "X-AIPermission-Workspace": nextWorkspace,
+          "X-AIPermission-Workspace-Changed": "true",
+        },
+      }),
+  );
+  await apiGet("/api/status");
+  reply.resolve(
+    new Response(JSON.stringify(approval({ status: "completed" })), {
+      headers: {
+        "Content-Type": "application/json",
+        "X-AIPermission-Workspace": workspace,
+        "X-AIPermission-Workspace-Changed": "true",
+      },
+    }),
+  );
+  await reading;
+  expect(currentWorkspaceBinding()).toBe(nextWorkspace);
+  expect(await entries.allEntries({ key: workspace })).toEqual([]);
 });
 
 it("rejects a wrong detail ID and malformed list without changing retry state", async () => {

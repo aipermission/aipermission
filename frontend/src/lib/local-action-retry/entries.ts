@@ -1,6 +1,14 @@
 import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
-import { entryID, newActionAttempt, newRetryEntry, sameRetryEntry, validActionAttempt, validRetryEntry } from "./records.ts";
+import {
+  entryID,
+  newActionAttempt,
+  newRetryEntry,
+  retryEntryBlocksMutation,
+  sameRetryEntry,
+  validActionAttempt,
+  validRetryEntry,
+} from "./records.ts";
 import type { ActionAttempt, AttemptExpectation, PreparedRetry, RetryEntry, RetryIdentity, RetryScope } from "./records.ts";
 import { notifyChanged, usesIndexedDB } from "./runtime.ts";
 import {
@@ -22,12 +30,19 @@ import {
 type RetryStores = Record<string, IDBObjectStore>;
 type RetryEntries = Map<string, RetryEntry>;
 
-export async function reserveEntry(scope: RetryScope, signature: string, reservationID: string) {
+export async function reserveEntry(
+  scope: RetryScope,
+  signature: string,
+  reservationID: string,
+  subject: Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard"> = {},
+  actionNames?: readonly string[],
+) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       requireMemorySigningReservation(scope, reservationID);
       removeExpiredMemoryAttempts();
       const entries = memoryEntries.get(scope.key) || new Map<string, RetryEntry>();
+      assertMutationReservation(Array.from(entries.values()), scope, subject, actionNames);
       let entry = entries.get(signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
@@ -39,6 +54,8 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
         }
       }
       if (entry) {
+        entry = { ...entry, ...subject };
+        entries.set(signature, entry);
         const attempt = reserveMemoryAttempt(scope, entry, reservationID);
         removeMemorySigningReservation(scope, reservationID);
         return { entry: { ...entry }, attempt, created: false };
@@ -46,7 +63,7 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
       if (entries.size >= maxEntries) throw ledgerFullError();
       const totalEntries = Array.from(memoryEntries.values()).reduce((total, items) => total + items.size, 0);
       if (totalEntries >= maxGlobalEntries) throw ledgerFullError();
-      entry = newRetryEntry(scope, signature);
+      entry = { ...newRetryEntry(scope, signature), ...subject };
       entries.set(signature, entry);
       memoryEntries.set(scope.key, entries);
       const attempt = reserveMemoryAttempt(scope, entry, reservationID);
@@ -65,6 +82,8 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
       await removeExpiredAttempts(stores.attempts, Date.now());
       if ((await requestPromise(stores.attempts.count())) >= maxActionAttempts) throw ledgerFullError();
       const id = entryID(scope.key, signature);
+      if (subject.mutation_guard)
+        assertMutationReservation(await requestPromise(stores.entries.index("scope").getAll(scope.key)), scope, subject, actionNames);
       let entry = await readStoredEntry(stores.entries, scope, signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
@@ -76,6 +95,8 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
         }
       }
       if (entry) {
+        entry = { ...entry, ...subject };
+        await requestPromise(stores.entries.put(entry));
         const attempt = newActionAttempt(scope, entry, reservationID);
         await requestPromise(stores.attempts.add(attempt));
         await requestPromise(stores.reservations.delete(reservationID));
@@ -85,7 +106,7 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
       if (count >= maxEntries) throw ledgerFullError();
       const globalCount = await requestPromise(stores.entries.count());
       if (globalCount >= maxGlobalEntries) throw ledgerFullError();
-      entry = newRetryEntry(scope, signature);
+      entry = { ...newRetryEntry(scope, signature), ...subject };
       await requestPromise(stores.entries.add(entry));
       const attempt = newActionAttempt(scope, entry, reservationID);
       await requestPromise(stores.attempts.add(attempt));
@@ -95,6 +116,19 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
   );
   if (reservation.changed) notifyChanged();
   return { entry: reservation.entry, attempt: reservation.attempt, created: reservation.changed };
+}
+
+function assertMutationReservation(
+  entries: RetryEntry[],
+  scope: RetryScope,
+  subject: Pick<RetryEntry, "target_ref" | "mutation_guard">,
+  actionNames?: readonly string[],
+) {
+  if (!subject.mutation_guard || !subject.target_ref) return;
+  for (const entry of entries) {
+    if (!validRetryEntry(entry, scope.key)) throw storageError();
+    if (retryEntryBlocksMutation(entry, subject.target_ref, actionNames)) throw retryIdentityChangedError();
+  }
 }
 
 export async function getEntry(scope: RetryScope, signature: string) {
