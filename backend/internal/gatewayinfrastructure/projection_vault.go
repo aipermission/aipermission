@@ -91,6 +91,9 @@ func (component *VaultOwner) vaultRuntime(handle *WorkspaceHandle, ports VaultRu
 			RedactRequestValue: func(ctx context.Context, value any) (any, error) {
 				return gatewayvault.RedactRequestProjection(ctx, value, capability.Policy.Redact)
 			},
+			PrepareRequestValueRedactor: func(ctx context.Context) gatewayvault.RequestProjectionRedactor {
+				return gatewayvault.PrepareRequestProjectionRedactor(capability.Policy.PrepareRedactor(ctx))
+			},
 			SealRequest: func(id int64, value any) (string, error) {
 				return capability.SealVaultActionRequest(identity.WorkspaceID, id, value)
 			},

@@ -109,13 +109,17 @@ func (r *Runtime) Call(ctx context.Context, input CallInput) (Request, error) {
 	if err != nil {
 		return Request{}, err
 	}
+	publicContext, err := r.publicApprovalContext(ctx, contextMap)
+	if err != nil {
+		return Request{}, err
+	}
 	envelope := ExecutionEnvelope{
 		Input: prepared.Input, Reason: input.Reason, ApprovalContext: contextMap,
 	}
 	createInput := CreateInput{
 		TokenID: input.TokenID, ProjectID: prepared.ProjectID, RuntimeID: runtimeID,
 		ActionName: input.ActionName, Input: publicInput, Reason: publicReason,
-		ApprovalContext: contextMap, ApprovalContextHash: prepared.ApprovalContextHash,
+		ApprovalContext: publicContext, ApprovalContextHash: prepared.ApprovalContextHash,
 		IdempotencyKey: input.IdempotencyKey, InitialStatus: initialStatus,
 	}
 	var request Request

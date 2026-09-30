@@ -39,6 +39,11 @@ func (port requestMutationPort) executeAtomic(actions VaultActionApplication) va
 			result, err := port.completeAtomicFailure(ctx, actions, request, actor, userNote, finishedActionPrefix, executeErr)
 			return result, handled, err
 		}
+		redactOutput := port.runtime.Requests.PrepareRequestValueRedactor(ctx)
+		if redactOutput == nil {
+			result, err := port.completeAtomicFailure(ctx, actions, request, actor, userNote, finishedActionPrefix, vaultrequests.ErrRuntimeUnavailable)
+			return result, handled, err
+		}
 		var result vaultrequests.WorkflowResult
 		var effectErr error
 		err := port.runtime.Requests.Transaction(ctx, func(tx *sql.Tx, appendObservation RequestObservationAppender) error {
@@ -51,7 +56,12 @@ func (port requestMutationPort) executeAtomic(actions VaultActionApplication) va
 				effectErr = runErr
 				return errRollbackAtomicVaultEffect
 			}
-			completed, completeErr := vaultrequests.NewTxStore(tx).Complete(ctx, request.ID, vaultrequests.StatusCompleted, output, "", userNote)
+			publicOutput, redactErr := redactOutput(ctx, output)
+			if redactErr != nil {
+				effectErr = redactErr
+				return errRollbackAtomicVaultEffect
+			}
+			completed, completeErr := vaultrequests.NewTxStore(tx).Complete(ctx, request.ID, vaultrequests.StatusCompleted, publicOutput, "", userNote)
 			if completeErr != nil {
 				effectErr = completeErr
 				return errRollbackAtomicVaultEffect
@@ -242,7 +252,7 @@ func (port requestMutationPort) Observe(ctx context.Context, actor string, token
 func (component *Component) RequestRuntime(ctx context.Context, runtime Runtime) (VaultRequestApplication, error) {
 	if component == nil || runtime.Storage.Database == nil || runtime.Storage.DatabaseID == "" || runtime.Requests.Store == nil || component.dependencies.AllowRequest == nil ||
 		runtime.Requests.Transaction == nil || runtime.Requests.Mutate == nil || runtime.Requests.RepairProjection == nil ||
-		runtime.Requests.RedactRequestError == nil || runtime.Requests.RedactRequestValue == nil ||
+		runtime.Requests.RedactRequestError == nil || runtime.Requests.RedactRequestValue == nil || runtime.Requests.PrepareRequestValueRedactor == nil ||
 		runtime.Requests.SealRequest == nil || runtime.Requests.OpenRequest == nil || runtime.Storage.SecretVault == nil ||
 		runtime.Storage.WorkspaceID == "" || runtime.Session.MCPStarted == nil || runtime.Session.AcquireDelivery == nil {
 		return nil, vaultrequests.ErrRuntimeUnavailable

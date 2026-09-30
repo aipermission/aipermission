@@ -64,9 +64,12 @@ type RequestRuntimePorts struct {
 	RepairProjection   func(context.Context, int64) error
 	RedactRequestError func(context.Context, error) string
 	RedactRequestValue func(context.Context, any) (any, error)
-	SealRequest        func(int64, any) (string, error)
-	OpenRequest        func(int64, string, any) error
-	ExecutionTimeout   time.Duration
+	// PrepareRequestValueRedactor captures policy outside effect transactions.
+	// Its returned callback must not acquire database connections.
+	PrepareRequestValueRedactor func(context.Context) RequestProjectionRedactor
+	SealRequest                 func(int64, any) (string, error)
+	OpenRequest                 func(int64, string, any) error
+	ExecutionTimeout            time.Duration
 }
 
 type RequestObservationAppender func(*sql.Tx, string, *int64, int64, string, any) error

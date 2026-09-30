@@ -67,14 +67,18 @@ func (r *Runtime) complete(
 	actor string,
 	action string,
 ) (Request, error) {
+	publicOutput, err := r.redactProjection(ctx, output)
+	if err != nil {
+		return Request{}, err
+	}
 	tokenID, runtimeID := r.auditIdentity(ctx, requestID)
 	var item Request
-	err := r.mutations.WithMutation(
+	err = r.mutations.WithMutation(
 		ctx, actor, tokenID, runtimeID, action,
 		func() any { return RequestAuditPayload(item, userNote) },
 		func(tx *sql.Tx) error {
 			var completeErr error
-			item, completeErr = NewTxStore(tx).Complete(ctx, requestID, status, output, errorText, userNote)
+			item, completeErr = NewTxStore(tx).Complete(ctx, requestID, status, publicOutput, errorText, userNote)
 			return completeErr
 		},
 	)
