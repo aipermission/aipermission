@@ -49,8 +49,14 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 		httptransport.WriteError(w, http.StatusUnsupportedMediaType, "database import requires multipart/form-data")
 		return
 	}
+	r, finishBody := guardImportBody(w, r, importBodyIdleTimeout)
+	defer finishBody()
 	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
+		if r.Context().Err() != nil {
+			httptransport.WriteError(w, http.StatusRequestTimeout, "database upload stopped or was canceled")
+			return
+		}
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			httptransport.WriteError(w, http.StatusRequestEntityTooLarge, "uploaded database is too large; maximum import size is 256 MiB")
@@ -84,6 +90,10 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 }
 
 func (component *Component) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error) {
+	if r.Context().Err() != nil {
+		httptransport.WriteError(w, http.StatusRequestTimeout, "database import was canceled")
+		return
+	}
 	attempt, ok := component.dependencies.BeginAttempt(w, r)
 	if !ok {
 		return
