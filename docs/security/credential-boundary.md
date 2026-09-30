@@ -150,6 +150,20 @@ the same recursive redaction to typed, map, slice, and custom-marshaled output
 and reuses that exact projection for encrypted history and MCP. Redaction is
 best-effort and can be extended with custom regex rules in Security.
 
+Basic masking recognizes quoted JSON secret names, including escaped names,
+and JSON carried inside text fields such as `stdout` or `body`. JSON string
+values are decoded and re-encoded before masking, keeping the surrounding
+JSON, duplicate keys, and numeric precision intact. Embedded JSON string
+decoding is bounded to 32 levels; deeper string content is withheld. Embedded
+JSON discovery is also bounded to 32 failed parse candidates per text value;
+any remaining unprocessed text is withheld on exhaustion. Up to three bounded
+normalization passes ensure repeated basic masking produces the same result;
+ambiguous text that does not stabilize is withheld. Ordinary log text retains the
+same named-secret, bearer-token, provider-token, private-key,
+and shell `PWD` rules. Custom regex rules still operate on the complete text and
+can invalidate JSON; audit persistence then fails closed. This remains pattern
+matching, not detection of all unrelated, encoded, or transformed secrets.
+
 ## Redaction Guarantee Matrix
 
 Encryption, credential isolation, declared-field masking, and pattern matching
