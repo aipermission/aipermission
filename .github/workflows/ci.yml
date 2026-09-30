@@ -57,6 +57,8 @@ jobs:
         run: node scripts/run-tooling-tests.js scripts/verification
       - name: Maintenance policy tests
         run: node scripts/run-tooling-tests.js scripts/maintenance
+      - name: Dependency reporting tests
+        run: node scripts/run-tooling-tests.js scripts/dependencies
       - name: Release policy tests
         run: node scripts/run-tooling-tests.js scripts/release
       - name: Maintenance budgets

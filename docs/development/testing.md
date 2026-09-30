@@ -34,7 +34,13 @@ This runs:
 - a scheduled informational issue for direct npm majors and Go majors reported
   on an existing module path; path-changing Go majors such as `/v2` remain a
   manual maintainer review, and the workflow never creates or merges
-  bot-authored dependency commits
+  bot-authored dependency commits. Empty scans create no issue; cleared scans
+  close the existing generated report, and later findings reuse that issue.
+  Unchanged reports cause no writes. Scan/search errors and ambiguous ownership
+  fail the workflow instead of closing or overwriting an unrelated issue.
+  The workflow owns the generated body; put maintainer notes in issue comments.
+  It rechecks the selected issue before a write, but GitHub issue edits do not
+  provide an atomic lock against a simultaneous human body edit.
 - canonical release-note artifact, release-version, and native-dependency
   inventory consistency checks
 - generated OpenAPI route and typed-schema drift
