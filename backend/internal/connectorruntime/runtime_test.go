@@ -17,6 +17,7 @@ func TestAdapterPortsExposeOnlyDeclaredAuthority(t *testing.T) {
 		value   any
 		methods []string
 	}{
+		{name: "scoped resources", value: scope.ScopedResourceRuntime(), methods: []string{"CredentialResources"}},
 		{name: "data", value: scope.DataRuntime(), methods: []string{"CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
 		{name: "live console", value: scope.LiveConsoleRuntime(), methods: []string{"CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
 		{name: "action", value: scope.ActionRuntime(), methods: []string{"ConnectorConsoleSessions", "CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},

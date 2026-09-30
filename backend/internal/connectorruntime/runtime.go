@@ -217,6 +217,10 @@ func (s *Scope) DataRuntime() connectorapi.ConnectorDataRuntime {
 	return dataRuntime{scope: s}
 }
 
+func (s *Scope) ScopedResourceRuntime() connectorapi.ScopedResourceRuntime {
+	return resourceRuntime{scope: s}
+}
+
 func (s *Scope) LiveConsoleRuntime() connectorapi.LiveConsoleRuntime {
 	return dataRuntime{scope: s}
 }
@@ -245,6 +249,12 @@ func (s *Scope) RequireTargetRuntimeID(ctx context.Context, targetID int64, runt
 	return nil
 }
 
+type resourceRuntime struct{ scope *Scope }
+
+func (r resourceRuntime) CredentialResources(resourceKind string) connectorapi.CredentialResourceStore {
+	return r.scope.resourcesFor(resourceKind)
+}
+
 type dataRuntime struct{ scope *Scope }
 
 func (r dataRuntime) ResolveConnectorActionTarget(ctx context.Context, targetRef string) (connectors.TargetView, connectors.CredentialProfileView, error) {
@@ -271,7 +281,7 @@ func (r dataRuntime) ListCredentialProfiles(ctx context.Context, targetID int64)
 }
 
 func (r dataRuntime) CredentialResources(resourceKind string) connectorapi.CredentialResourceStore {
-	return r.scope.resourcesFor(resourceKind)
+	return resourceRuntime{scope: r.scope}.CredentialResources(resourceKind)
 }
 
 type liveRuntime struct{ dataRuntime }

@@ -70,6 +70,18 @@ type CredentialResourceStore interface {
 	CountProfileReferences(ctx context.Context, publicField string, numericValue int64) (int, error)
 }
 
+// ScopedResourceRuntime exposes persistent resources for one core-bound
+// connector kind, without target resolution, console or principal authority.
+type ScopedResourceRuntime interface {
+	CredentialResources(resourceKind string) CredentialResourceStore
+}
+
+// ScopedResourceCapabilityProvider lets structured connectors supply durable
+// domain journals without implementing unrelated asynchronous console methods.
+type ScopedResourceCapabilityProvider interface {
+	ScopedResourceCapabilities(ScopedResourceRuntime) map[string]connectors.RuntimeCapability
+}
+
 // ConnectorDataRuntime exposes only connector target/profile operations. The
 // implementation is scoped to the adapter's connector kind by core.
 type ConnectorDataRuntime interface {

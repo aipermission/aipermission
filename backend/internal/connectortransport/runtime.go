@@ -81,6 +81,10 @@ func DataRuntime(runtime Runtime, kind string) connectorapi.ConnectorDataRuntime
 	return Scope(runtime, kind).DataRuntime()
 }
 
+func ScopedResourceRuntime(runtime Runtime, kind string) connectorapi.ScopedResourceRuntime {
+	return Scope(runtime, kind).ScopedResourceRuntime()
+}
+
 func LiveRuntime(runtime Runtime, kind string) connectorapi.LiveConsoleRuntime {
 	return Scope(runtime, kind).LiveConsoleRuntime()
 }

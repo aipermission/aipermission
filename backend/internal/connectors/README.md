@@ -314,12 +314,26 @@ the `redis` connector kind, action names, and target-ref prefix. Those transport
 the connector implementation; page-level UI, MCP tools, token permissions,
 history, and audit use the shared target/profile/action vocabulary.
 
-`RuntimeContext.Capabilities` is reserved for gateway-owned runtime adapters.
+`RuntimeContext.Capabilities` carries reviewed gateway-provided capabilities.
 A connector receives only typed capabilities such as `network_transport` or
 reviewed runtime-adapter services. Do not use it as a general escape hatch for
 arbitrary gateway internals. `network_transport` can open a direct TCP
 connection or delegate to another connector's reviewed TCP transport adapter
 such as SSH; protocol connectors still own their own protocol code.
+
+A structured connector that needs a durable domain journal may register a
+gateway adapter implementing `ScopedResourceCapabilityProvider`. Its
+`ScopedResourceCapabilities` method receives only `ScopedResourceRuntime`:
+`CredentialResources(resourceKind)` returns the existing encrypted resource
+store, bound by core to the current connector kind and workspace. The concrete
+runtime has no target, console, principal or raw database methods. This does
+not require `RuntimeAdapter` or asynchronous console methods. Domain record
+formats, intent/confirmation rules and reconciliation remain connector-owned.
+The shared composition rejects invalid names, missing capabilities and
+collisions with transports or another provider. Storage does not provide a
+cross-step CAS: callers must hold the appropriate lifecycle admission across
+snapshot, dispatch and confirmation, and must preserve uncertain outcomes
+across cancellation or reply loss rather than retrying mutations blindly.
 
 The 0.2 connector line is a clean database baseline. Do not add runtime
 fallbacks for pre-0.2 preview schemas; important old data belongs in the
