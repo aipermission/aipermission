@@ -26,7 +26,8 @@ type ConnectorRuntimeTransferPorts struct {
 }
 
 type ConnectorRuntimeObservationPorts struct {
-	Audit func(context.Context, *WorkspaceHandle, string, *int64, int64, string, any)
+	Audit       func(context.Context, *WorkspaceHandle, string, *int64, int64, string, any)
+	TargetAudit func(context.Context, *WorkspaceHandle, string, any) error
 }
 
 type ConnectorActionFinishPort func(context.Context, *WorkspaceHandle, int64, connectors.ResultStatus, any, string, string, ...connectors.OutputHint) (connectormgmt.ActionRequest, error)
@@ -69,7 +70,7 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 	if dependencies.TrustStorePath == nil || dependencies.ActiveRuntime == nil ||
 		dependencies.WorkspaceSnapshot == nil || dependencies.InvalidatePeerTrust == nil ||
 		dependencies.Execution.Principal == nil || dependencies.Execution.Restart == nil ||
-		dependencies.Transfers.Download == nil || dependencies.Observation.Audit == nil {
+		dependencies.Transfers.Download == nil || dependencies.Observation.Audit == nil || dependencies.Observation.TargetAudit == nil {
 		return nil, errors.New("connector runtime ports are incomplete")
 	}
 	application := &ConnectorRuntimeApplication{
@@ -159,6 +160,12 @@ func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandl
 				if application.observation.Audit != nil {
 					application.observation.Audit(ctx, handle, actor, tokenID, runtimeID, action, payload)
 				}
+			},
+			TargetAudit: func(ctx context.Context, action string, payload any) error {
+				if application.observation.TargetAudit == nil {
+					return errors.New("connector target audit port is unavailable")
+				}
+				return application.observation.TargetAudit(ctx, handle, action, payload)
 			},
 		}
 	}

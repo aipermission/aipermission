@@ -39,6 +39,10 @@ type targetOperationGateway struct{ targetDraftPeer }
 func (targetOperationGateway) ConnectorWriteAudit(context.Context, string, *int64, int64, string, any) {
 }
 
+func (targetOperationGateway) ConnectorWriteTargetAudit(context.Context, string, any) error {
+	return nil
+}
+
 func TestTargetOperationHandlerDispatchesThroughWorkspacePorts(t *testing.T) {
 	database, registry := targetDraftFixture(t)
 	target := createTargetDeleteFixture(t, database)
