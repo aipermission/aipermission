@@ -283,6 +283,10 @@ func (runtime *BulkHTTPRuntime) runOne(workerContext context.Context, item BulkH
 		return
 	}
 	if err != nil {
+		if errors.Is(err, console.ErrCommandOutcomeUnknown) {
+			runtime.finish(unknownCommandCompletion(item.RequestID, result.SessionID, ""))
+			return
+		}
 		message := "command execution failed: " + strings.TrimSpace(err.Error())
 		if runtime.PresentError != nil {
 			message = runtime.PresentError(workerContext, item.TargetID, err)
