@@ -1,13 +1,13 @@
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import * as monaco from "monaco-editor/editor";
 import { expect, it, vi } from "vitest";
 import { applySQLEditorTheme, loadSQLMonaco } from "../../connectors/templates/_shared/sql-editor-runtime";
 
-vi.mock("monaco-editor/esm/vs/editor/editor.api", () => ({
+vi.mock("monaco-editor/editor", () => ({
   editor: { defineTheme: vi.fn(), setTheme: vi.fn() },
 }));
-vi.mock("monaco-editor/esm/vs/editor/editor.worker?worker", () => ({ default: class SQLWorker {} }));
-vi.mock("monaco-editor/esm/vs/basic-languages/sql/sql.contribution", () => ({}));
-vi.mock("monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js", () => ({}));
+vi.mock("monaco-editor/editor/editor.worker?worker", () => ({ default: class SQLWorker {} }));
+vi.mock("monaco-editor/languages/definitions/sql/register", () => ({}));
+vi.mock("monaco-editor/editor/contrib/suggest/browser/suggestController.js", () => ({}));
 
 it("shares one pending Monaco load and installs its SQL worker", async () => {
   const previousEnvironment = window.MonacoEnvironment;
@@ -24,18 +24,18 @@ it("shares one pending Monaco load and installs its SQL worker", async () => {
 
 it("retries a failed worker-module load instead of caching the rejected promise", async () => {
   vi.resetModules();
-  vi.doMock("monaco-editor/esm/vs/editor/editor.worker?worker", () => {
+  vi.doMock("monaco-editor/editor/editor.worker?worker", () => {
     throw new Error("Worker module unavailable");
   });
   const previousEnvironment = window.MonacoEnvironment;
   try {
     const runtime = await import("../../connectors/templates/_shared/sql-editor-runtime");
     await expect(runtime.loadSQLMonaco()).rejects.toThrow();
-    vi.doMock("monaco-editor/esm/vs/editor/editor.worker?worker", () => ({ default: class RecoveredSQLWorker {} }));
+    vi.doMock("monaco-editor/editor/editor.worker?worker", () => ({ default: class RecoveredSQLWorker {} }));
     await expect(runtime.loadSQLMonaco()).resolves.toHaveProperty("editor");
     expect(window.MonacoEnvironment?.getWorker?.()).toBeInstanceOf(Object);
   } finally {
-    vi.doMock("monaco-editor/esm/vs/editor/editor.worker?worker", () => ({ default: class SQLWorker {} }));
+    vi.doMock("monaco-editor/editor/editor.worker?worker", () => ({ default: class SQLWorker {} }));
     window.MonacoEnvironment = previousEnvironment;
     vi.resetModules();
   }

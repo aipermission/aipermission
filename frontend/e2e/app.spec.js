@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mjs";
+import { observeSQLBrowserRuntime, verifySQLBrowserRuntime } from "./sql-editor-browser.mjs";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
@@ -29,6 +30,8 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({
       headers: {
         "set-cookie": "aipermission_ui_session=test; Path=/; SameSite=Strict",
+        "X-AIPermission-Workspace": "browser-fixture-workspace",
+        "access-control-expose-headers": "X-AIPermission-Workspace",
       },
       json: { state: "unlocked", database_id: "default", database_name: "Default" },
     });
@@ -491,7 +494,9 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
   expect(runCount).toBe(1);
 });
 
-test("@high-risk keeps structured sessions isolated while switching connector profiles", async ({ page }) => {
+test("@high-risk keeps structured sessions isolated while switching connector profiles", async ({ page }, testInfo) => {
+  const browserErrors = await observeSQLBrowserRuntime(page);
+  const manualQueries = [];
   const profiles = [postgresTargetProfile(1, "admin"), postgresTargetProfile(2, "readonly")];
   await page.unroute("http://localhost:8080/api/targets");
   await page.route("http://localhost:8080/api/targets", async (route) => route.fulfill({ json: { items: profiles } }));
@@ -499,7 +504,19 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
     await route.fulfill({ json: { items: [postgresQueryAction()] } });
   });
   await page.route("http://localhost:8080/api/connector-actions/local-run", async (route) => {
-    await route.fulfill({ json: { request_id: 7, status: "completed", output: { rows: [] } } });
+    const request = route.request().postDataJSON();
+    if (request.reason === "manual Postgres console query") manualQueries.push(request);
+    await route.fulfill({
+      json: {
+        request_id: 7,
+        target_ref: request.target_ref,
+        connector_kind: "postgres",
+        action_name: request.action_name,
+        status: "completed",
+        retry_policy: { class: "read_only", guidance: "Read-only fixture." },
+        output: { rows: [] },
+      },
+    });
   });
 
   await unlock(page);
@@ -510,6 +527,7 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
   const profileSelect = workspaceHeader.getByLabel("Profile");
   await expect(profileSelect).toHaveValue("1");
   await expect(workspaceHeader.getByRole("button", { name: "End Session" })).toBeEnabled();
+  await verifySQLBrowserRuntime(page, testInfo, manualQueries, browserErrors);
 
   await profileSelect.selectOption("2");
   await expect(page).toHaveURL(/target=postgres%3A2%3A2/);

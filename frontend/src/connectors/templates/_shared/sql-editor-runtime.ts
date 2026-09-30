@@ -1,18 +1,18 @@
-type Monaco = typeof import("monaco-editor/esm/vs/editor/editor.api");
+type Monaco = typeof import("monaco-editor/editor");
 
 let monacoPromise: Promise<Monaco> | null = null;
 
 export function loadSQLMonaco(): Promise<Monaco> {
   if (!monacoPromise) {
-    monacoPromise = import("monaco-editor/esm/vs/editor/editor.worker?worker")
+    monacoPromise = import("monaco-editor/editor/editor.worker?worker")
       .then((workerModule) => {
         if (typeof window !== "undefined") {
           window.MonacoEnvironment = { getWorker: () => new workerModule.default() };
         }
         return Promise.all([
-          import("monaco-editor/esm/vs/basic-languages/sql/sql.contribution"),
-          import("monaco-editor/esm/vs/editor/contrib/suggest/browser/suggestController.js"),
-          import("monaco-editor/esm/vs/editor/editor.api"),
+          import("monaco-editor/languages/definitions/sql/register"),
+          import("monaco-editor/editor/contrib/suggest/browser/suggestController.js"),
+          import("monaco-editor/editor"),
         ]).then(([, , monaco]) => monaco);
       })
       .catch((error) => {
