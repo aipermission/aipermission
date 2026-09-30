@@ -7,6 +7,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
 
 type cancellationWriter struct {
@@ -155,7 +157,7 @@ func TestConsoleCancellationAfterPreludeRestoresTerminalWithoutPayload(t *testin
 				t.Fatal("prelude cancellation did not return")
 			}
 			writes := writer.snapshot()
-			if len(writes) != 2 || writes[0] != consoleExecPrelude() || writes[1] != restoreTerminalInputCommand {
+			if len(writes) != 2 || writes[0] != terminaltext.ExecPrelude || writes[1] != restoreTerminalInputCommand {
 				t.Fatalf("unexpected frames: %#v", writes)
 			}
 			if strings.Contains(strings.Join(writes, ""), "no-payload-after-prelude") || session.activeCommand() != nil {
