@@ -138,6 +138,97 @@ it("keeps the current queue list when a refresh returns no action item", async (
   expect(result.current.queues).toEqual([]);
 });
 
+it("retires queue detail and messages when a refresh no longer contains the selection", async () => {
+  mockedRunner.mockImplementation(async ({ actionName, input }) =>
+    actionName === "list_bindings" ? actionResponse({ bindings: [{ routing_key: "jobs.ready" }] }) : responseFor(actionName, input),
+  );
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.queues).toHaveLength(2));
+  await act(async () => result.current.selectQueue("jobs.ready"));
+  expect(result.current.queueDetail?.name).toBe("jobs.ready");
+  expect(result.current.bindings).toEqual([{ routing_key: "jobs.ready" }]);
+  mockedRunner.mockResolvedValueOnce(actionResponse({ messages: [{ payload: "sample" }] }));
+  await act(async () => result.current.peekMessages());
+  expect(result.current.messages).toEqual([{ payload: "sample" }]);
+
+  mockedRunner.mockResolvedValueOnce(actionResponse(null));
+  await act(async () => result.current.refreshQueues());
+
+  expect(result.current.queues).toEqual([]);
+  expect(result.current.activeQueue).toBe("");
+  expect(result.current.queueDetail).toBeNull();
+  expect(result.current.messages).toEqual([]);
+  expect(result.current.bindings).toEqual([]);
+});
+
+it.each(["get_queue", "list_bindings"])("recovers queue reads after a rejected %s request", async (failedAction) => {
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.queues).toHaveLength(2));
+  mockedRunner.mockImplementation(async (options) => {
+    if (options.actionName !== failedAction) return responseFor(options.actionName, options.input);
+    options.setState({
+      state: options.suppressError ? "idle" : "error",
+      error: options.suppressError ? "" : "Fixture read failed",
+      message: "",
+    });
+    throw new Error("Fixture read failed");
+  });
+  await act(async () => result.current.selectQueue("jobs.ready"));
+  expect(result.current.bindings).toEqual([]);
+  expect(result.current.state.error).toBe(failedAction === "get_queue" ? "Fixture read failed" : "");
+  expect(result.current.queueDetail?.name).toBe(failedAction === "get_queue" ? undefined : "jobs.ready");
+
+  mockedRunner.mockImplementation(async ({ actionName, input }) =>
+    actionName === "list_bindings" ? actionResponse({ bindings: [{ routing_key: "jobs.failed" }] }) : responseFor(actionName, input),
+  );
+  await act(async () => result.current.selectQueue("jobs.failed"));
+  expect(result.current.activeQueue).toBe("jobs.failed");
+  expect(result.current.queueDetail?.name).toBe("jobs.failed");
+  expect(result.current.bindings).toEqual([{ routing_key: "jobs.failed" }]);
+});
+
+it("starts with no queue or dispatch when no session has been supplied", async () => {
+  const { result } = renderHook(() => useRabbitMQBrowser({ target: { ref: "rabbitmq:1:1" }, onRefreshActivity: vi.fn() }));
+  await act(async () => {
+    await result.current.refreshQueues();
+    await result.current.selectQueue("jobs.ready");
+    await result.current.peekMessages();
+  });
+  expect(mockedRunner).not.toHaveBeenCalled();
+  expect(result.current.activeSession.active).toBe(false);
+  expect(result.current.queues).toEqual([]);
+  expect(result.current.vhost).toBe("/");
+});
+
+it("blocks refresh, selection and an otherwise valid publish after the session closes", async () => {
+  const { result, rerender } = renderHook(
+    ({ active }) =>
+      useRabbitMQBrowser({
+        target: { ref: "rabbitmq:1:1", config: { vhost: "/" } },
+        approvals: { state: "ready", data: [] },
+        session: { active, startedAt: "same-session" },
+        onRefreshActivity: vi.fn(),
+      }),
+    { initialProps: { active: true } },
+  );
+  await waitFor(() => expect(result.current.publishLocked).toBe(false));
+  await waitFor(() => expect(result.current.queues).toHaveLength(2));
+  await act(async () => result.current.selectQueue("jobs.ready"));
+  act(() => result.current.setPublish((current) => ({ ...current, routingKey: "jobs.ready", payload: "valid draft" })));
+  rerender({ active: false });
+  expect(result.current.activeQueue).toBe("jobs.ready");
+  expect(result.current.publishLocked).toBe(false);
+  mockedRunner.mockClear();
+  await act(async () => {
+    await result.current.refreshQueues();
+    await result.current.selectQueue("jobs.failed");
+    await result.current.publishMessage();
+  });
+  expect(mockedRunner).not.toHaveBeenCalled();
+  expect(result.current.activeQueue).toBe("jobs.ready");
+  expect(result.current.publish.payload).toBe("valid draft");
+});
+
 it("clears queue identity when the operator changes vhost", async () => {
   const { result } = renderBrowser();
   await waitFor(() => expect(result.current.queues).toHaveLength(2));
@@ -285,6 +376,7 @@ it("keeps an approval-pending publish locked until activity becomes terminal", a
   });
   const { result, rerender } = renderBrowser();
   await waitFor(() => expect(result.current.queues).toHaveLength(2));
+  await act(async () => result.current.selectQueue("jobs.ready"));
   act(() => {
     result.current.startPublish();
     result.current.setPublish((current) => ({ ...current, routingKey: "jobs.ready", payload: "hello" }));
@@ -296,13 +388,19 @@ it("keeps an approval-pending publish locked until activity becomes terminal", a
   const publishCalls = mockedRunner.mock.calls.filter(([options]) => options.actionName === "publish_message");
   await act(async () => result.current.publishMessage());
   expect(mockedRunner.mock.calls.filter(([options]) => options.actionName === "publish_message")).toHaveLength(publishCalls.length);
-  act(() => {
+  mockedRunner.mockClear();
+  await act(async () => {
     result.current.setVhostDraft("/other");
     result.current.applyVhost();
-    void result.current.selectQueue("jobs.failed");
+    await result.current.selectQueue("jobs.failed");
+    await result.current.peekMessages();
+    result.current.setDetailMode("inspect");
+    result.current.startPublish();
   });
   expect(result.current.vhost).toBe("/");
-  expect(result.current.activeQueue).not.toBe("jobs.failed");
+  expect(result.current.activeQueue).toBe("jobs.ready");
+  expect(result.current.detailMode).toBe("inspect");
+  expect(mockedRunner).not.toHaveBeenCalled();
 
   rerender({ activity: { state: "ready", data: [{ id: 91, target_ref: "rabbitmq:1:1", status: "approval_pending" }] } });
   await waitFor(() => expect(result.current.publishLocked).toBe(true));
