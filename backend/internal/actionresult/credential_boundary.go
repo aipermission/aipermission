@@ -16,7 +16,6 @@ const (
 	CredentialRedactionMarker            = "[REDACTED CREDENTIAL]"
 	connectorCredentialSubstringMinBytes = 3
 	connectorCredentialKeySubstringBytes = 8
-	connectorCredentialDelimitedMinBytes = 1
 )
 
 // NormalizeField converts connector field names to the canonical form used by
@@ -122,11 +121,7 @@ func RedactSensitiveText(value string, sensitiveValues []string) string {
 		if sensitive == "" {
 			continue
 		}
-		if value == sensitive || len(sensitive) >= connectorCredentialSubstringMinBytes {
-			value = strings.ReplaceAll(value, sensitive, CredentialRedactionMarker)
-		} else {
-			value = redactDelimitedCredential(value, sensitive)
-		}
+		value = redactCredentialValue(value, sensitive, connectorCredentialSubstringMinBytes)
 	}
 	return value
 }
@@ -220,14 +215,7 @@ func (r CredentialBoundary) Redact(value string) string {
 	values := append([]string(nil), r.state.values...)
 	r.state.mu.RUnlock()
 	for _, secret := range values {
-		if value == secret {
-			return CredentialRedactionMarker
-		}
-		if len(secret) >= connectorCredentialSubstringMinBytes {
-			value = strings.ReplaceAll(value, secret, CredentialRedactionMarker)
-		} else if len(secret) >= connectorCredentialDelimitedMinBytes {
-			value = redactDelimitedCredential(value, secret)
-		}
+		value = redactCredentialValue(value, secret, connectorCredentialSubstringMinBytes)
 	}
 	return value
 }
@@ -240,36 +228,49 @@ func (r CredentialBoundary) RedactKey(value string) string {
 	values := append([]string(nil), r.state.values...)
 	r.state.mu.RUnlock()
 	for _, secret := range values {
-		if value == secret {
-			return CredentialRedactionMarker
-		}
-		if len(secret) >= connectorCredentialKeySubstringBytes {
-			value = strings.ReplaceAll(value, secret, CredentialRedactionMarker)
-		} else if len(secret) >= connectorCredentialDelimitedMinBytes {
-			value = redactDelimitedCredential(value, secret)
-		}
+		value = redactCredentialValue(value, secret, connectorCredentialKeySubstringBytes)
 	}
 	return value
 }
 
-func redactDelimitedCredential(value string, secret string) string {
+func redactCredentialValue(value, secret string, substringMinBytes int) string {
+	if secret == "" || !strings.Contains(value, secret) {
+		return value
+	}
+	var output strings.Builder
 	start := 0
 	for {
 		index := strings.Index(value[start:], secret)
 		if index < 0 {
-			return value
+			output.WriteString(value[start:])
+			return output.String()
 		}
 		index += start
 		end := index + len(secret)
 		leftDelimited := index == 0 || !credentialWordByte(value[index-1])
 		rightDelimited := end == len(value) || !credentialWordByte(value[end])
-		if leftDelimited && rightDelimited {
-			value = value[:index] + CredentialRedactionMarker + value[end:]
-			start = index + len(CredentialRedactionMarker)
-			continue
+		mask := value == secret || len(secret) >= substringMinBytes || leftDelimited && rightDelimited
+		output.WriteString(value[start:index])
+		if mask && !credentialMatchInsideMarker(value, index, end) {
+			output.WriteString(CredentialRedactionMarker)
+		} else {
+			output.WriteString(secret)
 		}
 		start = end
 	}
+}
+
+func credentialMatchInsideMarker(value string, start, end int) bool {
+	// Only matches wholly inside an existing marker are protected. Searching
+	// the full value still finds credentials that span either marker edge.
+	windowStart := max(0, start-len(CredentialRedactionMarker)+1)
+	windowEnd := min(len(value), start+len(CredentialRedactionMarker))
+	index := strings.Index(value[windowStart:windowEnd], CredentialRedactionMarker)
+	if index < 0 {
+		return false
+	}
+	markerStart := windowStart + index
+	return markerStart <= start && end <= markerStart+len(CredentialRedactionMarker)
 }
 
 func credentialWordByte(value byte) bool {

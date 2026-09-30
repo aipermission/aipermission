@@ -17,11 +17,26 @@ import (
 )
 
 func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
+	testConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t,
+		"gateway-credential-never-return-7f3a", securitypolicy.RedactionModeOff)
+}
+
+func TestConnectorCredentialCompositionAcrossRESTMCPHistoryAndAudit(t *testing.T) {
+	for _, mode := range []string{securitypolicy.RedactionModeBasic, securitypolicy.RedactionModeOff} {
+		for _, secret := range []string{"alpha violet-suffix-7291", "blue\nlast-line-secret-914"} {
+			t.Run(mode+"/"+secret, func(t *testing.T) {
+				testConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t, secret, mode)
+			})
+		}
+	}
+}
+
+func testConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T, credentialSecret, mode string) {
+	t.Helper()
 	fixture := newAPITestFixture(t, withTestConnector(localActionTestConnector{}))
 	ctx := context.Background()
 	runtime := fixture.server.activeRuntime()
 
-	const credentialSecret = "gateway-credential-never-return-7f3a"
 	const targetOutput = "permitted-target-output-may-be-sensitive-7f3a"
 	store := connectortargets.NewStore(fixture.db)
 	target, err := store.CreateTarget(ctx, connectortargets.CreateTargetInput{
@@ -63,14 +78,16 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("set connector action permission: %v", err)
 	}
-	if err := setSecurityPolicySettings(t, ctx, runtime, securitypolicy.Settings{RedactionMode: securitypolicy.RedactionModeOff}); err != nil {
-		t.Fatalf("disable operator-configured redaction: %v", err)
+	if err := setSecurityPolicySettings(t, ctx, runtime, securitypolicy.Settings{RedactionMode: mode}); err != nil {
+		t.Fatalf("set operator-configured redaction: %v", err)
 	}
 
 	assertCredentialAbsent := func(label string, body string) {
 		t.Helper()
-		if strings.Contains(body, credentialSecret) {
-			t.Fatalf("%s exposed the gateway-held connector credential: %s", label, body)
+		for _, fragment := range append(strings.Fields(credentialSecret), credentialSecret) {
+			if strings.Contains(body, fragment) {
+				t.Fatalf("%s exposed a gateway-held credential fragment: %s", label, body)
+			}
 		}
 	}
 	assertOKWithoutCredential := func(label string, responseBody string, status int) {
@@ -130,7 +147,16 @@ func TestConnectorCredentialBoundaryAcrossRESTMCPHistoryAndAudit(t *testing.T) {
 		assertOKWithoutCredential("audit detail response", auditDetailResponse.Body.String(), auditDetailResponse.Code)
 	}
 
+	fragments := strings.Fields(credentialSecret)
+	for _, fragment := range fragments {
+		assertPersistedCredentialAbsent(t, fixture, fragment)
+	}
+}
+
+func assertPersistedCredentialAbsent(t *testing.T, fixture apiTestFixture, credentialSecret string) {
+	t.Helper()
 	var persistedSecretReferences int
+	ctx := t.Context()
 	if err := fixture.db.QueryRowContext(ctx, `
 		SELECT
 			(SELECT COUNT(*) FROM connector_action_requests

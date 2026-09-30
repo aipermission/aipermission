@@ -63,7 +63,7 @@ func (h *ProfileBackupHTTPHandler) Download(w http.ResponseWriter, r *http.Reque
 	}
 	artifact, err := backupRestorer.Backup(r.Context(), resolved.runtime, connectors.BackupRequest{Format: "sql"})
 	if err != nil {
-		writeProvisionError(w, err, resolved.boundary.Redact(resolved.scope.Runtime.RedactText(r.Context(), err.Error())))
+		writeProvisionError(w, err, resolved.scope.Runtime.redactCredentialText(r.Context(), err.Error(), resolved.boundary))
 		return
 	}
 	if len(artifact.Data) == 0 {
@@ -166,7 +166,7 @@ func (h *ProfileBackupHTTPHandler) Restore(w http.ResponseWriter, r *http.Reques
 			resolved.writeRestoreFinalizationFailure(w, r, operation.ID)
 			return
 		}
-		writeRestoreExecutionError(w, operation.ID, status, errorCode, err, resolved.boundary.Redact(resolved.scope.Runtime.RedactText(r.Context(), err.Error())))
+		writeRestoreExecutionError(w, operation.ID, status, errorCode, err, resolved.scope.Runtime.redactCredentialText(r.Context(), err.Error(), resolved.boundary))
 		return
 	}
 	status, valid := profileRestoreResultStatus(result.Status)

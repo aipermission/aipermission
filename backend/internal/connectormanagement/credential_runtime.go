@@ -22,6 +22,12 @@ func (ports CredentialRuntimePorts) valid() bool {
 	return ports.DecryptSecret != nil && ports.RuntimeContext != nil && ports.RedactResult != nil && ports.RedactText != nil
 }
 
+func (ports CredentialRuntimePorts) redactCredentialText(ctx context.Context, value string, boundary CredentialBoundary) string {
+	return actionresult.RedactCredentialText(value, boundary.Redact, func(text string) string {
+		return ports.RedactText(ctx, text)
+	})
+}
+
 type ManagedCredentialCleanupScope struct {
 	Database *sql.DB
 	Registry connectors.Catalog
@@ -75,7 +81,7 @@ func CleanupProvisionedCredentialProfileIfNeeded(
 		connectortargets.CredentialProfileView(profile),
 	)
 	if err := RequireCompletedCredentialCleanup(result, err); err != nil {
-		return ProfileCleanupOutcome{}, errors.New(boundary.Redact(scope.Runtime.RedactText(ctx, err.Error())))
+		return ProfileCleanupOutcome{}, errors.New(scope.Runtime.redactCredentialText(ctx, err.Error(), boundary))
 	}
 	redacted, err := scope.Runtime.RedactResult(ctx, result, boundary)
 	if err != nil {

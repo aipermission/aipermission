@@ -103,9 +103,10 @@ func (r *Runtime) insertPreparedRequest(
 		return connectortargets.ActionRequest{}, false, err
 	}
 	sensitiveValues := actionresult.SensitiveValues(prepared.Requested.Input, prepared.Action.Payload, prepared.ActionDefinition.SensitiveInputFields)
+	boundary := actionresult.NewCredentialBoundary(nil)
+	boundary.Add(sensitiveValues...)
 	redactText := func(value string) (string, error) {
-		redacted, redactErr := r.redactor.Text(ctx, value, actionresult.CredentialBoundary{})
-		return actionresult.RedactSensitiveText(redacted, sensitiveValues), redactErr
+		return r.redactor.Text(ctx, value, boundary)
 	}
 	redactedTitle, err := redactText(prepared.Action.Title)
 	if err != nil {

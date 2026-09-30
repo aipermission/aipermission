@@ -120,7 +120,7 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		r.Context(), scope.Runtime.RuntimeContext(target, adminProfile, secrets, boundary), request.Input,
 	)
 	if err != nil {
-		writeProvisionError(w, err, boundary.Redact(scope.Runtime.RedactText(r.Context(), err.Error())))
+		writeProvisionError(w, err, scope.Runtime.redactCredentialText(r.Context(), err.Error(), boundary))
 		return
 	}
 	boundary.AddStructured(provisioned.Secret)
@@ -224,7 +224,7 @@ func (h *ProvisioningHTTPHandler) failProvisioned(
 		return
 	}
 	boundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
-	writeProvisionFailureCause(w, cause, boundary.Redact(scope.Runtime.RedactText(ctx, cause.Error())))
+	writeProvisionFailureCause(w, cause, scope.Runtime.redactCredentialText(ctx, cause.Error(), boundary))
 }
 
 func compensateProvisioned(
@@ -312,7 +312,7 @@ func safeProvisionError(boundary actionresult.CredentialBoundary, err error) str
 	if err == nil {
 		return ""
 	}
-	return boundary.Redact(securitypolicy.RedactBasic(err.Error()))
+	return actionresult.RedactCredentialText(err.Error(), boundary.Redact, securitypolicy.RedactBasic)
 }
 
 func writeProvisionError(w http.ResponseWriter, err error, safeMessage string) {
