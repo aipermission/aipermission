@@ -21,10 +21,16 @@ var (
 )
 
 type ImportInput struct {
-	DatabaseName  string
-	Password      string
-	Write         func(string) error
-	Mutate        func(*sql.DB) error
+	DatabaseName string
+	Password     string
+	Write        func(string) error
+	Mutate       func(*sql.DB) error
+	// BeforeCommit runs after the verified candidate is prepared and closed, before
+	// the service mutex is acquired. The caller acquires its external lifecycle
+	// writer here and revalidates authorization/selection, then retains that writer
+	// until the response is complete and releases it itself, including on errors.
+	// Nil preserves restore callers that already hold the lifecycle writer.
+	BeforeCommit  func() error
 	BeforePublish func() error
 }
 
@@ -39,9 +45,7 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 	if input.Write == nil {
 		return Transition{}, fmt.Errorf("database import writer is required")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+	gatewaySecret := s.importGatewaySecret()
 	targetID, targetPath, err := databasecatalog.NewDatabasePathExact(s.dataPath, input.DatabaseName)
 	if err != nil {
 		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
@@ -63,7 +67,13 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 		return Transition{}, err
 	}
 	defer cleanupImportCandidate(tmpPath)
+	if err := ctx.Err(); err != nil {
+		return Transition{}, err
+	}
 	if err := input.Write(tmpPath); err != nil {
+		return Transition{}, err
+	}
+	if err := ctx.Err(); err != nil {
 		return Transition{}, err
 	}
 	if db.LooksLikePlainSQLite(tmpPath) {
@@ -76,7 +86,7 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 		}
 		return Transition{}, fmt.Errorf("%w: invalid database password or database file", ErrCredential)
 	}
-	if err := s.prepareImportCandidate(ctx, candidate, input.Mutate); err != nil {
+	if err := s.prepareImportCandidate(ctx, candidate, input.Mutate, gatewaySecret); err != nil {
 		if closeErr := closeImportCandidate(candidate); closeErr != nil {
 			log.Printf("failed closing rejected import candidate path=%q error=%v", tmpPath, closeErr)
 		}
@@ -85,13 +95,35 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 	if err := closeImportCandidate(candidate); err != nil {
 		return Transition{}, afterCredential(err)
 	}
-	if db.Exists(targetPath) {
-		return Transition{}, afterCredential(ErrDatabaseExists)
+	if err := ctx.Err(); err != nil {
+		return Transition{}, afterCredential(err)
+	}
+	if input.BeforeCommit != nil {
+		if err := input.BeforeCommit(); err != nil {
+			return Transition{}, afterCredential(err)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Transition{}, afterCredential(err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return Transition{}, afterCredential(err)
+	}
+	if _, _, err := databasecatalog.NewDatabasePathExact(s.dataPath, input.DatabaseName); err != nil {
+		if errors.Is(err, databasecatalog.ErrDatabaseExists) {
+			return Transition{}, afterCredential(ErrDatabaseExists)
+		}
+		return Transition{}, afterCredential(classify(ErrInvalidRequest, err))
 	}
 	if input.BeforePublish != nil {
 		if err := input.BeforePublish(); err != nil {
 			return Transition{}, afterCredential(err)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		return Transition{}, afterCredential(err)
 	}
 	if err := s.publish(tmpPath, targetPath); err != nil {
 		if errors.Is(err, db.ErrPublishTargetExists) {
@@ -116,11 +148,16 @@ func (s *Service[T]) Import(ctx context.Context, input ImportInput) (Transition,
 	return Transition{}, afterCredential(err)
 }
 
-func (s *Service[T]) prepareImportCandidate(ctx context.Context, candidate *sql.DB, mutate func(*sql.DB) error) error {
-	gatewaySecret := ""
-	if s.gatewaySecret != nil {
-		gatewaySecret = s.gatewaySecret()
+func (s *Service[T]) importGatewaySecret() string {
+	if s.gatewaySecret == nil {
+		return ""
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.gatewaySecret()
+}
+
+func (s *Service[T]) prepareImportCandidate(ctx context.Context, candidate *sql.DB, mutate func(*sql.DB) error, gatewaySecret string) error {
 	if _, err := projectvault.ResolveGatewaySecret(ctx, candidate, gatewaySecret); err != nil {
 		return classify(ErrInvalidRequest, err)
 	}

@@ -1199,6 +1199,15 @@ and returns `408 Request Timeout`; incomplete multipart headers are subject to
 the same window. Temporary multipart files and read deadlines are cleaned up
 when the request finishes.
 
+Multipart import shares the gateway's two-operation backup limit. Uploading
+and validating the encrypted candidate do not hold the exclusive workspace
+lifecycle lease. Before publication, the gateway acquires that lease and
+rechecks the workspace identity and, for an initially unlocked workspace, the
+UI session, CSRF token, and workspace binding. A workspace change rejects the
+staged import with `409`; an invalidated UI session returns `401`. Neither
+case publishes the candidate. Locked recovery imports remain available without
+a prior UI session, but cannot replace a workspace unlocked while uploading.
+
 Import can run while locked. The backend validates the uploaded database with
 the provided password, stores it as a named local database, and unlocks it.
 Import never overwrites an existing database file. A colliding normalized name

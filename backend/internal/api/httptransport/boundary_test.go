@@ -316,6 +316,7 @@ func TestProviderRecordRestoreIsLifecycleMutation(t *testing.T) {
 func TestBackupOperationRoutesManageLifecycleAfterOperationAdmission(t *testing.T) {
 	for _, path := range []string{
 		"/api/backup/download",
+		"/api/backup/import",
 		"/api/backup/providers/3/upload",
 		"/api/backup/providers/3/records/9/download",
 		"/api/backup/providers/3/records/9/restore",

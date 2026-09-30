@@ -67,7 +67,7 @@ func TestCanceledImportDoesNotBeginAPasswordAttempt(t *testing.T) {
 		t.Fatalf("canceled import status=%d password attempted=%t", response.Code, called)
 	}
 	response = httptest.NewRecorder()
-	component.installImportedDatabase(response, request, "Example", "fixture-password", func(string) error { t.Fatal("writer ran"); return nil }, nil)
+	component.installImportedDatabase(response, request, "Example", "fixture-password", func(string) error { t.Fatal("writer ran"); return nil }, nil, nil)
 	if response.Code != http.StatusRequestTimeout || called {
 		t.Fatalf("canceled installation status=%d password attempted=%t", response.Code, called)
 	}

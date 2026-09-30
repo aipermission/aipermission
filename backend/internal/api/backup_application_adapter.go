@@ -29,6 +29,7 @@ func (s *Server) backupApplication() *gatewayinfra.BackupApplication {
 		},
 		CurrentDatabaseName: s.currentDatabaseNameLocked,
 		AuthorizeOperation:  s.authorizeBackupOperation,
+		AuthorizeImport:     s.authorizeBackupImport,
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewayinfra.PasswordAttempt, bool) {
 			return s.beginDatabasePasswordAttempt(w, r)
 		},
@@ -36,6 +37,22 @@ func (s *Server) backupApplication() *gatewayinfra.BackupApplication {
 			return s.issuePreparedUISessionLocked(w, prepared)
 		},
 	})
+}
+
+// Called under a lifecycle read lease; the returned check runs under the
+// commit writer lease so a staged import cannot replace a different workspace.
+func (s *Server) authorizeBackupImport(w http.ResponseWriter, r *http.Request) (func() bool, bool) {
+	selection, runtime := s.workspaceSelection(), s.activeRuntime()
+	if runtime != nil && !s.authorizeBackupOperation(w, r) {
+		return nil, false
+	}
+	return func() bool {
+		if selection != s.workspaceSelection() || runtime != s.activeRuntime() {
+			writeError(w, http.StatusConflict, "workspace changed; restart the database import")
+			return false
+		}
+		return runtime == nil || s.authorizeBackupOperation(w, r)
+	}, true
 }
 
 func (s *Server) authorizeBackupOperation(w http.ResponseWriter, r *http.Request) bool {

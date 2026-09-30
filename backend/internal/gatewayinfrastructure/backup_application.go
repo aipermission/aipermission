@@ -18,6 +18,7 @@ type BackupApplicationDependencies struct {
 	ActiveRuntime       func(http.ResponseWriter) (*WorkspaceHandle, BackupRuntimePorts, bool)
 	CurrentDatabaseName func() string
 	AuthorizeOperation  func(http.ResponseWriter, *http.Request) bool
+	AuthorizeImport     func(http.ResponseWriter, *http.Request) (func() bool, bool)
 	BeginAttempt        func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
 	IssuePrepared       func(http.ResponseWriter, gatewayaccess.PreparedUISession) error
 }
@@ -74,6 +75,7 @@ func (component *OperationsOwner) NewBackupApplication(dependencies BackupApplic
 		},
 		CurrentDatabaseName: dependencies.CurrentDatabaseName,
 		AuthorizeOperation:  dependencies.AuthorizeOperation,
+		AuthorizeImport:     dependencies.AuthorizeImport,
 		BeginAttempt: func(w http.ResponseWriter, r *http.Request) (gatewaybackup.PasswordAttempt, bool) {
 			return dependencies.BeginAttempt(w, r)
 		},

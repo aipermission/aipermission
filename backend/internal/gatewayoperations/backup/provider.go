@@ -120,5 +120,5 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 	})
 	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
-	})
+	}, nil)
 }
