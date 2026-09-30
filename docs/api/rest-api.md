@@ -1297,6 +1297,13 @@ been sent, a request deadline does not prove the command stopped: the response
 retains the session/generation handle and running state for reconciliation.
 Observe or interrupt that existing command instead of blindly submitting it again.
 
+SSH connector actions keep that exact session ID and generation when the
+command was dispatched but its result cannot be observed. The shared action
+pipeline records `outcome_unknown` and `retry_safe: false`, withholds the
+unobserved output, and retains the handle for reconciliation. Background
+timeouts and lost observation remain uncertain even after a best-effort
+interrupt; an observed exit code still distinguishes completed from failed.
+
 `close_existing=true` closes any open shell for the same server and starts a new one. The UI New Session action uses this.
 
 `POST /api/console/runtime-surfaces/{id}/restart` is the local UI recovery

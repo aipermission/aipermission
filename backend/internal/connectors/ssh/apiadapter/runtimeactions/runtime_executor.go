@@ -67,7 +67,7 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 
 	switch action.ActionName {
 	case sshconnector.ActionExec:
-		return e.executeCommand(connectorPrincipal(runtimeContext.Principal), runtimeID, action)
+		return e.executeCommand(ctx, connectorPrincipal(runtimeContext.Principal), runtimeID, action)
 	case sshconnector.ActionReadConsole:
 		return e.readConsole(ctx, connectorPrincipal(runtimeContext.Principal), runtimeID, action)
 	case sshconnector.ActionRestartConsoleSession:
@@ -90,7 +90,7 @@ func runtimeCapabilityForAction(actionName string) string {
 	}
 }
 
-func (e runtimeExecutor) executeCommand(principal connectorapi.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
+func (e runtimeExecutor) executeCommand(ctx context.Context, principal connectorapi.Principal, runtimeID int64, action connectors.PreparedAction) (connectors.ActionResult, error) {
 	command := stringPayload(action.Payload, "command")
 	if command == "" {
 		return connectors.ActionResult{}, fmt.Errorf("command is required")
@@ -99,8 +99,14 @@ func (e runtimeExecutor) executeCommand(principal connectorapi.Principal, runtim
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	result, err := executeConsoleCommand(sessions, principal, runtimeID, command, consoleConnectTimeout, initialExecTimeout)
+	result, err := executeConsoleCommand(ctx, sessions, principal, runtimeID, command, consoleConnectTimeout, initialExecTimeout)
 	if err != nil {
+		if errors.Is(err, console.ErrCommandOutcomeUnknown) {
+			unknown := connectors.OutcomeUnknownResult("console_observation", map[string]any{"output_withheld": true}, console.ErrCommandOutcomeUnknown)
+			unknown.DisplayText = ""
+			unknown.Handles = connectors.ActionHandles{SessionID: result.SessionID, SessionGeneration: result.Generation}
+			return unknown, nil
+		}
 		return connectors.ActionResult{}, err
 	}
 	output := ExecOutput(result)
@@ -130,14 +136,14 @@ func (e runtimeExecutor) executeCommand(principal connectorapi.Principal, runtim
 	return response, nil
 }
 
-func executeConsoleCommand(sessions consoleCommandSessions, principal connectorapi.Principal, runtimeID int64, command string, connectTimeout time.Duration, commandTimeout time.Duration) (connectorapi.ConsoleExecResult, error) {
-	connectCtx, cancelConnect := context.WithTimeout(context.Background(), connectTimeout)
+func executeConsoleCommand(parent context.Context, sessions consoleCommandSessions, principal connectorapi.Principal, runtimeID int64, command string, connectTimeout time.Duration, commandTimeout time.Duration) (connectorapi.ConsoleExecResult, error) {
+	connectCtx, cancelConnect := context.WithTimeout(parent, connectTimeout)
 	_, err := sessions.EnsureReady(connectCtx, principal, runtimeID)
 	cancelConnect()
 	if err != nil {
 		return connectorapi.ConsoleExecResult{}, fmt.Errorf("start SSH console session: %w", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+	ctx, cancel := context.WithTimeout(parent, commandTimeout)
 	defer cancel()
 	result, err := sessions.Exec(ctx, principal, runtimeID, command)
 	if err != nil {
