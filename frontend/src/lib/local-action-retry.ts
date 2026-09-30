@@ -23,6 +23,7 @@ import {
 } from "./local-action-retry/runtime.ts";
 import { releaseSigningReservation, reserveSigningKey } from "./local-action-retry/signing.ts";
 import { resetRetryStorage } from "./local-action-retry/storage.ts";
+import { acknowledgedCommandBatch, completedCommandBatch } from "./local-action-retry/command-batches.ts";
 
 export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent };
 
@@ -82,8 +83,12 @@ export async function prepareLocalActionRetry(
   }
 }
 
-function requestSubject(value: unknown, actions?: readonly string[]): Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard"> {
+function requestSubject(
+  value: unknown,
+  actions?: readonly string[],
+): Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard" | "request_kind"> {
   const request = objectRecord(value);
+  if (request?.path === "/api/console/bulk-exec") return { request_kind: "console_batch" };
   if (request?.path !== "/api/connector-actions/local-run") return {};
   const body = objectRecord(request.body);
   if (typeof body?.target_ref !== "string" || !/^[a-z][a-z0-9_-]*:[1-9]\d*:[1-9]\d*$/.test(body.target_ref)) return {};
@@ -154,24 +159,27 @@ export async function preserveLocalActionRetryAttempt(prepared: unknown, value?:
     (entry) => ({
       ...entry,
       ...acknowledgedRequestIdentity(entry, data),
+      ...acknowledgedCommandBatch(entry, data),
       revision: entry.revision + 1,
       updated_at: new Date().toISOString(),
     }),
     true,
   );
-  if (changed) return;
   const current = await getEntry(prepared.scope, prepared.signature);
   if (
-    current?.key === prepared.idempotencyKey &&
-    current.revision > prepared.revision &&
-    validRetryEntry(current, prepared.scope.key, prepared.signature)
+    changed ||
+    (current?.key === prepared.idempotencyKey &&
+      current.revision > prepared.revision &&
+      validRetryEntry(current, prepared.scope.key, prepared.signature))
   ) {
+    if (current?.key === prepared.idempotencyKey && completedCommandBatch(current)) await completeEntryAttempt(prepared, true);
     return;
   }
   throw retryIdentityChangedError();
 }
 
 function acknowledgedRequestIdentity(entry: RetryEntry, data: Record<string, unknown> | null, retainConflicting = false) {
+  if (entry.request_kind === "console_batch") return {};
   if (typeof data?.request_id !== "number" || !Number.isSafeInteger(data.request_id) || data.request_id < 1) return {};
   if (entry.request_id != null && entry.request_id !== data.request_id) {
     if (retainConflicting) return {};

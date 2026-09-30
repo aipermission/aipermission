@@ -34,7 +34,7 @@ export async function reserveEntry(
   scope: RetryScope,
   signature: string,
   reservationID: string,
-  subject: Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard"> = {},
+  subject: Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard" | "request_kind"> = {},
   actionNames?: readonly string[],
 ) {
   if (!usesIndexedDB()) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
-import { apiPost } from "../../lib/api.ts";
+import { apiGet, apiPost } from "../../lib/api.ts";
 import {
   completeLocalActionRetry,
   listLocalActionRetryEntries,
@@ -142,17 +142,25 @@ test("backup upload retries retain one idempotency identity after response loss"
 
 test("bulk command retries retain idempotency across an uncertain response and reload", async () => {
   const originalFetch = globalThis.fetch;
-  const restoreBrowser = installFakeBrowserRetryStorage("workspace-bulk-response-loss");
+  const workspace = "workspace-bulk-response-loss";
+  const restoreBrowser = installFakeBrowserRetryStorage(workspace);
   const keys: unknown[] = [];
   let calls = 0;
   globalThis.fetch = async (_url, options) => {
+    if (options?.method !== "POST") {
+      const detail = response({ id: 91, runtime_id: 4, status: "completed" });
+      detail.headers.set("X-AIPermission-Workspace", workspace);
+      return detail;
+    }
     keys.push(JSON.parse(String(options?.body)).idempotency_key);
     calls += 1;
     if (calls === 1) throw new TypeError("response lost");
-    return response({
+    const accepted = response({
       parallelism: 3,
       items: [{ request_id: 91, target_id: 4, target_name: "host", status: "running" }],
     });
+    accepted.headers.set("X-AIPermission-Workspace", workspace);
+    return accepted;
   };
   const body = {
     target_ids: [4],
@@ -165,7 +173,10 @@ test("bulk command retries retain idempotency across an uncertain response and r
     await apiPost("/api/console/bulk-exec", body);
     await apiPost("/api/console/bulk-exec", body);
     assert.equal(keys[0], keys[1]);
-    assert.notEqual(keys[1], keys[2]);
+    assert.equal(keys[1], keys[2]);
+    await apiGet("/api/console/command-requests/91", { workspaceBinding: workspace });
+    await apiPost("/api/console/bulk-exec", body);
+    assert.notEqual(keys[2], keys[3]);
   } finally {
     await resetLocalActionRetryLedger();
     globalThis.fetch = originalFetch;

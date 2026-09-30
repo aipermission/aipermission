@@ -1497,6 +1497,15 @@ entry. List responses omit large output bodies; detail responses include
 `GET /api/console/command-requests/{id}` returns one live-console command
 request detail row for UI bulk command polling and output inspection. It is not
 an approval API. MCP approvals use connector action requests only.
+An accepted bulk response reserves command IDs; it does not prove the commands
+finished. The browser retains the original batch key until every exact command
+ID and runtime ID has a definitive outcome observed in the same workspace.
+Only ID/status metadata enters its bounded retry ledger, never command text,
+reason, target labels, or output. Partial completion, observation errors, and
+overlapping replay replies cannot discard the batch. `outcome_unknown` and
+`untracked` results require explicit operator reconciliation before a new
+external attempt. Console command IDs and connector approval IDs have distinct
+observation namespaces even when their numeric values collide.
 
 The History page uses stable cursor pagination ordered by `(created_at, id)`.
 The first page includes an exact `total` by default. Follow `next_cursor` for

@@ -10,6 +10,7 @@ import {
   validSigningKeyRecord,
   sameRetryEntry,
   stableRequestSignature,
+  retryEntryBlocksMutation,
 } from "./records.ts";
 
 const scope = { key: "workspace-a" };
@@ -50,6 +51,9 @@ test("retry predicates reject malformed persisted data without property coercion
     { ...entry, action_name: "" },
     { ...entry, mutation_guard: "true" },
     { ...entry, mutation_guard: {} },
+    { ...entry, request_kind: "unknown" },
+    { ...entry, batch_requests: [] },
+    { ...entry, request_kind: "console_batch", batch_requests: [{ request_id: 1, target_id: 1, status: "invalid" }] },
   ]) {
     assert.equal(validRetryEntry(value, scope.key), false);
   }
@@ -81,4 +85,14 @@ test("stable signatures sort object fields while preserving arrays and undefined
   assert.equal(stableRequestSignature({ b: 2, a: [true, null, "text"] }), '{"a":[true,null,"text"],"b":2}');
   assert.equal(stableRequestSignature({ a: undefined }), '{"a":undefined}');
   assert.equal(stableRequestSignature(undefined), undefined);
+});
+
+test("console batch identities do not collide with connector action ownership", () => {
+  const entry = {
+    ...newRetryEntry(scope, signature),
+    request_kind: "console_batch" as const,
+    batch_requests: [{ request_id: 1, target_id: 2, status: "running" as const }],
+  };
+  assert.equal(validRetryEntry(entry, scope.key), true);
+  assert.equal(retryEntryBlocksMutation(entry, "example:1:1", ["write"]), false);
 });

@@ -109,6 +109,7 @@ export const asyncStateOwnerTests = {
     "src/lib/api/pending-mutation.component.test.ts",
     "src/lib/api/mutation-observation.component.test.ts",
     "src/lib/local-action-retry/mutation-admission.component.test.ts",
+    "src/lib/api/command-batch-observation.component.test.ts",
   ],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.tsx"],
