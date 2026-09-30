@@ -6,6 +6,8 @@ import {
   reservationsStore,
   signingReservationLifetimeMs,
 } from "./constants.ts";
+import { validCommandBatchIdentities } from "../gateway-contracts/console-command-contract.ts";
+import type { CommandBatchIdentity } from "../gateway-contracts/console-command-contract.ts";
 
 export type RetryScope = { key: string; legacyKey?: string };
 export type PreparedRetry = {
@@ -30,6 +32,8 @@ export type RetryEntry = {
   target_ref?: string;
   action_name?: string;
   mutation_guard?: boolean;
+  request_kind?: "console_batch";
+  batch_requests?: CommandBatchIdentity[];
   operation_ref?: string;
   [field: string]: unknown;
 };
@@ -97,7 +101,7 @@ export function validRetryEntry(value: unknown, scope: string, signature = ""): 
     Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
     validRequestIdentityMetadata(entry) &&
-    (entry.mutation_guard === undefined || typeof entry.mutation_guard === "boolean") &&
+    validOperationMetadata(entry) &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
     typeof entry.updated_at === "string"
@@ -105,9 +109,17 @@ export function validRetryEntry(value: unknown, scope: string, signature = ""): 
 }
 
 export function retryEntryBlocksMutation(entry: RetryEntry, targetRef: string, actionNames?: readonly string[]) {
-  if (entry.state === "retired") return false;
+  if (entry.state === "retired" || entry.request_kind === "console_batch") return false;
   if (!entry.target_ref || !entry.action_name) return true;
   return entry.target_ref === targetRef && (entry.mutation_guard === true || Boolean(actionNames?.includes(entry.action_name)));
+}
+
+function validOperationMetadata(entry: Record<string, unknown>) {
+  return (
+    (entry.mutation_guard === undefined || typeof entry.mutation_guard === "boolean") &&
+    (entry.request_kind === undefined || entry.request_kind === "console_batch") &&
+    (entry.batch_requests === undefined || (entry.request_kind === "console_batch" && validCommandBatchIdentities(entry.batch_requests)))
+  );
 }
 
 function validRequestIdentityMetadata(entry: Record<string, unknown>) {

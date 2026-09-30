@@ -271,7 +271,7 @@ it("retains one retry identity until the action response matches the dispatched 
   expect(new Set(keys).size).toBe(1);
 });
 
-it("rotates the browser retry identity after an acknowledged bulk command", async () => {
+it("retains the browser retry identity after an accepted bulk command", async () => {
   const keys: unknown[] = [];
   vi.stubGlobal(
     "fetch",
@@ -279,7 +279,7 @@ it("rotates the browser retry identity after an acknowledged bulk command", asyn
       keys.push(JSON.parse(String(options.body)).idempotency_key);
       return jsonResponse({
         parallelism: 2,
-        items: [{ request_id: keys.length, target_id: 4, target_name: "host", status: "running" }],
+        items: [{ request_id: 71, target_id: 4, target_name: "host", status: "running" }],
       });
     }),
   );
@@ -289,7 +289,7 @@ it("rotates the browser retry identity after an acknowledged bulk command", asyn
   await apiPost("/api/console/bulk-exec", body);
 
   expect(keys).toHaveLength(2);
-  expect(keys[0]).not.toBe(keys[1]);
+  expect(keys[0]).toBe(keys[1]);
 });
 
 it("retains a bulk retry identity when the gateway acknowledgement is malformed", async () => {
@@ -657,5 +657,8 @@ it("releases a signing reservation when request hashing fails", async () => {
 });
 
 function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "X-AIPermission-Workspace": "browser-retry-test" },
+  });
 }

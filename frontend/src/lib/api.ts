@@ -21,7 +21,8 @@ import type {
   PreparedPost,
 } from "./api-types";
 import type { PreparedRetry } from "./local-action-retry/records";
-import { observeLocalActionRetryResponse } from "./local-action-retry/observations";
+import { observeLocalActionRetryResponse } from "./local-action-retry/observations.ts";
+import { consoleCommandBatch } from "./gateway-contracts/console-command-contract.ts";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
@@ -69,14 +70,12 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
     });
     let data: unknown;
     try {
-      data = await readResponse(response);
+      data = await readResponse(response, { captureWorkspace: path !== "/api/console/bulk-exec" });
     } catch (error) {
       finalized = await finalizePostError(prepared, error, response);
       throw error;
     }
-    if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
-      throw new Error(prepared.invalidResponseMessage);
-    }
+    assertPostAcknowledgement(path, response, prepared, data, requestWorkspace);
     if (prepared.retry && response.ok && prepared.pending?.(data)) {
       await preserveLocalActionRetryAttempt(prepared.retry, data);
       finalized = true;
@@ -96,6 +95,13 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
   } finally {
     if (prepared.retry && !finalized) await releaseLocalActionRetryAttempt(prepared.retry);
   }
+}
+
+function assertPostAcknowledgement(path: string, response: Response, prepared: PreparedPost, data: unknown, requestWorkspace: string) {
+  if (!response.ok) return;
+  if (path === "/api/console/bulk-exec" && (!requestWorkspace || response.headers.get(workspaceHeaderName) !== requestWorkspace))
+    throw new Error("Gateway bulk acknowledgement workspace binding mismatch.");
+  if (prepared.acknowledged && !prepared.acknowledged(data)) throw new Error(prepared.invalidResponseMessage);
 }
 
 async function finalizePostError(prepared: PreparedPost, error: unknown, response: Response) {
@@ -158,7 +164,11 @@ function idempotentPostPolicy(path: string, body: unknown): PostPolicy | null {
     };
   }
   if (path === "/api/console/bulk-exec") {
-    return { acknowledged: isAcknowledgedBulkCommandResponse, invalidResponseMessage: "Invalid bulk command response from gateway." };
+    return {
+      acknowledged: (data) => isAcknowledgedBulkCommandResponse(data, body),
+      pending: () => true,
+      invalidResponseMessage: "Invalid bulk command response from gateway.",
+    };
   }
   if (/^\/api\/backup\/providers\/\d+\/upload$/.test(path)) {
     return {
@@ -183,21 +193,15 @@ function isAcknowledgedBackupUploadResponse(value: unknown) {
   );
 }
 
-function isAcknowledgedBulkCommandResponse(value: unknown) {
-  const data = objectRecord(value);
-  return (
-    data !== null &&
-    typeof data === "object" &&
-    typeof data.parallelism === "number" &&
-    Number.isSafeInteger(data.parallelism) &&
-    data.parallelism > 0 &&
-    Array.isArray(data.items) &&
-    data.items.length > 0 &&
-    data.items.every((item: unknown) => {
-      const request = objectRecord(item);
-      return typeof request?.request_id === "number" && Number.isSafeInteger(request.request_id) && request.request_id > 0;
-    })
-  );
+function isAcknowledgedBulkCommandResponse(value: unknown, body: unknown) {
+  try {
+    const targets = objectRecord(body)?.target_ids;
+    if (!Array.isArray(targets) || !targets.every((id) => typeof id === "number" && Number.isSafeInteger(id) && id > 0)) return false;
+    consoleCommandBatch(value, targets);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function apiPostForm(path: string, formData: FormData, options: APIOptions = {}): Promise<unknown> {

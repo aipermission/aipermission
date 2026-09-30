@@ -1,11 +1,14 @@
-import { connectorApproval, connectorApprovals } from "../gateway-contracts/security-contracts";
-import { isDefinitiveConnectorActionStatus } from "../gateway-contracts/connector-action-contract";
-import { allEntries, deleteEntryIfMatching, updateEntryIfMatching } from "./entries";
-import { currentRetryScope, notifyChanged } from "./runtime";
+import { connectorApproval, connectorApprovals } from "../gateway-contracts/security-contracts.ts";
+import { isDefinitiveConnectorActionStatus } from "../gateway-contracts/connector-action-contract.ts";
+import { allEntries, deleteEntryIfMatching, updateEntryIfMatching } from "./entries.ts";
+import { currentRetryScope } from "./runtime.ts";
+import { observeCommandBatchResponse } from "./command-observations.ts";
+import { reportObservationFailure } from "./observation-errors.ts";
 import type { ConnectorApproval } from "../gateway-contracts/security-contracts";
 import type { RetryEntry, RetryScope } from "./records";
 
 export async function observeLocalActionRetryResponse(path: string, value: unknown, workspaceID: string) {
+  if (await observeCommandBatchResponse(path, value, workspaceID)) return;
   const route = /^\/api\/connector-action-approvals(?:\/([1-9]\d*))?(?:\?.*)?$/.exec(path);
   if (!route || !workspaceID) return;
   const scope = currentRetryScope(workspaceID);
@@ -47,14 +50,10 @@ async function settleObservations(scope: RetryScope, entries: RetryEntry[], item
   }
 }
 
-function reportObservationFailure() {
-  notifyChanged();
-  console.warn("Local retry reconciliation could not be persisted. Protected actions must be reconciled in Settings before retrying.");
-}
-
 function observableEntry(entry: RetryEntry) {
   return (
     entry.state === "pending" &&
+    entry.request_kind !== "console_batch" &&
     typeof entry.request_id === "number" &&
     Number.isSafeInteger(entry.request_id) &&
     entry.request_id > 0 &&
