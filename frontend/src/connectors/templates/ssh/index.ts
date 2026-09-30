@@ -4,7 +4,7 @@ import { SSHCredentialRowActionsTemplate } from "./credential-row-actions";
 import { SSHConnectorFormTemplate } from "./form";
 import { SSHConnectorRowActionsTemplate } from "./list-item";
 import * as model from "./model";
-import { SSHConnectorOperationsTemplate } from "./operations";
+import { SSHConnectorOperationsLoader } from "./operations-loader";
 import type { ConsoleTemplateContract } from "../console-template-contract";
 import { defineConsoleTemplate } from "../_shared/console-template";
 import { sshCredentialFamily } from "./credential-family";
@@ -18,7 +18,7 @@ export default defineConsoleTemplate({
   CredentialRowActions: SSHCredentialRowActionsTemplate,
   Form: SSHConnectorFormTemplate,
   model,
-  Operations: SSHConnectorOperationsTemplate,
+  Operations: SSHConnectorOperationsLoader,
   RowActions: SSHConnectorRowActionsTemplate,
   ToolbarActions: SSHConnectorToolbarActionsTemplate,
 } satisfies ConsoleTemplateContract);

@@ -147,6 +147,30 @@ the recorded generation and proof. Do not automatically resend the mutation or
 treat a 409 as proof that nothing committed. These local human management
 operations are not added to the AI/MCP action catalog.
 
+In **Connectors**, the SSH row's **Reconcile key cleanup** operation opens the
+public evidence dialog, even when no execution profile remains. Select the
+record and server-provided identity, then verify every displayed historical
+location independently. Each location requires its own verification method,
+explanation and explicit absence confirmation, followed by a decision reason.
+Changing the record or identity clears entered evidence. This records a human
+assertion; it does not contact the host or repair `authorized_keys` for you.
+
+**Recorded cleanup evidence** retains the original public identity and each
+previous decision, including its full per-location proof. Expand a decision to
+inspect or copy its JSON independently of the empty new-decision fields. The
+selected identity label describes the current server-selected endpoint, not the
+first historical location. An acknowledgement must match that complete identity
+and the submitted context and proof before the dialog reports it as confirmed.
+
+The dialog disables another submission, refresh and close while a decision is
+pending. Afterwards it reloads current evidence and clears all entered proof.
+A conflict, invalid acknowledgement or lost reply is shown as an unconfirmed
+outcome, never automatically retried as a new mutation. An acknowledged decision
+whose subsequent observation fails remains distinct from an unconfirmed write;
+use **Reload cleanup evidence** and inspect the generation and audit before
+another decision. A target or database change retires the old request and
+requires freshly loaded evidence, not a cached confirmation.
+
 The cleanup writes a private temporary file in the same `.ssh` directory and
 atomically replaces `authorized_keys` only after the complete filtered file is
 ready. It rejects symlinked or non-owned key paths rather than risking a

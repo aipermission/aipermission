@@ -18,6 +18,16 @@
     "src/connectors/templates/_shared/network-transport-fields.tsx": [
       "src/connectors/templates/_shared/network-transport-fields.component.test.tsx"
     ],
+    "src/connectors/templates/ssh/cleanup-contracts.ts": ["src/connectors/templates/ssh/cleanup-contracts.component.test.ts"],
+    "src/connectors/templates/ssh/cleanup-dialog.tsx": ["src/connectors/templates/ssh/cleanup-dialog.component.test.tsx"],
+    "src/connectors/templates/ssh/cleanup-history.tsx": ["src/connectors/templates/ssh/cleanup-dialog.component.test.tsx"],
+    "src/connectors/templates/ssh/cleanup-identity.ts": ["src/connectors/templates/ssh/cleanup-identity.component.test.ts"],
+    "src/connectors/templates/ssh/cleanup-proof-form.tsx": ["src/connectors/templates/ssh/cleanup-dialog.component.test.tsx"],
+    "src/connectors/templates/ssh/cleanup-submission.ts": ["src/connectors/templates/ssh/cleanup-submission.component.test.ts"],
+    "src/connectors/templates/ssh/use-cleanup-reconciliation.ts": [
+      "src/connectors/templates/ssh/use-cleanup-reconciliation.component.test.tsx"
+    ],
+    "src/connectors/templates/ssh/operations-loader.tsx": ["src/connectors/templates/ssh/operations-loader.component.test.tsx"],
     "src/pages/remote-restore-panel.tsx": ["src/pages/remote-restore-panel.component.test.tsx"],
     "src/pages/unlock.tsx": ["src/pages/unlock.component.test.tsx"]
   }

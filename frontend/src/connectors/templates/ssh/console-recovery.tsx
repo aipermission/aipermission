@@ -1,6 +1,6 @@
 import { captureConsoleSessionRecovery } from "../_shared/console-recovery";
 import { isHostKeyError } from "./model-helpers";
-import { SSHConnectorOperationsTemplate } from "./operations";
+import { SSHConnectorOperationsLoader } from "./operations-loader";
 import type { SSHOperation } from "./operation-types";
 import type { ConsoleRecoveryContext } from "../_shared/console-recovery-types";
 import type { ConsoleRuntimeTarget } from "../../../components/use-gateway-resources";
@@ -23,7 +23,7 @@ export const sshConsoleRecovery = captureConsoleSessionRecovery<SSHOperation>({
     };
   },
   render({ value, onChange, onOperationComplete }) {
-    return <SSHConnectorOperationsTemplate value={value} credentials={[]} onChange={onChange} onOperationComplete={onOperationComplete} />;
+    return <SSHConnectorOperationsLoader value={value} credentials={[]} onChange={onChange} onOperationComplete={onOperationComplete} />;
   },
 });
 

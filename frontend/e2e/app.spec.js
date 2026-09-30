@@ -4,6 +4,7 @@ import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mj
 import { observeSQLBrowserRuntime, verifySQLBrowserRuntime } from "./sql-editor-browser.mjs";
 import { scopedUICookieName } from "../src/lib/ui-cookie";
 import { databaseName, reconciliationsStore } from "../src/lib/local-action-retry/constants";
+import { verifySSHCleanupBrowser } from "./ssh-cleanup-browser.mjs";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
@@ -689,6 +690,12 @@ test("@high-risk cancels an active transfer from the transfer center", async ({ 
   await expect(page.getByText("Recent", { exact: true })).toBeVisible();
   expect(cancelCount).toBe(1);
 });
+
+for (const width of [390, 1280]) {
+  test(`@high-risk reconciles SSH cleanup without remote execution at ${width}px`, async ({ page }, testInfo) => {
+    await verifySSHCleanupBrowser({ page, testInfo, width, unlock, expectNoModerateAccessibilityViolations });
+  });
+}
 
 async function unlock(page) {
   await page.goto("/");

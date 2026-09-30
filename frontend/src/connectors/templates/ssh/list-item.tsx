@@ -1,4 +1,4 @@
-import { Container, Copy } from "lucide-react";
+import { Container, Copy, ShieldAlert } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import type { SSHTarget, SSHProfile } from "./form-types";
 
@@ -11,9 +11,9 @@ export function SSHConnectorRowActionsTemplate({
   profile: SSHProfile | null;
   onOperation: (_operation: {
     connector_kind: string;
-    type: "install" | "docker-check";
+    type: "install" | "docker-check" | "key-cleanup";
     target: SSHTarget;
-    profile: SSHProfile;
+    profile?: SSHProfile;
     open: true;
     state?: "idle";
   }) => void;
@@ -31,6 +31,16 @@ export function SSHConnectorRowActionsTemplate({
         }
       >
         <Copy className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-9 w-9 px-0"
+        title="Reconcile key cleanup"
+        disabled={!target}
+        onClick={() => target && onOperation({ connector_kind: target.connector_kind, type: "key-cleanup", target, open: true })}
+      >
+        <ShieldAlert className="h-4 w-4" />
       </Button>
       <Button
         type="button"

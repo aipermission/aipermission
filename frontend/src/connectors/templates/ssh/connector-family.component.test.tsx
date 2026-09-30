@@ -8,7 +8,12 @@ import { captureConnectorFamily } from "../../editor/capture-connector-family";
 import type { ConnectorFamilyCommands, ConnectorFamilyProps } from "../../editor/connector-family-types";
 import { sshConnectorFamily } from "./connector-family";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn(), apiPut: vi.fn(), apiDelete: vi.fn() }));
+vi.mock("../../../lib/api", () => ({
+  apiPost: vi.fn(),
+  apiPut: vi.fn(),
+  apiDelete: vi.fn(),
+  currentWorkspaceBinding: () => "family-workspace",
+}));
 const profile = inventoryProfileFixture({ public: { username: "operator", ssh_key_id: 9 } });
 const target = inventoryTargetFixture({ profiles: [profile], config: { host: "host.example", port: 22 } });
 const family = sshConnectorFamily.create(captureConnectorFamily);
@@ -97,7 +102,7 @@ it("retains native fingerprint approval and resumes the original profile test", 
   await act(async () => {
     expect(await commands?.test(target, profile)).toBe(false);
   });
-  expect(screen.getByRole("dialog", { name: "Approve SSH host fingerprint" })).toBeInTheDocument();
+  expect(await screen.findByRole("dialog", { name: "Approve SSH host fingerprint" })).toBeInTheDocument();
   vi.mocked(apiPost).mockResolvedValueOnce({}).mockResolvedValueOnce({ ok: true });
   await user.click(screen.getByRole("button", { name: "Approve fingerprint" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());

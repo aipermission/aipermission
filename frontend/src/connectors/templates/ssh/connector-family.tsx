@@ -3,7 +3,7 @@ import { sshCredentialTargets } from "./credential-family";
 import { sshCredentialResourcesResponse } from "./model-helpers";
 import { SSHConnectorFormTemplate } from "./form";
 import { SSHConnectorRowActionsTemplate } from "./list-item";
-import { SSHConnectorOperationsTemplate } from "./operations";
+import { SSHConnectorOperationsLoader } from "./operations-loader";
 import type { SSHForm } from "./form-types";
 import type { SSHCredentialResource } from "./model-types";
 import type { SSHOperation } from "./operation-types";
@@ -37,6 +37,6 @@ export const sshConnectorFamily = defineConnectorFamily<
     <SSHConnectorRowActionsTemplate target={target} profile={profile} onOperation={onOperation} />
   ),
   renderOperations: ({ value, credentials, onChange, onOperationComplete }) => (
-    <SSHConnectorOperationsTemplate value={value} credentials={credentials} onChange={onChange} onOperationComplete={onOperationComplete} />
+    <SSHConnectorOperationsLoader value={value} credentials={credentials} onChange={onChange} onOperationComplete={onOperationComplete} />
   ),
 });

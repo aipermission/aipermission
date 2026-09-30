@@ -13,6 +13,7 @@ import * as model from "./model";
 import { errorMessage } from "../../../lib/errors";
 import { isHostKeyError } from "./model-helpers";
 import { sshDockerResponse } from "./operation-contracts";
+import { SSHCleanupDialog } from "./cleanup-dialog";
 import type { FormEvent } from "react";
 import type { SSHDockerContainer } from "./model-types";
 import type { OperationDialogProps, ReadDockerLogs, SSHOperation, SSHOperationProps } from "./operation-types";
@@ -144,6 +145,9 @@ export function SSHConnectorOperationsTemplate({ value, credentials, onChange, o
 
   return (
     <>
+      {operation.open && operation.type === "key-cleanup" && operation.target ? (
+        <SSHCleanupDialog key={operation.target.id} target={operation.target} onClose={close} />
+      ) : null}
       <ServerInstallDialog value={operation.type === "install" ? operation : { open: false }} credentials={credentials} onClose={close} />
       <HostKeyApprovalDialog
         value={operation.type === "host-key" ? operation : { open: false }}
