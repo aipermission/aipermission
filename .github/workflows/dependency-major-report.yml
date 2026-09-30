@@ -38,16 +38,10 @@ jobs:
           npm ci --prefix packages/mcp --workspaces=false --ignore-scripts
           npm ci --prefix scripts --workspaces=false --ignore-scripts
       - name: Build report
-        run: node scripts/dependency-major-report.js --output "$RUNNER_TEMP/dependency-major-report.md"
+        run: node scripts/dependency-major-report.js --json-output "$RUNNER_TEMP/dependency-major-report.json"
       - name: Publish one maintainer issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPORT_PATH: ${{ runner.temp }}/dependency-major-report.md
+          REPORT_PATH: ${{ runner.temp }}/dependency-major-report.json
         run: |
-          title="[maintenance] Deferred major dependency updates"
-          issue_number="$(gh issue list --state open --search "in:title $title" --json number --jq '.[0].number // empty')"
-          if [ -n "$issue_number" ]; then
-            gh issue edit "$issue_number" --body-file "$REPORT_PATH"
-          else
-            gh issue create --title "$title" --body-file "$REPORT_PATH" --label maintenance
-          fi
+          node scripts/dependency-major-publish.js --report "$REPORT_PATH" --repo "$GITHUB_REPOSITORY" --adopt-issue 193

@@ -222,6 +222,7 @@
         "node scripts/run-tooling-tests.js scripts/ci",
         "node scripts/run-tooling-tests.js scripts/verification",
         "node scripts/run-tooling-tests.js scripts/maintenance",
+        "node scripts/run-tooling-tests.js scripts/dependencies",
         "node scripts/run-tooling-tests.js scripts/release",
         "node scripts/markdown-link-check.js",
         "node scripts/go-toolchain-check.js",
