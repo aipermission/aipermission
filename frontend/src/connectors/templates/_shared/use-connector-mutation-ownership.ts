@@ -98,7 +98,7 @@ export function useConnectorMutationOwnership(
       controller = new AbortController();
       try {
         const current = ownerRef.current;
-        const { unresolved, retained, terminalIDs } = await observeMutationRequests({
+        const { unresolved, retained, terminalIDs, reconciledIDs } = await observeMutationRequests({
           targetRef,
           actions: names,
           workspaceID,
@@ -107,8 +107,8 @@ export function useConnectorMutationOwnership(
           signal: controller.signal,
         });
         if (!active) return;
-        const terminal = current?.requestID ? terminalIDs.has(current.requestID) : false;
-        if (!retained && !unresolved && ownerRef.current === current && (terminal || (current && !current.requestID && !current.inFlight)))
+        const settled = current?.requestID ? terminalIDs.has(current.requestID) || reconciledIDs.has(current.requestID) : false;
+        if (!retained && !unresolved && !current?.inFlight && ownerRef.current === current && (settled || (current && !current.requestID)))
           replace(null);
         if (unresolved && !ownerRef.current)
           replace({ attemptID: ++attemptSequence.current, requestID: unresolved.id, observed: true, scope, inFlight: false });

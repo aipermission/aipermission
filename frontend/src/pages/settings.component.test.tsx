@@ -1,8 +1,16 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet } from "../lib/api";
 import { SettingsPage } from "./settings";
 import { settingsDatabaseResponse } from "../lib/gateway-contracts/settings-database-contract";
+
+const { retryModule } = vi.hoisted(() => {
+  let resolve!: () => void;
+  const ready = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { retryModule: { ready, resolve } };
+});
 
 vi.mock("../lib/api", () => ({ apiGet: vi.fn() }));
 vi.mock("../components/settings/use-backup-provider-state", () => ({ useBackupProviderState: () => ({}) }));
@@ -16,11 +24,25 @@ vi.mock("../components/settings/diagnostics-panel", () => ({ DiagnosticsPanel: (
 vi.mock("../components/settings/history-labels-panel", () => ({ HistoryLabelsPanel: () => null }));
 vi.mock("../components/settings/history-retention-panel", () => ({ HistoryRetentionPanel: () => null }));
 vi.mock("../components/settings/maintenance-console-panel", () => ({ MaintenanceConsolePanel: () => null }));
-vi.mock("../components/settings/local-action-retry-panel", () => ({ LocalActionRetryPanel: () => null }));
+vi.mock("../components/settings/local-action-retry-panel", async () => {
+  await retryModule.ready;
+  return { LocalActionRetryPanel: () => <span>Retry reconciliation ready</span> };
+});
 
 describe("settings database status ownership", () => {
   beforeEach(() => {
     vi.mocked(apiGet).mockReset();
+  });
+
+  it("keeps database settings usable while the reconciliation panel loads", async () => {
+    vi.mocked(apiGet).mockResolvedValue({ database_name: "My database", database_size_bytes: 1024 });
+    render(<SettingsPage />);
+    expect(await screen.findByText("My database")).toBeVisible();
+    expect(screen.getByText("Loading unresolved local actions...")).toBeVisible();
+    expect(screen.queryByText("Retry reconciliation ready")).not.toBeInTheDocument();
+    await act(async () => retryModule.resolve());
+    expect(await screen.findByText("Retry reconciliation ready")).toBeVisible();
+    expect(screen.queryByText("Loading unresolved local actions...")).not.toBeInTheDocument();
   });
 
   it("uses the current database name after a valid status read", async () => {

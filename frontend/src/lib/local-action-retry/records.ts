@@ -4,6 +4,7 @@ import {
   entriesStore,
   keysStore,
   reservationsStore,
+  reconciliationsStore,
   signingReservationLifetimeMs,
 } from "./constants.ts";
 import { validCommandBatchIdentities } from "../gateway-contracts/console-command-contract.ts";
@@ -240,18 +241,24 @@ export function validRetryDatabaseSchema(database: IDBDatabase) {
     !database.objectStoreNames.contains(entriesStore) ||
     !database.objectStoreNames.contains(keysStore) ||
     !database.objectStoreNames.contains(reservationsStore) ||
-    !database.objectStoreNames.contains(attemptsStore)
+    !database.objectStoreNames.contains(attemptsStore) ||
+    !database.objectStoreNames.contains(reconciliationsStore)
   ) {
     return false;
   }
-  const transaction = database.transaction([entriesStore, reservationsStore, attemptsStore], "readonly");
+  const transaction = database.transaction([entriesStore, reservationsStore, attemptsStore, reconciliationsStore], "readonly");
+  const reconciliations = transaction.objectStore(reconciliationsStore);
+  if (reconciliations.keyPath !== "id" || reconciliations.autoIncrement || !reconciliations.indexNames.contains("scope")) return false;
+  const reconciliationScope = reconciliations.index("scope");
+  if (reconciliationScope.keyPath !== "scope" || reconciliationScope.unique || reconciliationScope.multiEntry) return false;
   return (
     transaction.objectStore(entriesStore).indexNames.contains("scope") &&
     transaction.objectStore(reservationsStore).indexNames.contains("scope") &&
     transaction.objectStore(reservationsStore).indexNames.contains("expires_at") &&
     transaction.objectStore(attemptsStore).indexNames.contains("scope") &&
     transaction.objectStore(attemptsStore).indexNames.contains("entry_id") &&
-    transaction.objectStore(attemptsStore).indexNames.contains("expires_at")
+    transaction.objectStore(attemptsStore).indexNames.contains("expires_at") &&
+    transaction.objectStore(reconciliationsStore).indexNames.contains("scope")
   );
 }
 

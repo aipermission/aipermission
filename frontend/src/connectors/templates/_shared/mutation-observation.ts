@@ -6,6 +6,7 @@ import {
 import { allEntries } from "../../../lib/local-action-retry/entries";
 import { retryEntryBlocksMutation } from "../../../lib/local-action-retry/records";
 import { assertNoLegacyLedger, currentRetryScope } from "../../../lib/local-action-retry/runtime";
+import { reconciledRequests, requestWasReconciled } from "../../../lib/local-action-retry/reconciliations";
 import type { ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
 
 export type MutationLookup = (
@@ -52,6 +53,7 @@ export async function observeMutationRequests(input: ObservationInput) {
       candidates.set(entry.request_id, entry.action_name);
   }
   const terminalIDs = new Set<number>();
+  const observed = [...items];
   // Local storage is bounded; cap exact reads per observation and retain all unobserved entries.
   for (const [id, actionName] of Array.from(candidates)
     .filter(([id]) => !items.some((item) => item.id === id))
@@ -71,13 +73,22 @@ export async function observeMutationRequests(input: ObservationInput) {
     )
       throw new Error("Mutation observation identity mismatch.");
     if (isDefinitiveConnectorActionStatus(exact.status)) terminalIDs.add(id);
+    observed.push(exact);
   }
   const remaining = await allEntries(scope);
+  const reconciled = await reconciledRequests(scope);
+  const reconciledIDs = new Set(
+    observed.filter((item) => item.status === "outcome_unknown" && requestWasReconciled(reconciled, item)).map((item) => item.id),
+  );
   input.signal.throwIfAborted();
   return {
-    unresolved: items.find((item) => isPendingConnectorActionStatus(item.status) || item.status === "outcome_unknown") || null,
+    unresolved:
+      observed.find(
+        (item) => isPendingConnectorActionStatus(item.status) || (item.status === "outcome_unknown" && !reconciledIDs.has(item.id)),
+      ) || null,
     retained: remaining.some((entry) => retryEntryBlocksMutation(entry, input.targetRef, input.actions)),
     terminalIDs,
+    reconciledIDs,
   };
 }
 

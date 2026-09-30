@@ -1,13 +1,16 @@
 export const localActionReconciliationEvent = "aipermission:local-action-reconciliation-required";
 export const localActionRetryLedgerChangedEvent = "aipermission:local-action-retry-ledger-changed";
+export const localActionRetryObservationFailedEvent = "aipermission:local-action-retry-observation-failed";
 
 export const legacyStoragePrefix = "aipermission.local-action-retry.v2.";
 export const databaseName = "aipermission-local-action-retry";
-export const databaseVersion = 3;
+export const databaseVersion = 4;
 export const entriesStore = "entries";
 export const keysStore = "keys";
 export const reservationsStore = "reservations";
 export const attemptsStore = "attempts";
+export const reconciliationsStore = "reconciliations";
+export const maxReconciliations = 512;
 export const workspaceCookieName = "aipermission_workspace";
 export const maxEntries = 128;
 export const maxGlobalEntries = 512;

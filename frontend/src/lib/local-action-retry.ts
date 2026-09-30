@@ -1,4 +1,8 @@
-import { localActionReconciliationEvent, localActionRetryLedgerChangedEvent } from "./local-action-retry/constants.ts";
+import {
+  localActionReconciliationEvent,
+  localActionRetryLedgerChangedEvent,
+  localActionRetryObservationFailedEvent,
+} from "./local-action-retry/constants.ts";
 import {
   allEntries,
   completeEntryAttempt,
@@ -25,7 +29,7 @@ import { releaseSigningReservation, reserveSigningKey } from "./local-action-ret
 import { resetRetryStorage } from "./local-action-retry/storage.ts";
 import { acknowledgedCommandBatch, completedCommandBatch } from "./local-action-retry/command-batches.ts";
 
-export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent };
+export { localActionReconciliationEvent, localActionRetryLedgerChangedEvent, localActionRetryObservationFailedEvent };
 
 export type LegacyRetryEntry = {
   signature: "legacy-v2-ledger";
@@ -223,7 +227,7 @@ export async function resolveLocalActionRetryEntry(entry: unknown) {
     return true;
   }
   if (!validRetryEntry(entry, scope.key)) throw retryIdentityChangedError();
-  return deleteEntryIfMatching(scope, entry.signature, entry.key, entry.revision);
+  return deleteEntryIfMatching(scope, entry.signature, entry.key, entry.revision, true);
 }
 
 export async function resetLocalActionRetryLedger() {

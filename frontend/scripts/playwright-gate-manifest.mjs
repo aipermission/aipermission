@@ -22,6 +22,7 @@ export const requiredHighRiskTitles = Object.freeze([
   "@high-risk keeps structured sessions isolated while switching connector profiles",
   "@high-risk reconnects a live console after the remote session exits",
   "@high-risk cancels an active transfer from the transfer center",
+  "@high-risk persists an explicit server-only reconciliation across reload without marking execution successful",
   ...responsiveVaultTitles,
   ...responsiveWorkspaceTitles,
 ]);

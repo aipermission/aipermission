@@ -4,6 +4,7 @@ import { allEntries, deleteEntryIfMatching, updateEntryIfMatching } from "./entr
 import { currentRetryScope } from "./runtime.ts";
 import { observeCommandBatchResponse } from "./command-observations.ts";
 import { reportObservationFailure } from "./observation-errors.ts";
+import { forgetDefinitiveReconciliations } from "./reconciliations.ts";
 import type { ConnectorApproval } from "../gateway-contracts/security-contracts";
 import type { RetryEntry, RetryScope } from "./records";
 
@@ -19,10 +20,10 @@ export async function observeLocalActionRetryResponse(path: string, value: unkno
     reportObservationFailure();
     return;
   }
-  if (!entries.length) return;
   const items = route[1] ? [connectorApproval(value)] : connectorApprovals(value);
   if (route[1] && items[0].id !== Number(route[1])) throw new Error("Invalid connector request observation identity.");
   try {
+    await forgetDefinitiveReconciliations(scope, items);
     await settleObservations(scope, entries, items);
   } catch {
     reportObservationFailure();

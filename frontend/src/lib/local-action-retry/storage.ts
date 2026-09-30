@@ -1,13 +1,23 @@
-import { attemptsStore, databaseName, databaseVersion, entriesStore, keysStore, reservationsStore } from "./constants.ts";
+import {
+  attemptsStore,
+  databaseName,
+  databaseVersion,
+  entriesStore,
+  keysStore,
+  reconciliationsStore,
+  reservationsStore,
+} from "./constants.ts";
 import { storageError } from "./errors.ts";
 import { validRetryDatabaseSchema } from "./records.ts";
 import type { ActionAttempt, RetryEntry, SigningReservation } from "./records.ts";
+import type { ReconciledRequest } from "./reconciliations.ts";
 import { isBrowserRuntime, requireBrowserIndexedDB } from "./runtime.ts";
 
 export const memoryEntries = new Map<string, Map<string, RetryEntry>>();
 export const memoryKeys = new Map<string, CryptoKey>();
 export const memoryReservations = new Map<string, Map<string, SigningReservation>>();
 export const memoryAttempts = new Map<string, ActionAttempt>();
+export const memoryReconciliations = new Map<string, ReconciledRequest>();
 
 let memoryQueue: Promise<unknown> = Promise.resolve();
 let retryDatabasePromise: Promise<IDBDatabase> | undefined;
@@ -35,6 +45,10 @@ export function openRetryDatabase() {
         store.createIndex("scope", "scope", { unique: false });
         store.createIndex("entry_id", "entry_id", { unique: false });
         store.createIndex("expires_at", "expires_at", { unique: false });
+      }
+      if (!database.objectStoreNames.contains(reconciliationsStore)) {
+        const store = database.createObjectStore(reconciliationsStore, { keyPath: "id" });
+        store.createIndex("scope", "scope", { unique: false });
       }
     };
     request.onerror = () => {
@@ -143,6 +157,7 @@ export async function resetRetryStorage() {
     memoryKeys.clear();
     memoryReservations.clear();
     memoryAttempts.clear();
+    memoryReconciliations.clear();
   });
 }
 

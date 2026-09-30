@@ -424,10 +424,10 @@
       "lines": 92.85
     },
     "src/components/settings/local-action-retry-panel.tsx": {
-      "statements": 94.11,
-      "branches": 93.61,
+      "statements": 94.33,
+      "branches": 95.74,
       "functions": 83.33,
-      "lines": 95.23
+      "lines": 95.45
     },
     "src/components/settings/maintenance-console-panel.tsx": {
       "statements": 90.69,
@@ -438,6 +438,12 @@
     "src/components/settings/password-settings-panel.tsx": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/settings/server-request-reconciliation.tsx": {
+      "statements": 93.75,
+      "branches": 87.83,
       "functions": 100,
       "lines": 100
     },
@@ -790,8 +796,8 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/action-result.ts": {
-      "statements": 96.29,
-      "branches": 89.36,
+      "statements": 100,
+      "branches": 97.87,
       "functions": 100,
       "lines": 100
     },
@@ -910,10 +916,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/mutation-observation.ts": {
-      "statements": 93.18,
-      "branches": 97.22,
-      "functions": 87.5,
-      "lines": 94.87
+      "statements": 96,
+      "branches": 97.43,
+      "functions": 100,
+      "lines": 95.45
     },
     "src/connectors/templates/_shared/network-transport-contract.ts": {
       "statements": 98.27,
@@ -1049,7 +1055,7 @@
     },
     "src/connectors/templates/_shared/use-connector-mutation-ownership.ts": {
       "statements": 97.59,
-      "branches": 92,
+      "branches": 94.8,
       "functions": 100,
       "lines": 98.57
     },
@@ -1372,10 +1378,10 @@
       "lines": 97.77
     },
     "src/connectors/templates/kafka/use-kafka-writes.ts": {
-      "statements": 81.6,
+      "statements": 82.41,
       "branches": 78,
       "functions": 76,
-      "lines": 87.01
+      "lines": 88.31
     },
     "src/connectors/templates/kafka/write-dialogs.tsx": {
       "statements": 76.19,
@@ -1822,16 +1828,16 @@
       "lines": 100
     },
     "src/connectors/templates/rabbitmq/routing-key-picker.tsx": {
-      "statements": 97.95,
-      "branches": 94.73,
+      "statements": 100,
+      "branches": 97.36,
       "functions": 100,
       "lines": 100
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": {
-      "statements": 95.45,
-      "branches": 81.63,
+      "statements": 97.03,
+      "branches": 83.67,
       "functions": 100,
-      "lines": 97.69
+      "lines": 99.11
     },
     "src/connectors/templates/redis/browser-helpers.ts": {
       "statements": 100,
@@ -1930,10 +1936,10 @@
       "lines": 97.46
     },
     "src/connectors/templates/redis/use-redis-mutations.ts": {
-      "statements": 88.6,
-      "branches": 78.75,
-      "functions": 88.88,
-      "lines": 93.75
+      "statements": 96.29,
+      "branches": 95,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/redis/value-workspace.tsx": {
       "statements": 95.23,
@@ -2218,10 +2224,10 @@
       "lines": 100
     },
     "src/lib/api.ts": {
-      "statements": 96.13,
-      "branches": 88.4,
+      "statements": 96.47,
+      "branches": 89.37,
       "functions": 100,
-      "lines": 97
+      "lines": 97.86
     },
     "src/lib/async-resource.ts": {
       "statements": 100,

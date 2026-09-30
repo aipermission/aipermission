@@ -29,6 +29,7 @@ export const asyncStateOwnerTests = {
     "src/components/history/use-history-transfer-download.component.test.tsx",
   ],
   "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
+  "src/components/settings/server-request-reconciliation.tsx": ["src/test/connector-actions/lost-reply-reconciliation.component.test.tsx"],
   "src/components/settings/backup-retention-panel.tsx": ["src/components/settings/async-owner-settings.component.test.tsx"],
   "src/components/settings/database-settings-panel.tsx": [
     "src/components/settings/async-owner-settings.component.test.tsx",

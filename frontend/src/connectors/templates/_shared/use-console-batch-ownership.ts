@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { apiGet, currentWorkspaceBinding } from "../../../lib/api";
-import { listLocalActionRetryEntries, localActionRetryLedgerChangedEvent } from "../../../lib/local-action-retry";
+import {
+  listLocalActionRetryEntries,
+  localActionRetryLedgerChangedEvent,
+  localActionRetryObservationFailedEvent,
+} from "../../../lib/local-action-retry";
 import { retryEntryBlocksConsoleBatch } from "../../../lib/local-action-retry/records";
 import { isDefinitiveConsoleCommandStatus, isUnknownConsoleCommandStatus } from "../../../lib/gateway-contracts/console-command-contract";
 import { scheduleObservation } from "./observation-scheduler";
@@ -75,11 +79,13 @@ export function useConsoleBatchOwnership(active: boolean, observeCommands = true
       void inspect();
     };
     window.addEventListener(localActionRetryLedgerChangedEvent, changed);
+    window.addEventListener(localActionRetryObservationFailedEvent, changed);
     return () => {
       alive = false;
       cancelTimer?.();
       controller?.abort();
       window.removeEventListener(localActionRetryLedgerChangedEvent, changed);
+      window.removeEventListener(localActionRetryObservationFailedEvent, changed);
     };
   }, [active, observeCommands, schedule, workspaceID]);
   return {

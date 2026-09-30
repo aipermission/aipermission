@@ -15,6 +15,7 @@ test("discovers every retry production module", () => {
       "errors.ts",
       "observation-errors.ts",
       "observations.ts",
+      "reconciliations.ts",
       "records.ts",
       "runtime.ts",
       "signing.ts",
@@ -30,12 +31,13 @@ test("checks retry coverage one production file at a time", () => {
     spawn: (_command, args) => {
       const include = args.find((argument) => argument.startsWith("--test-coverage-include="));
       checked.push(include);
-      assert.deepEqual(args.slice(-5), [
+      assert.deepEqual(args.slice(-6), [
         "src/test/http/api.test.ts",
         "src/test/http/api-backup-retry.test.ts",
         "src/lib/local-action-retry/records.test.ts",
         "src/lib/local-action-retry/observations.test.ts",
         "src/lib/local-action-retry/command-observations.test.ts",
+        "src/lib/local-action-retry/reconciliations.test.ts",
       ]);
       return { status: include.endsWith("errors.ts") ? 1 : 0, stdout: "", stderr: "" };
     },

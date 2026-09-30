@@ -10,6 +10,7 @@ const retryCoverageTests = [
   "src/lib/local-action-retry/records.test.ts",
   "src/lib/local-action-retry/observations.test.ts",
   "src/lib/local-action-retry/command-observations.test.ts",
+  "src/lib/local-action-retry/reconciliations.test.ts",
 ];
 
 export function retryCoverageFiles(root = frontendRoot) {
