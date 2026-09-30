@@ -5,7 +5,7 @@ import { apiPost as realPost } from "../../../lib/api";
 import { useState } from "react";
 import type { ConsoleOperation, ConsoleOperationSlotProps } from "../../../components/console/console-connector-view-types";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../../lib/api", () => ({ apiPost: vi.fn(), currentWorkspaceBinding: () => "recovery-workspace" }));
 const apiPost = vi.mocked(realPost);
 const runtimeTarget = { id: 19, name: "My runtime", connector_kind: "ssh", target_id: 3, profile_id: 7 };
 const hostKey = {
@@ -40,8 +40,8 @@ it("uses the native fingerprint dialog and resumes the exact independent runtime
   const onComplete = vi.fn();
   apiPost.mockResolvedValue({ ok: true });
   render(<RecoveryHarness operation={operation} onComplete={onComplete} />);
-  expect(screen.getByText("SHA256:example")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Approve fingerprint" }));
+  expect(await screen.findByText("SHA256:example")).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "Approve fingerprint" }));
   await waitFor(() => expect(onComplete).toHaveBeenCalledWith({ startConsoleSession: true }, { connector_kind: "ssh", runtimeTarget }));
   expect(onComplete.mock.calls[0][1].runtimeTarget).toBe(runtimeTarget);
   expect(apiPost).toHaveBeenCalledWith(
@@ -58,10 +58,10 @@ it("keeps a fingerprint approval failure visible and allows retry", async () => 
   const onComplete = vi.fn();
   apiPost.mockRejectedValueOnce(new Error("approval failed")).mockResolvedValueOnce({ ok: true });
   render(<RecoveryHarness operation={operation} onComplete={onComplete} />);
-  fireEvent.click(screen.getByRole("button", { name: "Approve fingerprint" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Approve fingerprint" }));
   await waitFor(() => expect(screen.getByText("approval failed")).toBeInTheDocument());
   expect(onComplete).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Approve fingerprint" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Approve fingerprint" }));
   await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
 });
 
@@ -89,7 +89,7 @@ it("aborts native fingerprint approval on unmount and does not restart its old r
   if (!operation) throw new Error("Missing native recovery");
   const onComplete = vi.fn();
   const { unmount } = render(<RecoveryHarness operation={operation} onComplete={onComplete} />);
-  fireEvent.click(screen.getByRole("button", { name: "Approve fingerprint" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Approve fingerprint" }));
   const signal = apiPost.mock.calls[0][2]?.signal;
   expect(signal?.aborted).toBe(false);
   unmount();
@@ -116,7 +116,7 @@ it("retires a pending native approval when another recovery replaces it", async 
   const onComplete = vi.fn();
   const props = { credentials: [], onChange: vi.fn(), onOperationComplete: onComplete };
   const { rerender } = render(<sshConsoleRecovery.Operations {...props} value={first} />);
-  fireEvent.click(screen.getByRole("button", { name: "Approve fingerprint" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Approve fingerprint" }));
   const signal = apiPost.mock.calls[0][2]?.signal;
   rerender(<sshConsoleRecovery.Operations {...props} value={second} />);
   expect(signal?.aborted).toBe(true);

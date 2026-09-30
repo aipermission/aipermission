@@ -2115,6 +2115,60 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/ssh/cleanup-contracts.ts": {
+      "statements": 100,
+      "branches": 98.88,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-history.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-identity.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-proof-form.tsx": {
+      "statements": 97.14,
+      "branches": 88.23,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-subject-fields.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-submission.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-test-fixtures.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/ssh/cleanup-types.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/ssh/connector-family.tsx": {
       "statements": 100,
       "branches": 100,
@@ -2171,7 +2225,7 @@
     },
     "src/connectors/templates/ssh/list-item.tsx": {
       "statements": 100,
-      "branches": 85.71,
+      "branches": 87.5,
       "functions": 100,
       "lines": 100
     },
@@ -2193,11 +2247,23 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/ssh/operations-loader.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/ssh/operations.tsx": {
       "statements": 76.66,
-      "branches": 64.24,
+      "branches": 65.15,
       "functions": 75.86,
       "lines": 81
+    },
+    "src/connectors/templates/ssh/use-cleanup-reconciliation.ts": {
+      "statements": 98.01,
+      "branches": 94.59,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/target-profile-save.ts": {
       "statements": 100,
