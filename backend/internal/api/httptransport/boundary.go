@@ -157,7 +157,14 @@ func (boundary HTTPBoundary) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		boundary.writeError(w, http.StatusConflict, "workspace changed; refresh before making changes")
 		return
 	}
+	if RejectWorkspaceBoundHead(w, r) {
+		return
+	}
 	boundary.Routes.ServeHTTP(w, r)
+}
+
+func RejectWorkspaceBoundHead(w http.ResponseWriter, r *http.Request) bool {
+	return transportcontract.RejectWorkspaceBoundHead(w, r)
 }
 
 func (boundary HTTPBoundary) hasCurrentWorkspace(r *http.Request) bool {

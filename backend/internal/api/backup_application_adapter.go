@@ -57,5 +57,5 @@ func (s *Server) authorizeBackupOperation(w http.ResponseWriter, r *http.Request
 			return false
 		}
 	}
-	return true
+	return !apihttp.RejectWorkspaceBoundHead(w, r)
 }

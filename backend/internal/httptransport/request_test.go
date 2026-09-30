@@ -61,13 +61,16 @@ func TestWorkspaceBoundReadCatalog(t *testing.T) {
 		"/api/console/sessions/4/attach",
 		"/api/settings/maintenance-console/attach",
 	} {
-		if !IsWorkspaceBoundRead(http.MethodGet, path) {
-			t.Errorf("download route %s is not workspace-bound", path)
+		for _, method := range []string{http.MethodGet, http.MethodHead} {
+			if !IsWorkspaceBoundRead(method, path) {
+				t.Errorf("download route %s %s is not workspace-bound", method, path)
+			}
 		}
 	}
 	for _, request := range []struct{ method, path string }{
 		{http.MethodPost, "/api/backup/download"},
 		{http.MethodGet, "/api/status"},
+		{http.MethodHead, "/api/status"},
 		{http.MethodGet, "/api/backup/providers/3/records"},
 	} {
 		if IsWorkspaceBoundRead(request.method, request.path) {

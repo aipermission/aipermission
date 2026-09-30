@@ -15,7 +15,7 @@ const DefaultJSONBodyBytes int64 = 1 << 20
 // IsWorkspaceBoundRead identifies authenticated downloads whose response must
 // come from the workspace observed by the browser before the request started.
 func IsWorkspaceBoundRead(method, path string) bool {
-	if method != http.MethodGet {
+	if method != http.MethodGet && method != http.MethodHead {
 		return false
 	}
 	if path == "/api/backup/download" || path == "/api/settings/diagnostics" {
@@ -32,6 +32,18 @@ func IsWorkspaceBoundRead(method, path string) bool {
 		return true
 	}
 	return strings.HasPrefix(path, "/api/connector-targets/") && strings.HasSuffix(path, "/backup")
+}
+
+// RejectWorkspaceBoundHead prevents ServeMux's implicit GET-to-HEAD matching
+// from starting downloads or other workspace-bound operations. Call after
+// session and workspace validation so stale clients still receive a conflict.
+func RejectWorkspaceBoundHead(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method != http.MethodHead || !IsWorkspaceBoundRead(r.Method, r.URL.Path) {
+		return false
+	}
+	w.Header().Set("Allow", http.MethodGet)
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	return true
 }
 
 // IsWorkspaceSocketRoute identifies browser WebSocket upgrades that carry the
