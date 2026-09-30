@@ -1,6 +1,7 @@
 package management
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,17 +33,22 @@ func decodeDraftRequest(value any) (draftTargetRequest, error) {
 }
 
 func decodeTargetOperationRequest(value any) (targetOperationRequest, error) {
-	data, err := json.Marshal(value)
-	if err != nil {
-		return targetOperationRequest{}, fmt.Errorf("invalid connector operation request")
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
 	var request targetOperationRequest
-	if err := decoder.Decode(&request); err != nil {
-		return targetOperationRequest{}, fmt.Errorf("invalid connector operation request")
+	err := decodeStrictOperation(value, &request)
+	return request, err
+}
+
+func decodeStrictOperation(value, target any) error {
+	data, err := json.Marshal(value)
+	if err != nil || bytes.Equal(data, []byte("null")) {
+		return fmt.Errorf("invalid connector operation request")
 	}
-	return request, nil
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("invalid connector operation request")
+	}
+	return nil
 }
 
 func managementResponse(status int, payload any, sensitiveValues ...string) connectors.ManagementResponse {

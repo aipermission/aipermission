@@ -113,6 +113,40 @@ earlier incomplete one. Journal format v2 rejects v1 records rather than silentl
 promoting an older current-endpoint assertion into complete historical evidence.
 The journal never contacts a remote host to obtain that operator evidence.
 
+Local authenticated target operations expose this evidence through the existing
+generic `POST /api/connector-targets/{id}/operations/{operation}` route:
+
+- `key-cleanup-status` accepts an empty object and returns the current
+  `deletion_context_digest`, relevant journal entries and server-selected identity
+  choices. Each choice includes the exact historical verification subjects.
+  Retired target groups remain visible; shared current identities can also reveal
+  unresolved history originating from another local target. Unrelated groups
+  are not included. Removing the last profile does not hide this history or
+  prevent exact historical attestation; remote deletion still requires a saved
+  credential profile and its normal preflight checks.
+- `key-cleanup-attest` requires the displayed `resource_id`, `generation`,
+  `deletion_context_digest`, `identity_digest`, a bounded `reason` and `coverage`
+  for every displayed subject. Each coverage entry supplies `subject_id`,
+  `absent: true`, an external `method` (`provider_console`,
+  `independent_admin_session` or `decommissioned_location`) and its own bounded
+  explanation. These are operator assertions, not automated remote checks.
+
+The generic lifecycle policy admits the mutation exclusively before obtaining
+the fresh target/profile/public-key/trust snapshot, and holds admission through
+response publication. Changed context, generation or identity is rejected with
+409; no supplied identity replaces a server-selected choice. Inspection and
+attestation never read a private key, open a shell or execute remote commands.
+A successfully completed operation records `connector.key_cleanup_attested`
+in the local human audit without creating an execution surface. Domain proof
+and observation audit are separate writes; an audit failure reports uncertainty
+after the proof may already have committed. A retired-group decision does not
+confirm a replacement key/user.
+
+If persistence or its reply is uncertain, reload `key-cleanup-status` and inspect
+the recorded generation and proof. Do not automatically resend the mutation or
+treat a 409 as proof that nothing committed. These local human management
+operations are not added to the AI/MCP action catalog.
+
 The cleanup writes a private temporary file in the same `.ssh` directory and
 atomically replaces `authorized_keys` only after the complete filtered file is
 ready. It rejects symlinked or non-owned key paths rather than risking a

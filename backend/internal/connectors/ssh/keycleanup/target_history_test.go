@@ -88,3 +88,28 @@ func TestTargetHistoryDoesNotBlockIndependentTargets(t *testing.T) {
 		t.Fatalf("independent target was blocked: %v", err)
 	}
 }
+
+func TestTargetHistoryIncludesCurrentAliasesOnlyAfterIdentityValidation(t *testing.T) {
+	store := newMemoryStore()
+	journal := New(store)
+	original := beginTest(t, journal, testIdentity(t))
+	alias := testIdentity(t)
+	alias.TargetID, alias.Profiles[0].ID = 10, 20
+	entries, err := journal.ListForTarget(t.Context(), alias.TargetID, alias)
+	if err != nil || len(entries) != 1 || entries[0].ResourceID != original.ResourceID || !original.Record.MatchesIdentity(alias) {
+		t.Fatalf("shared alias lost: %#v %v", entries, err)
+	}
+	alias.KeyDigest = testDigest(t, "unrelated-material")
+	entries, err = journal.ListForTarget(t.Context(), alias.TargetID, alias)
+	if err != nil || len(entries) != 0 || original.Record.MatchesIdentity(alias) {
+		t.Fatalf("unrelated key conflated: %#v %v", entries, err)
+	}
+	alias.Host = ""
+	store.listErr = errors.New("must validate before listing")
+	if _, err := journal.ListForTarget(t.Context(), 10, alias); err == nil || err.Error() == store.listErr.Error() {
+		t.Fatalf("invalid current alias reached storage: %v", err)
+	}
+	if store.secretReads != 0 {
+		t.Fatal("alias discovery read private credentials")
+	}
+}

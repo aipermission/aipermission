@@ -225,6 +225,9 @@ func (Management) RunTargetOperation(ctx context.Context, handler connectorapi.T
 	if err != nil {
 		return connectors.ManagementResponse{}, err
 	}
+	if operation == cleanupStatusOperation || operation == cleanupAttestOperation {
+		return runCleanupReconciliation(ctx, gateway, runtime, target, operation, requestValue)
+	}
 	input, err := decodeTargetOperationRequest(requestValue)
 	if err != nil {
 		return managementErrorResponse(http.StatusBadRequest, "invalid json body"), nil
