@@ -1275,6 +1275,14 @@ The backend owns the SSH shell. Browser and MCP clients attach to the same `sess
 
 Console websockets are locally hardened with bounded message size, client count, read deadlines, ping/pong keepalive, and lightweight input/resize frequency limits. These are abuse guardrails for the local gateway; they are not a remote multi-user quota system.
 
+Automated execution checks request cancellation at command admission and again
+before writing the command payload. A request canceled while waiting for an
+execution/input lock does not send a new command. Cancellation after the
+terminal prelude restores terminal input before returning. Once the payload has
+been sent, a request deadline does not prove the command stopped: the response
+retains the session/generation handle and running state for reconciliation.
+Observe or interrupt that existing command instead of blindly submitting it again.
+
 `close_existing=true` closes any open shell for the same server and starts a new one. The UI New Session action uses this.
 
 `POST /api/console/runtime-surfaces/{id}/restart` is the local UI recovery

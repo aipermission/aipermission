@@ -18,6 +18,9 @@ func (s *managedConsoleSession) execCommand(
 	command string,
 	authorizedWrite func(func() error) error,
 ) (ExecResult, error) {
+	if err := ctx.Err(); err != nil {
+		return ExecResult{}, err
+	}
 	s.execMu.Lock()
 	defer s.execMu.Unlock()
 
@@ -26,6 +29,10 @@ func (s *managedConsoleSession) execCommand(
 	}
 
 	s.inputMu.Lock()
+	if err := ctx.Err(); err != nil {
+		s.inputMu.Unlock()
+		return ExecResult{}, err
+	}
 	if active := s.activeCommand(); active != nil {
 		output, exitCode, completed, err := s.checkCommandResult(active.StartOffset, active.Marker)
 		s.inputMu.Unlock()
@@ -73,10 +80,24 @@ func (s *managedConsoleSession) execCommand(
 	writeCommand := func() error {
 		s.inputMu.Lock()
 		defer s.inputMu.Unlock()
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := s.writeInput(consoleExecPrelude()); err != nil {
 			return err
 		}
-		time.Sleep(120 * time.Millisecond)
+		timer := time.NewTimer(120 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			s.restoreTerminalInputLocked()
+			return ctx.Err()
+		case <-timer.C:
+		}
+		if err := ctx.Err(); err != nil {
+			s.restoreTerminalInputLocked()
+			return err
+		}
 		return s.writeInput(consoleExecPayload(command, marker))
 	}
 	var writeErr error
@@ -210,6 +231,9 @@ func (s *managedConsoleSession) waitReady(ctx context.Context) error {
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		status, _ := s.snapshot()
 		switch status {
 		case "connected":
