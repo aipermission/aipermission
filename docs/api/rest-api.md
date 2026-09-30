@@ -528,6 +528,17 @@ persisted output bytes. It is not a SQL sandbox; use a dedicated read-only
 ClickHouse credential profile and prefer `approval_required` for exploratory
 queries.
 
+Docker mutation actions use the same unknown-outcome contract. A dispatched
+`start_container`, `stop_container`, or `restart_container` whose CLI response
+fails is `outcome_unknown` with `retry_safe: false`; a CLI exit code alone is
+not proof that the daemon did nothing. `container_exec` uses a per-invocation
+inner-command completion record to distinguish an observed user-command exit
+from a lost Docker reply. Missing or inconsistent records on nonzero CLI
+responses remain uncertain, and unconfirmed output is withheld. This record
+is an observation mechanism, not a sandbox or protection against hostile code
+running inside the container. Inspect external state and reconcile the original
+request before retrying with a new idempotency key.
+
 ## Console Commands
 
 ```txt

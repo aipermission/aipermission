@@ -293,12 +293,9 @@ func TestLifecycleReturnsRefreshedContainerState(t *testing.T) {
 }
 
 func TestContainerExecRunsBoundedCommandInsideScopedContainer(t *testing.T) {
-	transport := &fakeCommandTransport{
-		results: map[string]connectors.CommandRunResult{
-			"docker ps -a --no-trunc --format '{{json .}}'":         {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
-			"docker exec -- '111111111111' sh -lc 'printf hi' 2>&1": {Stdout: "hi", ExitCode: 0, DurationMS: 7},
-		},
-	}
+	transport := newMutationReplyTransport(func(request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+		return execReplyWithCompletion(t, request, "hi", 0), nil
+	})
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target:       dockerTarget(),
 		Profile:      dockerProfile("selected"),
@@ -317,12 +314,9 @@ func TestContainerExecRunsBoundedCommandInsideScopedContainer(t *testing.T) {
 }
 
 func TestContainerExecReturnsFailedStatusForNonZeroExit(t *testing.T) {
-	transport := &fakeCommandTransport{
-		results: map[string]connectors.CommandRunResult{
-			"docker ps -a --no-trunc --format '{{json .}}'":            {Stdout: `{"ID":"111111111111","Names":"api","Image":"app:latest","State":"running","Status":"Up 1 hour"}`},
-			"docker exec -- '111111111111' sh -lc 'cat /missing' 2>&1": {Stdout: "missing\n", ExitCode: 1},
-		},
-	}
+	transport := newMutationReplyTransport(func(request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {
+		return execReplyWithCompletion(t, request, "missing\n", 1), nil
+	})
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target:       dockerTarget(),
 		Profile:      dockerProfile("selected"),

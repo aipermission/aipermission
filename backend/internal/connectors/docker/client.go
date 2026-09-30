@@ -231,9 +231,14 @@ func executeContainerExec(ctx context.Context, client *dockerClient, input map[s
 	if len(options) > 0 {
 		optionText = strings.Join(options, " ") + " "
 	}
-	result, err := client.run(ctx, fmt.Sprintf("%s exec %s-- %s sh -lc %s 2>&1", client.command, optionText, shellQuote(container.Ref()), shellQuote(commandText)), timeout+5)
+	script, marker := dockerExecShell(commandText)
+	result, err := client.run(ctx, fmt.Sprintf("%s exec %s-- %s sh -c %s 2>&1", client.command, optionText, shellQuote(container.Ref()), shellQuote(script)), timeout+5)
 	if err != nil {
 		return connectors.ActionResult{}, dockerMutationTransportError("docker exec", result, err)
+	}
+	result, err = observeDockerExecResult(result, marker)
+	if err != nil {
+		return connectors.ActionResult{}, err
 	}
 	outputText := truncateString(result.Stdout, maxExecOutputBytes)
 	status := connectors.ResultCompleted
@@ -277,6 +282,9 @@ func executeContainerLifecycle(ctx context.Context, client *dockerClient, input 
 		return connectors.ActionResult{}, dockerMutationTransportError("docker "+operation, result, err)
 	}
 	if result.ExitCode != 0 {
+		if err := dockerCLIOutcomeError("docker "+operation, result); err != nil {
+			return connectors.ActionResult{}, err
+		}
 		return connectors.ActionResult{}, dockerCommandError("docker "+operation, result)
 	}
 	output := map[string]any{
