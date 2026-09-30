@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
@@ -387,13 +388,14 @@ func (session *RuntimeSession) close() error {
 }
 
 func (s *managedConsoleSession) fail(message string) {
+	message = s.redactForPersistence(message)
 	s.setStatus("error", message)
 	s.broadcast(ptyServerMessage{Type: "error", Status: "error", Data: message, SessionID: s.id})
 	s.finish("error", message)
 }
 
 func (s *managedConsoleSession) finish(status string, message string) {
-	persistedMessage := s.manager.redactText(message)
+	persistedMessage := s.redactForPersistence(message)
 	s.closeManualOutputCapture(manualSessionClosed)
 	s.mu.Lock()
 	s.status = status
@@ -407,6 +409,12 @@ func (s *managedConsoleSession) finish(status string, message string) {
 }
 
 func (s *managedConsoleSession) markStarted(err error) {
+	if err != nil {
+		message := s.redactForPersistence(err.Error())
+		if message != err.Error() {
+			err = &redactedConsoleError{cause: err, message: message}
+		}
+	}
 	s.startOnce.Do(func() {
 		s.mu.Lock()
 		s.startErr = err
@@ -444,7 +452,7 @@ func (s *managedConsoleSession) waitDone(ctx context.Context) error {
 
 func (s *managedConsoleSession) setStatus(status string, message string) {
 	now := timeformat.Now()
-	persistedMessage := s.manager.redactText(message)
+	persistedMessage := s.redactForPersistence(message)
 	s.mu.Lock()
 	s.status = status
 	s.errText = persistedMessage
@@ -577,11 +585,25 @@ func (s *managedConsoleSession) redactForPersistence(value string) string {
 	}
 	s.mu.Lock()
 	redactor := s.exactRedactor
+	environment := s.environment
+	closed := s.exactRedactionClosed
 	s.mu.Unlock()
-	if redactor != nil {
-		value = string(redactor.Redact([]byte(value)))
+	if environment != nil && closed {
+		return "[REDACTED VAULT VALUE]"
 	}
-	return s.manager.redactText(value)
+	if redactor == nil && environment != nil {
+		var err error
+		redactor, err = environment.ExactValueRedactor()
+		if err != nil {
+			return "[REDACTED VAULT VALUE]"
+		}
+		defer redactor.Close()
+	}
+	if redactor == nil {
+		return s.manager.redactText(value)
+	}
+	return actionresult.RedactCredentialText(value,
+		func(text string) string { return string(redactor.Redact([]byte(text))) }, s.manager.redactText)
 }
 
 func (s *managedConsoleSession) closeExactRedactor() {
