@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
@@ -37,8 +35,7 @@ func (s *managedConsoleSession) execCommand(
 		output, exitCode, completed, err := s.checkCommandResult(active.StartOffset, active.Marker)
 		s.inputMu.Unlock()
 		if err != nil {
-			s.clearActiveCommandWithInputAdmission(active.Marker)
-			return ExecResult{}, err
+			return ExecResult{}, ErrCommandActive
 		}
 		if completed {
 			s.restoreTerminalInput()
@@ -69,21 +66,23 @@ func (s *managedConsoleSession) execCommand(
 	startOffset := s.rawStreamPositionLocked()
 	s.mu.Unlock()
 
-	s.setActiveCommand(consoleSessionActiveExec{
+	active := consoleSessionActiveExec{
 		Command:     command,
 		Marker:      marker,
 		StartOffset: startOffset,
 		Started:     started,
-	})
+	}
+	s.setActiveCommand(active)
 	s.inputMu.Unlock()
 
+	payloadAttempted := false
 	writeCommand := func() error {
 		s.inputMu.Lock()
 		defer s.inputMu.Unlock()
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.writeInput(consoleExecPrelude()); err != nil {
+		if err := s.writeInput(terminaltext.ExecPrelude); err != nil {
 			return err
 		}
 		timer := time.NewTimer(120 * time.Millisecond)
@@ -98,7 +97,9 @@ func (s *managedConsoleSession) execCommand(
 			s.restoreTerminalInputLocked()
 			return err
 		}
-		return s.writeInput(consoleExecPayload(command, marker))
+		var err error
+		payloadAttempted, err = s.writeInputAttempt(terminaltext.ExecPayload(command, marker))
+		return err
 	}
 	var writeErr error
 	if authorizedWrite != nil {
@@ -107,6 +108,9 @@ func (s *managedConsoleSession) execCommand(
 		writeErr = writeCommand()
 	}
 	if writeErr != nil {
+		if payloadAttempted {
+			return s.unknownCommandObservation(active, writeErr)
+		}
 		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, writeErr
 	}
@@ -124,8 +128,7 @@ func (s *managedConsoleSession) execCommand(
 				DurationMS: time.Since(started).Milliseconds(),
 			}, nil
 		}
-		s.clearActiveCommandWithInputAdmission(marker)
-		return ExecResult{}, err
+		return s.unknownCommandObservation(active, err)
 	}
 	s.restoreTerminalInputAndClear(marker)
 
@@ -286,31 +289,9 @@ func (s *managedConsoleSession) checkCommandResult(startOffset int64, marker str
 	errText := s.errText
 	s.mu.Unlock()
 	segment, truncated := rawTranscriptSegment(transcript, baseOffset, startOffset)
-	markerNeedle := "\n" + marker + ":"
-	markerIndex := strings.Index(segment, markerNeedle)
-	markerLength := len(markerNeedle)
-	if markerIndex < 0 && truncated && strings.HasPrefix(segment, marker+":") {
-		markerIndex = 0
-		markerLength = len(marker) + 1
-	}
-	if markerIndex >= 0 {
-		afterMarker := segment[markerIndex+markerLength:]
-		lineEnd := strings.IndexAny(afterMarker, "\r\n")
-		if lineEnd < 0 {
-			return segment, 1, false, nil
-		}
-		exitText := afterMarker[:lineEnd]
-		if exitText == "" || strings.IndexFunc(exitText, func(value rune) bool {
-			return value < '0' || value > '9'
-		}) >= 0 {
-			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("invalid console command exit marker")
-		}
-		exitCode, err := strconv.Atoi(exitText)
-		if err != nil {
-			return terminaltext.CleanCommandResultOutput(segment[:markerIndex]), 1, false, fmt.Errorf("parse console command exit status: %w", err)
-		}
-		output := terminaltext.CleanCommandResultOutput(segment[:markerIndex])
-		return output, exitCode, true, nil
+	output, exitCode, found, complete, err := terminaltext.CommandExitMarker(segment, marker, truncated)
+	if found {
+		return output, exitCode, complete, err
 	}
 	if status == "error" || status == "closed" {
 		if errText == "" {
@@ -319,16 +300,4 @@ func (s *managedConsoleSession) checkCommandResult(startOffset int64, marker str
 		return segment, 1, false, errors.New(errText)
 	}
 	return segment, 1, false, nil
-}
-
-func consoleExecPayload(command string, marker string) string {
-	delimiter := marker + "_SCRIPT"
-	for strings.Contains(command, "\n"+delimiter+"\n") {
-		delimiter += "_X"
-	}
-	return fmt.Sprintf("/bin/sh <<'%s'\n(\n%s\n) </dev/null\n__aipermission_exit=$?\nprintf '\\n%s:%%s\\n' \"$__aipermission_exit\"\nunset __aipermission_exit\n%s\nif [ -n \"$__aipermission_saved_stty\" ]; then stty \"$__aipermission_saved_stty\" 2>/dev/null || true; else stty sane 2>/dev/null || stty echo icanon opost 2>/dev/null || true; fi; unset __aipermission_saved_stty\n", delimiter, command, marker, delimiter)
-}
-
-func consoleExecPrelude() string {
-	return "__aipermission_saved_stty=$(stty -g 2>/dev/null || true)\nstty -echo 2>/dev/null || true\n"
 }

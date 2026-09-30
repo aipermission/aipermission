@@ -120,7 +120,7 @@ func TestManagedConsoleSessionRejectsManualInputBetweenAutomationFrames(t *testi
 		execDone <- err
 	}()
 
-	if first := <-writes; first != consoleExecPrelude() {
+	if first := <-writes; first != terminaltext.ExecPrelude {
 		t.Fatalf("first automation frame = %q", first)
 	}
 	manualDone := make(chan error, 1)
@@ -149,7 +149,7 @@ func TestManagedConsoleSessionRejectsManualInputBetweenAutomationFrames(t *testi
 }
 
 func TestConsoleExecPayloadAvoidsBase64BashAndMktemp(t *testing.T) {
-	payload := consoleExecPayload("printf 'hello\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	payload := terminaltext.ExecPayload("printf 'hello\\n'\n", "__AIPERMISSION_EXIT_TEST__")
 	for _, forbidden := range []string{"base64", "mktemp", "bash "} {
 		if strings.Contains(payload, forbidden) {
 			t.Fatalf("payload should not depend on %q: %s", forbidden, payload)
@@ -173,7 +173,7 @@ func TestConsoleExecPayloadAvoidsBase64BashAndMktemp(t *testing.T) {
 }
 
 func TestConsoleExecPreludeDisablesEchoBeforePayload(t *testing.T) {
-	prelude := consoleExecPrelude()
+	prelude := terminaltext.ExecPrelude
 	if !strings.Contains(prelude, "__aipermission_saved_stty=$(stty -g 2>/dev/null || true)") {
 		t.Fatalf("prelude should save terminal input mode before disabling echo: %s", prelude)
 	}
@@ -183,7 +183,7 @@ func TestConsoleExecPreludeDisablesEchoBeforePayload(t *testing.T) {
 }
 
 func TestConsoleExecPayloadRunsAndEmitsMarker(t *testing.T) {
-	payload := consoleExecPayload("set -e\nprintf 'hello\\n'\nprintf 'world\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	payload := terminaltext.ExecPayload("set -e\nprintf 'hello\\n'\nprintf 'world\\n'\n", "__AIPERMISSION_EXIT_TEST__")
 	cmd := exec.Command("/bin/sh")
 	cmd.Stdin = strings.NewReader(payload)
 	outputBytes, err := cmd.CombinedOutput()
@@ -200,7 +200,7 @@ func TestConsoleExecPayloadRunsAndEmitsMarker(t *testing.T) {
 }
 
 func TestConsoleExecPayloadPreservesFailureMarkerWithSetE(t *testing.T) {
-	payload := consoleExecPayload("set -e\nprintf 'before-fail\\n'\nfalse\nprintf 'after-fail\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	payload := terminaltext.ExecPayload("set -e\nprintf 'before-fail\\n'\nfalse\nprintf 'after-fail\\n'\n", "__AIPERMISSION_EXIT_TEST__")
 	cmd := exec.Command("/bin/sh")
 	cmd.Stdin = strings.NewReader(payload)
 	outputBytes, err := cmd.CombinedOutput()
@@ -217,7 +217,7 @@ func TestConsoleExecPayloadPreservesFailureMarkerWithSetE(t *testing.T) {
 }
 
 func TestConsoleExecPayloadDoesNotLetCommandConsumeMarkerScript(t *testing.T) {
-	payload := consoleExecPayload("cat\nprintf 'after-cat\\n'\n", "__AIPERMISSION_EXIT_TEST__")
+	payload := terminaltext.ExecPayload("cat\nprintf 'after-cat\\n'\n", "__AIPERMISSION_EXIT_TEST__")
 	cmd := exec.Command("/bin/sh")
 	cmd.Stdin = strings.NewReader(payload)
 	outputBytes, err := cmd.CombinedOutput()

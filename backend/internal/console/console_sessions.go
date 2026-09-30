@@ -37,7 +37,7 @@ var ErrSessionChanged = errors.New("console session changed")
 var ErrClientLimit = errors.New("console session client limit reached")
 var ErrInputTooLarge = errors.New("console input is too large")
 var ErrUnauthorized = errors.New("execution principal is not authorized for this console session")
-var ErrCommandOutcomeUnknown = errors.New("command was dispatched but its outcome could not be authorized")
+var ErrCommandOutcomeUnknown = errors.New("command was dispatched but its outcome could not be confirmed")
 var ErrManagerClosed = errors.New("console session manager is closed")
 var ErrSessionClosing = errors.New("console session is closing")
 

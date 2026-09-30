@@ -254,18 +254,28 @@ func (s *managedConsoleSession) dimensions() (int, int) {
 }
 
 func (s *managedConsoleSession) writeInput(data string) error {
+	_, err := s.writeInputAttempt(data)
+	return err
+}
+
+// A payload write attempt may have reached the peer even when its acknowledgement
+// is lost. Readiness rejection, in contrast, never calls the transport writer.
+func (s *managedConsoleSession) writeInputAttempt(data string) (bool, error) {
 	if data == "" {
-		return nil
+		return false, nil
 	}
 	s.mu.Lock()
 	if s.stdin == nil || s.status != "connected" {
 		s.mu.Unlock()
-		return fmt.Errorf("console session is not ready")
+		return false, fmt.Errorf("console session is not ready")
 	}
 	stdin := s.stdin
 	s.mu.Unlock()
-	_, err := io.WriteString(stdin, data)
-	return err
+	written, err := io.WriteString(stdin, data)
+	if err == nil && written != len(data) {
+		err = io.ErrShortWrite
+	}
+	return true, err
 }
 
 func (s *managedConsoleSession) resize(cols int, rows int) {
