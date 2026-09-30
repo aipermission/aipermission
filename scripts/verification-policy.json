@@ -456,6 +456,7 @@
   "connector_conformance_tests": [
     "TestClickHouseRealService",
     "TestPostgresRealService",
+    "TestPostgresMultipartFunctionQualificationRealService",
     "TestRabbitMQRealService",
     "TestValkeyRealService",
     "TestS3RealService"

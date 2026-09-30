@@ -17,7 +17,22 @@ import (
 func TestPostgresRealService(t *testing.T) {
 	requireConformance(t)
 	connector := postgresconnector.New()
-	runtime := connectors.RuntimeContext{
+	runtime := postgresConformanceRuntime(t)
+
+	assertConnection(t, connector, runtime)
+	result := executeAction(t, connector, runtime, postgresconnector.ActionQueryReadonly, map[string]any{
+		"sql":      "select current_database() as database_name, 'postgres-conformance' as marker",
+		"max_rows": 5,
+	})
+	assertResultContains(t, result, "postgres-conformance")
+	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
+	assertImplicitCastResolutionRejected(t, connector, runtime)
+	assertRestoreProcessBoundary(t, connector, runtime)
+}
+
+func postgresConformanceRuntime(t *testing.T) connectors.RuntimeContext {
+	t.Helper()
+	return connectors.RuntimeContext{
 		Target: connectors.TargetView{
 			ID: 1, Ref: "postgres:1:1", ConnectorKind: postgresconnector.Kind, Name: "conformance-postgres",
 			Config: map[string]any{
@@ -35,16 +50,6 @@ func TestPostgresRealService(t *testing.T) {
 		Secrets:      fixtureSecrets{"password": "conformance-only"},
 		Capabilities: fixtureCapabilities{},
 	}
-
-	assertConnection(t, connector, runtime)
-	result := executeAction(t, connector, runtime, postgresconnector.ActionQueryReadonly, map[string]any{
-		"sql":      "select current_database() as database_name, 'postgres-conformance' as marker",
-		"max_rows": 5,
-	})
-	assertResultContains(t, result, "postgres-conformance")
-	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
-	assertImplicitCastResolutionRejected(t, connector, runtime)
-	assertRestoreProcessBoundary(t, connector, runtime)
 }
 
 func assertRestoreProcessBoundary(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext) {

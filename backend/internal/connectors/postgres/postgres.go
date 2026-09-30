@@ -230,6 +230,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		},
 		Warnings: []string{
 			"Postgres credential profiles decide what the database itself allows; prefer dedicated read-only roles.",
+			"Read-only queries accept approved unqualified or pg_catalog function names; database.schema.function qualification is not supported.",
 			"query_readonly is designed for reads, not migrations or writes.",
 			"Redaction is best-effort. Do not intentionally query secrets unless the operator approved that access.",
 		},
