@@ -49,6 +49,8 @@ consumer group, commit offsets, or enable automatic topic creation. Record
 count, returned serialized output, decompressed record batches, concurrent
 fetches, and wait time are bounded. Large samples return a
 `continuation_offset` instead of silently expanding the gateway response.
+If retention or data loss invalidates the selected offset after its initial
+validation, the read fails rather than silently rewinding into another range.
 
 Message keys, values, and headers can contain secrets or customer data. Keep
 message reads in Prompt mode unless the workflow is explicitly trusted. The

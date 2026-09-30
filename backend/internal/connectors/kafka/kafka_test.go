@@ -716,10 +716,9 @@ func TestSetConsumerGroupOffsetRejectsModernConsumerProtocol(t *testing.T) {
 		t.Fatalf("new fake cluster: %v", err)
 	}
 	defer cluster.Close()
-	modernContext := context.WithValue(context.Background(), "opt_in_kafka_next_gen_balancer_beta", true)
 	consumer, err := kgo.NewClient(
 		kgo.SeedBrokers(cluster.ListenAddrs()...),
-		kgo.WithContext(modernContext),
+		kgo.ServerSideBalancer(),
 		kgo.ConsumerGroup("modern-workers"),
 		kgo.ConsumeTopics("events"),
 		kgo.DisableAutoCommit(),
