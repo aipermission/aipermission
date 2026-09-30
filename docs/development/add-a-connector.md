@@ -100,6 +100,11 @@ contracts. If a reusable capability needs a new service, add a narrow port,
 compose it only where required, and update the exact-method-set architecture
 tests.
 
+Target operations run under workspace delivery admission. Persistent-state
+operations must opt into `TargetOperationLifecyclePolicy`; see the canonical
+[backend contract](../../backend/internal/connectors/README.md#backend-contract)
+for lifecycle exclusion and snapshot ownership.
+
 Runtime-backed capabilities expose `runtime_id` as the shared identifier for a
 connector-profile capability surface. The adapter must resolve that id and
 fail closed unless connector kind, target/profile identity, and capability kind

@@ -564,6 +564,13 @@ type TargetOperationRunner interface {
 	RunTargetOperation(context.Context, TargetOperationGateway, ConnectorDataRuntime, Target, string, any) (connectors.ManagementResponse, error)
 }
 
+// TargetOperationLifecyclePolicy requests exclusive lifecycle admission for
+// operations that change persistent connector-owned state. Other operations
+// hold delivery admission so deletion and workspace teardown cannot overtake them.
+type TargetOperationLifecyclePolicy interface {
+	RequiresTargetOperationExclusion(operation string) bool
+}
+
 // CredentialCanonicalizer normalizes public credential profile metadata.
 type CredentialCanonicalizer interface {
 	CanonicalCredentialPublic(ctx context.Context, runtime ConnectorDataRuntime, credentialKind string, public map[string]any) (map[string]any, error)

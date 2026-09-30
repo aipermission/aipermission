@@ -217,6 +217,17 @@ interfaces. Extending the adapter surface should mean extending
 `gatewayconnectorapi`
 once and updating every affected adapter and exact-method-set test.
 
+Target operations hold workspace delivery admission across the fresh target
+snapshot, adapter dispatch, response projection and writing. Operations that
+change persistent connector-owned state must implement the optional
+`TargetOperationLifecyclePolicy` and return true from
+`RequiresTargetOperationExclusion` for those operation names. Core then holds
+exclusive lifecycle admission instead, without knowing the connector kind.
+The context records that admission so nested credential delivery does not
+reacquire it; missing admission ports or identity fail closed. Acquire any
+connector-owned snapshots only inside the admitted call, and do not release
+the admission before completing persistence or mutation reconciliation.
+
 New connectors such as HTTP API connectors should follow the
 target/profile/action path by default. If they need a capability beyond the
 shared action runner, design a reusable adapter contract first instead of
