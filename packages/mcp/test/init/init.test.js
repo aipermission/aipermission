@@ -34,10 +34,39 @@ import {
 } from "../../src/install-skill.js";
 import { normalizeLocalAPIURL } from "../../src/local-url.js";
 import { parseCommandFlags } from "../../src/cli-flags.js";
+import { inspectClientSetup } from "../../src/doctor.js";
 
 const require = createRequire(import.meta.url);
 const packageMetadata = require("../../package.json");
 const execFileAsync = promisify(execFile);
+
+test("TOML setup and doctor preserve null-prototype config records across updates", async (t) => {
+  const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-records-"));
+  t.after(() => fs.rm(homeDir, { recursive: true, force: true }));
+  const configPath = path.join(homeDir, ".codex", "config.toml");
+  const unrelated =
+    '# Keep client preferences and unrelated servers.\n[preferences]\n__proto__ = { note = "preserved" }\nconstructor = "preserved"\n[mcp_servers.other]\ncommand = "node"\nargs = ["other.js"]\n';
+  await fs.mkdir(path.dirname(configPath), { recursive: true });
+  await fs.writeFile(configPath, unrelated, { mode: 0o600 });
+  await installSkill({ client: "codex", homeDir, scope: "user" });
+  for (const token of ["FIRST_CONFIG_CANARY", "SECOND_CONFIG_CANARY"]) {
+    const config = buildMCPServerConfig({ apiUrl: "http://127.0.0.1:3210", token });
+    await writeProviderConfig("codex", "my-project", config, { homeDir, scope: "user" });
+    const contents = await fs.readFile(configPath, "utf8");
+    const parsed = parseTOML(contents);
+    assert.equal(Object.getPrototypeOf(parsed), null);
+    assert.equal(Object.getPrototypeOf(parsed.mcp_servers), null);
+    assert.equal(parsed.preferences.__proto__.note, "preserved");
+    assert.equal(parsed.preferences.constructor, "preserved");
+    assert.equal(parsed.mcp_servers.other.command, "node");
+    assert.equal(parsed.mcp_servers["my-project"].env.AIPERMISSION_API_TOKEN, token);
+    assert.match(contents, /# Keep client preferences and unrelated servers\./);
+    const result = await inspectClientSetup({ client: "codex", name: "my-project", homeDir, scope: "user" });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.doesNotMatch(JSON.stringify(result), /CONFIG_CANARY/);
+  }
+  assert.equal(Object.prototype.note, undefined);
+});
 
 async function git(cwd, ...args) {
   const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
@@ -350,7 +379,7 @@ test("writeTOMLMCPConfig preserves array-of-table sections after the selected se
 
   const content = await fs.readFile(filePath, "utf8");
   const parsed = parseTOML(content);
-  assert.deepEqual(parsed.profiles, [{ name: "first" }, { name: "second" }]);
+  assert.deepEqual(parsed.profiles.map((profile) => ({ ...profile })), [{ name: "first" }, { name: "second" }]);
   assert.equal(parsed.mcp_servers.aipermission.command, "npx");
   assert.doesNotMatch(content, /command = "old"/);
 });
