@@ -2,18 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, currentWorkspaceBinding } from "../../../lib/api";
 import { definitiveMutationFailure, observeMutationRequests } from "./mutation-observation";
 import { connectorActionUnknownOutcome } from "./action-runner";
+import { scheduleObservation } from "./observation-scheduler";
+import type { ObservationScheduler } from "./observation-scheduler";
 import type { MutationLookup } from "./mutation-observation";
 import type { ConnectorActionResponse, ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
 
 type MutationOwner = { attemptID: number; requestID: number | null; observed: boolean; scope: string; inFlight: boolean };
 const observationInterval = 3000;
-export type MutationObservationScheduler = (_observe: () => Promise<void>, _delay: number) => () => void;
-const scheduleObservation: MutationObservationScheduler = (observe, delay) => {
-  const timer = setTimeout(() => {
-    void observe();
-  }, delay);
-  return () => clearTimeout(timer);
-};
+export type MutationObservationScheduler = ObservationScheduler;
 
 export function useConnectorMutationOwnership(
   targetRef: string,

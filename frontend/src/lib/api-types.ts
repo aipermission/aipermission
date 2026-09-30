@@ -5,6 +5,7 @@ export type APIOptions = {
   timeoutMs?: number;
   workspaceBinding?: string;
   exclusiveMutationActions?: readonly string[];
+  exclusiveConsoleBatch?: boolean;
 };
 export type DownloadOptions = APIOptions & { picker?: boolean; requireStreaming?: boolean };
 export type DownloadResult = { saved: boolean; method: "picker" | "anchor"; canceled?: boolean };

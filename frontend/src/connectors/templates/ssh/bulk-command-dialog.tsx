@@ -1,14 +1,16 @@
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
-import { Copy, RefreshCcw, TerminalSquare } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 import { apiGet, apiPost } from "../../../lib/api";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
 import { Dialog } from "../../../components/ui/dialog";
-import { Notice } from "../../../components/ui/notice";
 import { TerminalBlock } from "../../../components/ui/terminal-block";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { errorMessage } from "../../../lib/errors";
-import { bulkCommandResponse, bulkCommandDetailResponse } from "./bulk-command-contracts";
+import { isDefinitiveConsoleCommandStatus, isUnknownConsoleCommandStatus } from "../../../lib/gateway-contracts/console-command-contract";
+import { useConsoleBatchOwnership } from "../_shared/use-console-batch-ownership";
+import { bulkCommandResponse, bulkCommandDetailResponse, bulkCommandNeedsObservation } from "./bulk-command-contracts";
+import { BulkCommandInputs } from "./bulk-command-inputs";
 import type { ComponentProps, FormEvent, RefObject } from "react";
 import type { SSHConsoleRuntime } from "./console-types";
 import type { BulkCommandItem, BulkCommandState } from "./bulk-command-contracts";
@@ -30,8 +32,6 @@ type TargetPickerProps = {
   toggleTarget: (_value: number) => void;
 };
 
-const terminalStatuses = new Set(["completed", "failed", "error", "declined", "stale", "canceled", "outcome_unknown", "untracked"]);
-
 export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRefresh }: Props) {
   const [selected, setSelected] = useState<Record<number, boolean>>({});
   const [command, setCommand] = useState("");
@@ -41,7 +41,9 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   const [runState, setRunState] = useState<BulkCommandState>({ state: "idle", error: null, items: [], parallelism: 3 });
   const [selectedResultID, setSelectedResultID] = useState<number | null>(null);
   const delayedRefreshRef = useRef<number | null>(null);
-  const requests = useRequestGuard(`ssh-bulk:${open ? "open" : "closed"}:${selectedTarget?.id || "none"}`);
+  const ownership = useConsoleBatchOwnership(open, runState.items.length === 0);
+  const requests = useRequestGuard(`ssh-bulk:${ownership.workspaceID}:${open ? "open" : "closed"}:${selectedTarget?.id || "none"}`);
+  const refreshInFlight = useRef<ReturnType<typeof requests.begin> | null>(null);
 
   const visibleTargets = useMemo(() => {
     const query = targetQuery.trim().toLowerCase();
@@ -53,10 +55,17 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     [targets, selected],
   );
   const confirmationText = selectedIDs.length > 0 ? `RUN ON ${selectedIDs.length} TARGETS` : "RUN ON 0 TARGETS";
-  const canRun = selectedIDs.length > 0 && command.trim() && confirmation === confirmationText && runState.state !== "starting";
-  const hasActiveItems = runState.items.some((item) => !terminalStatuses.has(item.status));
+  const hasActiveItems = runState.items.some(bulkCommandNeedsObservation);
+  const canRun =
+    selectedIDs.length > 0 &&
+    command.trim() &&
+    confirmation === confirmationText &&
+    runState.state !== "starting" &&
+    !hasActiveItems &&
+    !runState.items.some((item) => isUnknownConsoleCommandStatus(item.status)) &&
+    !ownership.locked;
   const requestStatusSignature = runState.items.map((item) => `${item.request_id}:${item.status}`).join(",");
-  const refreshRequestsForEffect = useEffectEvent(() => refreshRequests());
+  const refreshRequestsForEffect = useEffectEvent(() => refreshRequests(runState.items, true));
 
   useEffect(() => {
     invalidateBulkRequests(requests, delayedRefreshRef);
@@ -75,7 +84,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     return () => {
       invalidateBulkRequests(requests, delayedRefreshRef);
     };
-  }, [open, requests, selectedTarget?.id]);
+  }, [open, requests, selectedTarget?.id, ownership.workspaceID]);
 
   useEffect(() => {
     if (!open || !hasActiveItems) return undefined;
@@ -118,7 +127,7 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
           reason: reason.trim(),
           confirmation,
         },
-        { signal: request.signal },
+        { signal: request.signal, exclusiveConsoleBatch: true },
       );
       if (!request.isCurrent()) return;
       const parsed = bulkCommandResponse(data);
@@ -129,9 +138,8 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
         items,
         parallelism: parsed.parallelism,
       });
-      await onRefresh?.();
-      if (!request.isCurrent()) return;
-      delayedRefreshRef.current = window.setTimeout(() => void refreshRequests(items), 1000);
+      void refreshActivity(request);
+      delayedRefreshRef.current = window.setTimeout(() => void refreshRequests(items, true), 1000);
     } catch (error) {
       if (!request.isCurrent()) return;
       setRunState((current) => ({ ...current, state: "error", error: errorMessage(error) }));
@@ -140,33 +148,55 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
     }
   }
 
-  async function refreshRequests(items = runState.items) {
-    if (items.length === 0) return;
+  async function refreshActivity(request: ReturnType<typeof requests.begin>) {
+    if (!request.isCurrent()) return;
+    const activity = requests.begin("activity");
+    try {
+      await onRefresh?.();
+      if (request.isCurrent() && activity.isCurrent()) setRunState((current) => ({ ...current, activity_error: undefined }));
+    } catch (error) {
+      if (request.isCurrent() && activity.isCurrent()) setRunState((current) => ({ ...current, activity_error: errorMessage(error) }));
+    } finally {
+      activity.complete();
+    }
+  }
+
+  async function refreshRequests(items = runState.items, pendingOnly = false) {
+    if (items.length === 0 || refreshInFlight.current?.isCurrent()) return;
+    if (delayedRefreshRef.current !== null) window.clearTimeout(delayedRefreshRef.current);
+    delayedRefreshRef.current = null;
     const request = requests.begin("refresh");
+    refreshInFlight.current = request;
     try {
       const details = await Promise.all(
         items.map(async (item) => {
+          if (pendingOnly && !bulkCommandNeedsObservation(item)) return item;
           try {
-            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`, { signal: request.signal });
+            const detail = await apiGet(`/api/console/command-requests/${item.request_id}`, {
+              signal: request.signal,
+              workspaceBinding: ownership.workspaceID,
+              timeoutMs: 10000,
+            });
             return bulkCommandDetailResponse(detail, item);
           } catch (error) {
-            return { ...item, status: "error", error: errorMessage(error) };
+            return { ...item, refresh_error: errorMessage(error) };
           }
         }),
       );
       if (!request.isCurrent()) return;
       setRunState((current) => ({
         ...current,
-        state: details.some((item) => !terminalStatuses.has(item.status)) ? "running" : "done",
+        state: details.some(bulkCommandNeedsObservation) ? "running" : "done",
         items: details,
         error: null,
       }));
-      await onRefresh?.();
+      void refreshActivity(request);
     } catch (error) {
       if (!request.isCurrent()) return;
-      setRunState((current) => ({ ...current, state: "error", error: errorMessage(error) }));
+      setRunState((current) => ({ ...current, activity_error: errorMessage(error) }));
     } finally {
       request.complete();
+      if (refreshInFlight.current === request) refreshInFlight.current = null;
     }
   }
 
@@ -197,53 +227,20 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
         />
 
         <section className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4">
-          <div className="grid gap-3">
-            <label className="grid gap-1 text-sm font-semibold text-stone-700">
-              Command
-              <textarea
-                className="h-32 resize-none rounded-md border border-stone-300 px-3 py-2 font-mono text-sm font-normal outline-none focus:border-emerald-700"
-                value={command}
-                onChange={(event) => setCommand(event.target.value)}
-                placeholder="apt update"
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-semibold text-stone-700">
-              Reason
-              <input
-                className="h-10 rounded-md border border-stone-300 px-3 text-sm font-normal outline-none focus:border-emerald-700"
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                placeholder="optional"
-              />
-            </label>
-            <Notice tone="warn" className="flex h-10 items-center overflow-hidden px-3 py-0 text-xs">
-              <span className="min-w-0 truncate">
-                Type <span className="font-mono font-semibold">{confirmationText}</span>
-                <button
-                  type="button"
-                  className="ml-1 inline-grid h-5 w-5 place-items-center align-[-3px] text-amber-900 hover:text-amber-700"
-                  title="Copy confirmation phrase"
-                  onClick={() => copyConfirmationText(confirmationText)}
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                </button>{" "}
-                before starting. Runs {runState.parallelism} targets at a time.
-              </span>
-            </Notice>
-            <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <input
-                className="h-10 rounded-md border border-stone-300 px-3 font-mono text-sm outline-none focus:border-emerald-700"
-                value={confirmation}
-                onChange={(event) => setConfirmation(event.target.value)}
-                placeholder={confirmationText}
-              />
-              <Button type="submit" disabled={!canRun}>
-                <TerminalSquare className="h-4 w-4" />
-                Run selected
-              </Button>
-            </div>
-            {runState.error ? <Notice tone="bad">{runState.error}</Notice> : null}
-          </div>
+          <BulkCommandInputs
+            command={command}
+            reason={reason}
+            confirmation={confirmation}
+            confirmationText={confirmationText}
+            setCommand={setCommand}
+            setReason={setReason}
+            setConfirmation={setConfirmation}
+            parallelism={runState.parallelism}
+            canRun={Boolean(canRun)}
+            error={runState.error}
+            activityError={runState.activity_error}
+            ownershipNotice={runState.items.length === 0 && runState.state !== "starting" ? ownership.notice : ""}
+          />
 
           <section className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
             <div className="flex items-center justify-between gap-3">
@@ -290,14 +287,10 @@ export function BulkCommandDialog({ open, targets, selectedTarget, onClose, onRe
   );
 }
 
-function copyConfirmationText(value: string) {
-  if (typeof navigator === "undefined" || !navigator.clipboard) return;
-  void navigator.clipboard.writeText(value);
-}
-
 function invalidateBulkRequests(requests: ReturnType<typeof useRequestGuard>, delayedRefreshRef: RefObject<number | null>) {
   requests.invalidate("run");
   requests.invalidate("refresh");
+  requests.invalidate("activity");
   if (delayedRefreshRef.current !== null) window.clearTimeout(delayedRefreshRef.current);
   delayedRefreshRef.current = null;
 }
@@ -384,6 +377,7 @@ function BulkCommandResultRow({ item, selected, onSelect }: { item: BulkCommandI
         <span>#{item.request_id}</span>
         {typeof item.exit_code === "number" ? <span>exit {item.exit_code}</span> : <span>running</span>}
       </span>
+      {item.refresh_error ? <span className="text-xs text-amber-700">Result refresh: {item.refresh_error}</span> : null}
     </button>
   );
 }
@@ -417,7 +411,9 @@ function BulkCommandResultDetail({ item }: { item?: BulkCommandItem }) {
 }
 
 function resultSummary(items: BulkCommandItem[]) {
-  const running = items.filter((item) => !terminalStatuses.has(item.status)).length;
+  const running = items.filter(
+    (item) => !isDefinitiveConsoleCommandStatus(item.status) && !isUnknownConsoleCommandStatus(item.status),
+  ).length;
   const failed = items.filter((item) => item.status === "failed" || item.status === "error").length;
   const done = items.length - running;
   if (running > 0) return `${done}/${items.length} finished, ${running} running`;
@@ -426,14 +422,14 @@ function resultSummary(items: BulkCommandItem[]) {
 }
 
 function statusLabel(status: string) {
-  if (status === "pending_approval") return "pending";
+  if (status === "approval_pending") return "pending";
   if (status === "untracked") return "not tracked";
   return status || "running";
 }
 
 function statusTone(status: string): ComponentProps<typeof Badge>["tone"] {
   if (status === "completed") return "good";
-  if (status === "running" || status === "pending_approval") return "warn";
+  if (status === "running" || status === "approval_pending") return "warn";
   if (status === "failed" || status === "error" || status === "declined" || status === "stale") return "bad";
   return "neutral";
 }

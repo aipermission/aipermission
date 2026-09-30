@@ -114,6 +114,10 @@ export function retryEntryBlocksMutation(entry: RetryEntry, targetRef: string, a
   return entry.target_ref === targetRef && (entry.mutation_guard === true || Boolean(actionNames?.includes(entry.action_name)));
 }
 
+export function retryEntryBlocksConsoleBatch(entry: RetryEntry) {
+  return entry.state !== "retired" && (entry.request_kind === "console_batch" || (!entry.target_ref && !entry.action_name));
+}
+
 function validOperationMetadata(entry: Record<string, unknown>) {
   return (
     (entry.mutation_guard === undefined || typeof entry.mutation_guard === "boolean") &&

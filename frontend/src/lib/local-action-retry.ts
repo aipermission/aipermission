@@ -40,7 +40,7 @@ export type RetryListEntry = RetryEntry | LegacyRetryEntry;
 
 export async function prepareLocalActionRetry(
   body: unknown,
-  options: { workspaceID?: string; exclusiveMutationActions?: readonly string[] } = {},
+  options: { workspaceID?: string; exclusiveMutationActions?: readonly string[]; exclusiveConsoleBatch?: boolean } = {},
 ): Promise<PreparedRetry> {
   const scope = currentRetryScope(options.workspaceID);
   assertNoLegacyLedger(scope);
@@ -48,7 +48,7 @@ export async function prepareLocalActionRetry(
   let reservationActive = true;
   try {
     let existing = await getEntry(scope, signedRequest.signature);
-    const subject = requestSubject(body, options.exclusiveMutationActions);
+    const subject = requestSubject(body, options.exclusiveMutationActions, options.exclusiveConsoleBatch);
     if (subject.mutation_guard && existing && (existing.state === "pending" || existing.state === "outcome_unknown"))
       throw retryIdentityChangedError();
     let reconciled = false;
@@ -86,9 +86,11 @@ export async function prepareLocalActionRetry(
 function requestSubject(
   value: unknown,
   actions?: readonly string[],
+  exclusiveConsoleBatch = false,
 ): Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard" | "request_kind"> {
   const request = objectRecord(value);
-  if (request?.path === "/api/console/bulk-exec") return { request_kind: "console_batch" };
+  if (request?.path === "/api/console/bulk-exec")
+    return { request_kind: "console_batch", ...(exclusiveConsoleBatch ? { mutation_guard: true } : {}) };
   if (request?.path !== "/api/connector-actions/local-run") return {};
   const body = objectRecord(request.body);
   if (typeof body?.target_ref !== "string" || !/^[a-z][a-z0-9_-]*:[1-9]\d*:[1-9]\d*$/.test(body.target_ref)) return {};
@@ -194,8 +196,8 @@ function acknowledgedRequestIdentity(entry: RetryEntry, data: Record<string, unk
   return { request_id: data.request_id, target_ref: targetRef, action_name: actionName };
 }
 
-export async function listLocalActionRetryEntries(): Promise<RetryListEntry[]> {
-  const scope = currentRetryScope();
+export async function listLocalActionRetryEntries(workspaceID = ""): Promise<RetryListEntry[]> {
+  const scope = currentRetryScope(workspaceID);
   if (readLegacyLedger(scope)) {
     return [
       {
