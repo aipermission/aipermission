@@ -41,18 +41,36 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 		httptransport.WriteInternalError(w)
 		return
 	}
+	input := map[string]any{}
+	if !httptransport.DecodeJSON(w, r, &input, httptransport.DefaultJSONBodyBytes) {
+		return
+	}
+	operation := strings.TrimSpace(r.PathValue("operation"))
+	policy, _ := adapter.(connectorapi.TargetOperationLifecyclePolicy)
+	exclusive := policy != nil && policy.RequiresTargetOperationExclusion(operation)
+	release, ok := acquireTargetAdmission(w, r, workspace.Storage, exclusive, "connector target operation was canceled")
+	if !ok {
+		return
+	}
+	defer release()
+	fresh, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), targetID)
+	if err != nil {
+		WriteTargetError(w, err)
+		return
+	}
+	if fresh.ConnectorKind != target.ConnectorKind {
+		httptransport.WriteError(w, http.StatusConflict, "connector target changed; reload before retrying")
+		return
+	}
+	target = fresh
 	gateway := workspace.Adapters.OperationGateway(target.ConnectorKind, target.ID)
 	runtime := workspace.Adapters.DataRuntime(target.ConnectorKind)
 	if gateway == nil || runtime == nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	input := map[string]any{}
-	if !httptransport.DecodeJSON(w, r, &input, httptransport.DefaultJSONBodyBytes) {
-		return
-	}
 	response, err := adapter.RunTargetOperation(
-		r.Context(), gateway, runtime, connectorTarget(target), strings.TrimSpace(r.PathValue("operation")), input,
+		r.Context(), gateway, runtime, connectorTarget(target), operation, input,
 	)
 	writeManagementResponse(w, r, workspace.Credentials.Runtime, response, err)
 }

@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
-	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -30,20 +29,11 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 		httptransport.WriteInternalError(w)
 		return
 	}
-	release, err := workspace.Storage.AcquireExclusive(r.Context())
-	if err != nil {
-		if release != nil {
-			release()
-		}
-		httptransport.WriteError(w, http.StatusRequestTimeout, "connector target deletion was canceled")
-		return
-	}
-	if release == nil {
-		httptransport.WriteInternalError(w)
+	release, ok := acquireTargetAdmission(w, r, workspace.Storage, true, "connector target deletion was canceled")
+	if !ok {
 		return
 	}
 	defer release()
-	*r = *r.WithContext(connectors.WithDeliveryAdmission(r.Context(), workspace.Storage.Admission))
 	target, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), id)
 	if err != nil {
 		WriteTargetError(w, err)

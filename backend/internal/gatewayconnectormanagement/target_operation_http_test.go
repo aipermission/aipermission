@@ -50,7 +50,10 @@ func TestTargetOperationHandlerDispatchesThroughWorkspacePorts(t *testing.T) {
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
 			return Workspace{
-				Storage:     StoragePorts{Database: database, Registry: registry},
+				Storage: StoragePorts{Database: database, Registry: registry,
+					AcquireDelivery: func(context.Context) (func(), error) { return func() {}, nil },
+					Admission:       &connectors.DeliveryAdmissionIdentity{},
+				},
 				Credentials: CredentialPorts{Runtime: targetManagementRuntime()},
 				Adapters: TargetAdapterPorts{
 					DataRuntime:      func(string) connectorapi.ConnectorDataRuntime { return targetDraftRuntime{} },
@@ -101,10 +104,14 @@ func TestTargetOperationHandlerRejectsUnsupportedOrIncompletePorts(t *testing.T)
 func executeTargetOperation(t *testing.T, component *Component, targetID int64, operation string) *httptest.ResponseRecorder {
 	t.Helper()
 	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(targetID, 10)+"/operations/run", strings.NewReader(`{}`))
+	component.HTTPHandlers().TargetOperation.Run(response, targetOperationRequest(targetID, operation, `{}`))
+	return response
+}
+
+func targetOperationRequest(targetID int64, operation, body string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-targets/"+strconv.FormatInt(targetID, 10)+"/operations/run", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	request.SetPathValue("id", strconv.FormatInt(targetID, 10))
 	request.SetPathValue("operation", operation)
-	component.HTTPHandlers().TargetOperation.Run(response, request)
-	return response
+	return request
 }

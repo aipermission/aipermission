@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -78,6 +79,7 @@ func TestTargetDeleteHandlerOwnsGenericLifecycleUnderExclusiveLease(t *testing.T
 			return Workspace{
 				Storage: StoragePorts{
 					Database: database, Registry: registry,
+					Admission: &connectors.DeliveryAdmissionIdentity{},
 					AcquireExclusive: func(context.Context) (func(), error) {
 						steps = append(steps, "acquire")
 						if _, err := database.ExecContext(t.Context(), `UPDATE connector_targets SET name = ? WHERE id = ?`, lockedName, target.ID); err != nil {
@@ -123,7 +125,7 @@ func TestTargetDeleteHandlerDispatchesConnectorAdapter(t *testing.T) {
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
 			return Workspace{
-				Storage: StoragePorts{Database: database, Registry: registry, AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil }},
+				Storage: StoragePorts{Database: database, Registry: registry, Admission: &connectors.DeliveryAdmissionIdentity{}, AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil }},
 				Adapters: TargetAdapterPorts{
 					DeletionGateway:  func(string, int64) connectorapi.TargetDeletionGateway { return targetDeleteGateway{} },
 					LifecycleRuntime: func(string) connectorapi.TargetLifecycleRuntime { return targetDeleteRuntime{} },
@@ -149,7 +151,7 @@ func TestTargetDeleteHandlerMapsAdapterPostCommitFailureToConflict(t *testing.T)
 	component := New(Dependencies{
 		Active: func(http.ResponseWriter) (Workspace, bool) {
 			return Workspace{
-				Storage: StoragePorts{Database: database, Registry: registry, AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil }},
+				Storage: StoragePorts{Database: database, Registry: registry, Admission: &connectors.DeliveryAdmissionIdentity{}, AcquireExclusive: func(context.Context) (func(), error) { return func() {}, nil }},
 				Adapters: TargetAdapterPorts{
 					DeletionGateway:  func(string, int64) connectorapi.TargetDeletionGateway { return targetDeleteGateway{} },
 					LifecycleRuntime: func(string) connectorapi.TargetLifecycleRuntime { return targetDeleteRuntime{} },
@@ -182,7 +184,7 @@ func TestTargetDeleteHandlerFailsClosedForLeaseFailures(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			component := New(Dependencies{
 				Active: func(http.ResponseWriter) (Workspace, bool) {
-					return Workspace{Storage: StoragePorts{Database: database, Registry: registry, AcquireExclusive: testCase.lease}}, true
+					return Workspace{Storage: StoragePorts{Database: database, Registry: registry, Admission: &connectors.DeliveryAdmissionIdentity{}, AcquireExclusive: testCase.lease}}, true
 				},
 				Adapters: connectorapi.NewRegistry(),
 			})
