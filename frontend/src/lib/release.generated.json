@@ -1,6 +1,50 @@
 {
-  "version": "0.2.61",
+  "version": "0.2.62",
   "entries": [
+    {
+      "version": "0.2.62",
+      "label": "Secret safety and execution integrity",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Browser mutation identities survive running approvals, uncertain replies, overlapping submissions, remounts and cross-tab polling until a verified terminal result or explicit reconciliation.",
+            "Bulk command polling validates every request and session identity without redispatching writes or treating observation failures as execution failures.",
+            "SSH and Docker retain dispatched uncertainty and reconciliation handles; canceled console admission rejects work before dispatch.",
+            "MCP preserves Vault project references and validates withheld connector responses without losing recorded request identity.",
+            "Encrypted database imports use renewable inactivity deadlines and stage uploads outside exclusive lifecycle ownership, then revalidate authorization before publication.",
+            "PostgreSQL read-only validation rejects unsupported multipart function qualification, and Kafka bounded reads reject invalidated offsets instead of silently rewinding.",
+            "SQL editor suggestions, keyboard selection and browser workers remain functional with the reviewed Monaco update; RabbitMQ routing choices close without deferred lifecycle updates."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Mandatory credential masking remains active independently of optional pattern rules, preserves redaction markers and keeps structured JSON projections valid.",
+            "Vault public metadata and console lifecycle errors are redacted without changing sealed inputs, authorization identity or request reconciliation.",
+            "Implicit HEAD downloads enforce workspace binding and cannot dispatch export or console attachment.",
+            "Reviewed dependency updates include patched MCP URI parsing and address validation dependencies.",
+            "The frontend container requires PCRE2 10.49-r0 or newer while retaining its digest-pinned base and unprivileged runtime."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Deferred major dependency reporting updates one actionable report without empty issue churn.",
+            "Regression tests cover cancellation, withheld output, lost replies, storage failures, import concurrency and mutation ownership; critical execution and Vault coverage floors increase without weaker gates.",
+            "Contributor, operator, REST and security guidance describe the updated retry and import contracts."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "Unknown remote outcomes require reconciliation; an idempotency key does not guarantee remote exactly-once execution.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.61",
       "label": "Complete frontend TypeScript migration",
@@ -249,51 +293,6 @@
           "items": [
             "Vault approval notices are isolated, action workflow coverage is ratcheted, and backup and connector action examples are aligned with current behavior.",
             "Go network and crypto modules, MCP and repository YAML parsers, and frontend UI dependencies include reviewed maintenance updates."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.54",
-      "label": "MCP contracts and runtime resilience",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "MCP tools declare behavior annotations, propagate caller cancellation, and validate successful gateway envelopes before projecting connector or Vault results.",
-            "Native Linux Docker installs expose host.docker.internal to connector transports through the shared network owner while the gateway remains bound to loopback.",
-            "Contributor and CI Node.js versions are exact, workflow runs are bounded and deduplicated, and repository verification dependencies are covered by maintenance automation."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Connector approvals preserve the protected execution payload while display redaction remains fail-closed, including collisions between distinct sensitive keys.",
-            "Postgres and shared SQL handling preserve literal CLI database names and accept consistent keyword whitespace without weakening read-only policy checks.",
-            "Frontend polling retains last-known-good data through transient failures, bounds background reads, tolerates blocked preference storage, and cleans up History label timers safely.",
-            "Frontend action recovery, composite-field semantics, prerelease comparisons, and compact regression coverage now follow one consistent contract.",
-            "S3 object deletion binds confirmed objects to their observed ETag when available so a stale confirmation cannot remove a changed object."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Connector management adapters return bounded non-secret projections instead of transport internals, and MCP successful responses fail closed when their contract is malformed.",
-            "Short credential redaction behavior and class-specific secret boundaries are documented and locked by regression tests."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "The frontend test stack moves past its reviewed advisory while preserving changed-owner coverage, architecture, duplication, and initial-bundle ratchets.",
-            "The SQLCipher 4.19.0 upstream release review is recorded while the pinned runtime remains unchanged until a coordinated native dependency upgrade."
           ]
         },
         {

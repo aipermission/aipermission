@@ -9,6 +9,58 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.62] - 2026-10-02
+
+### Fixed
+
+- Browser mutation identities survive running approvals, uncertain replies, overlapping
+  submissions, remounts and cross-tab polling until a verified terminal result or
+  explicit reconciliation.
+- Bulk command polling validates every request and session identity without
+  redispatching writes or treating observation failures as execution failures.
+- SSH and Docker retain dispatched uncertainty and reconciliation handles; canceled
+  console admission rejects work before dispatch.
+- MCP preserves Vault project references and validates withheld connector responses
+  without losing recorded request identity.
+- Encrypted database imports use renewable inactivity deadlines and stage uploads
+  outside exclusive lifecycle ownership, then revalidate authorization before
+  publication.
+- PostgreSQL read-only validation rejects unsupported multipart function qualification,
+  and Kafka bounded reads reject invalidated offsets instead of silently rewinding.
+- SQL editor suggestions, keyboard selection and browser workers remain functional with
+  the reviewed Monaco update; RabbitMQ routing choices close without deferred lifecycle
+  updates.
+
+### Security
+
+- Mandatory credential masking remains active independently of optional pattern rules,
+  preserves redaction markers and keeps structured JSON projections valid.
+- Vault public metadata and console lifecycle errors are redacted without changing
+  sealed inputs, authorization identity or request reconciliation.
+- Implicit HEAD downloads enforce workspace binding and cannot dispatch export or
+  console attachment.
+- Reviewed dependency updates include patched MCP URI parsing and address validation
+  dependencies.
+- The frontend container requires PCRE2 10.49-r0 or newer while retaining its
+  digest-pinned base and unprivileged runtime.
+
+### Maintenance
+
+- Deferred major dependency reporting updates one actionable report without empty issue
+  churn.
+- Regression tests cover cancellation, withheld output, lost replies, storage failures,
+  import concurrency and mutation ownership; critical execution and Vault coverage
+  floors increase without weaker gates.
+- Contributor, operator, REST and security guidance describe the updated retry and
+  import contracts.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- Unknown remote outcomes require reconciliation; an idempotency key does not guarantee
+  remote exactly-once execution.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.61] - 2026-09-27
 
 ### Changed
