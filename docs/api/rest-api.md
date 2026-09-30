@@ -1447,8 +1447,12 @@ for mutations. Gateway 0.2.43 temporarily permits older MCP clients to omit it
 for read-only actions; current MCP packages require it for every action. The
 browser generates one key per deliberate local submission and retains it after
 an uncertain network failure, unreadable response body, malformed success JSON,
-or `5xx` response. It releases the key only after reading a valid response with
-a positive `request_id` and recognized connector lifecycle `status`. If remote
+or `5xx` response. A valid positive `request_id` with `running` or
+`approval_pending` retains the key. Release requires a validated definitive
+terminal response, including replay, or a validated observation matching the
+original workspace, request, target and action, as detailed below. A fresh
+definitive `4xx` rejection may release its new identity; a carried retry or
+`outcome_unknown` does not gain that exception. If remote
 execution finishes but terminal database/audit persistence cannot be confirmed,
 the gateway returns `503` with `status: outcome_unknown`, code
 `connector_action_persistence_unknown`, and the existing request id. A replay
@@ -1469,8 +1473,9 @@ imported or restored. Transport failures and acknowledged `running` or
 `approval_pending` connector actions reuse the same identity on the next
 identical submission, including browser storage reconnection. A pending reply
 records the request ID, target reference, and action name but does not count as
-terminal completion. A definitive terminal replay or a validated approval read
-can release that identity. Approval reads must match the captured workspace,
+terminal completion. A validated definitive terminal response, including
+replay, or a validated approval read can release that identity. Approval reads
+must match the captured workspace,
 request ID, target reference, and action name, and retain the exact revision
 while active attempts remain protected. The entire list is validated before
 settling any entry. A read reporting `outcome_unknown` promotes the retained

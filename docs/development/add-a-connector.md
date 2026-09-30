@@ -165,7 +165,12 @@ only for prepared inputs that contain the actual provider-enforced guard.
 The local `idempotency_key` prevents duplicate gateway request creation, not
 duplicate remote execution after `outcome_unknown`.
 For local UI actions, the browser retains an uncertain attempt's generated key
-across reloads until the gateway returns a recognized request id and status.
+across reloads. A recognized request ID with `running` or `approval_pending`
+does not release it. A validated definitive terminal response, including
+replay, or a matching validated request observation can settle the identity.
+A fresh definitive `4xx` rejection may release its new identity; carried retries
+stay protected, and `outcome_unknown` requires explicit operator reconciliation.
+Do not implement a connector-specific retry ledger.
 The browser signs the canonical request fingerprint with HMAC-SHA-256 using a
 non-extractable, origin-local signing key scoped to the database installation.
 Its bounded IndexedDB ledger stores that signing key, the generated idempotency
