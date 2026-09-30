@@ -54,6 +54,17 @@ renaming or deleting their encrypted data.
 
 Import is available while the backend is locked.
 
+Multipart reads have a renewable inactivity deadline, not a total upload-time
+cutoff. Uploading and validating the encrypted candidate do not hold the
+exclusive workspace lifecycle lease. Before publishing it, the gateway
+reacquires that lease and revalidates the workspace. Imports started while
+unlocked must also retain valid browser authorization; a concurrent lock,
+workspace change, or revoked session cannot silently authorize publication.
+Locked recovery does not require a prior browser session, but cannot replace a
+workspace unlocked while uploading. See the
+[REST import contract](../api/rest-api.md#backup-and-import) for exact timeout,
+concurrency, and response rules.
+
 ## Removed Export Formats
 
 Older `.aipbackup` JSON export/restore endpoints are no longer registered in the public REST surface. The supported workflow is encrypted `.aipdb` download/import only.

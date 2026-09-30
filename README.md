@@ -242,12 +242,17 @@ Important boundaries:
   data and may contain secrets.
 - Gateway-held credentials and correctly declared sensitive fields use a
   mandatory boundary; pattern matching for arbitrary output remains
-  best-effort. See the
+  best-effort. Disabling optional pattern rules does not disable the mandatory
+  credential boundary. See the
   [redaction guarantee matrix](docs/security/credential-boundary.md#redaction-guarantee-matrix),
   and do not intentionally print credentials into action output or console
   transcripts.
 - Always is for intentional trusted automation, not a substitute for least
   privilege.
+- A timeout or lost reply after dispatch is not proof of failure. Preserve the
+  original request and idempotency key, and reconcile `outcome_unknown` before
+  another external attempt; see the
+  [operator retry guidance](docs/skills/aipermission-operator/SKILL.md#discovery).
 - Downloaded encrypted database backups remain sensitive and require a strong
   database password.
 - The unlocked backend process and trusted browser profile are part of the

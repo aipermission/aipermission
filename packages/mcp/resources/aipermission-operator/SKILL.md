@@ -131,6 +131,12 @@ lost definitive lifecycle state after execution may have started. Inspect the
 target with a safe read action when possible, or ask the operator to decide
 whether retrying is safe.
 
+If the bridge reports `gateway_response_contract_outcome_unknown`, preserve the
+original key and unchanged input. The gateway may have accepted the mutation;
+reconcile that request rather than creating another key to bypass validation.
+A permission change can withhold previously visible output during replay or
+polling. Missing output is not proof that the action did not execute.
+
 ## Running Flow
 
 When `call_connector_action` or `get_connector_action_request` returns
@@ -144,6 +150,11 @@ When `call_connector_action` or `get_connector_action_request` returns
 4. If an SSH request appears stuck for an unusually long time, ask the operator
    before recovery unless they already asked you to recover. When approved, call
    the SSH connector's `restart_console_session` action for the same target_ref.
+
+Session recovery or a successful interruption is not evidence that an earlier
+remote command completed or did nothing. Preserve its request and session
+identity, inspect safe external state, and follow any returned reconciliation
+guidance before another mutation.
 
 ## SSH Practice
 
