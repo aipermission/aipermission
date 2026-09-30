@@ -1192,6 +1192,13 @@ database_password=DATABASE_PASSWORD
 
 The multipart field name must be `sqlite`. JSON/base64 database import is not supported; use multipart so the backend can stream the uploaded file to a temporary encrypted import path.
 
+The import body has a 30-second inactivity window, renewed as reads make
+progress. An upload may take longer overall while it continues transferring
+data. A stalled or canceled body is interrupted at the transport/body boundary
+and returns `408 Request Timeout`; incomplete multipart headers are subject to
+the same window. Temporary multipart files and read deadlines are cleaned up
+when the request finishes.
+
 Import can run while locked. The backend validates the uploaded database with
 the provided password, stores it as a named local database, and unlocks it.
 Import never overwrites an existing database file. A colliding normalized name
