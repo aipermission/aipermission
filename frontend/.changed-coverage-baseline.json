@@ -791,13 +791,13 @@
     },
     "src/connectors/templates/_shared/action-result.ts": {
       "statements": 96.29,
-      "branches": 86.27,
+      "branches": 89.36,
       "functions": 100,
       "lines": 100
     },
     "src/connectors/templates/_shared/action-runner.ts": {
       "statements": 96.72,
-      "branches": 89.04,
+      "branches": 89.33,
       "functions": 100,
       "lines": 100
     },
@@ -909,6 +909,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/_shared/mutation-observation.ts": {
+      "statements": 93.18,
+      "branches": 97.22,
+      "functions": 87.5,
+      "lines": 94.87
+    },
     "src/connectors/templates/_shared/network-transport-contract.ts": {
       "statements": 98.27,
       "branches": 97.01,
@@ -918,6 +924,12 @@
     "src/connectors/templates/_shared/network-transport-fields.tsx": {
       "statements": 100,
       "branches": 82.22,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/observation-scheduler.ts": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1032,6 +1044,18 @@
     "src/connectors/templates/_shared/target-profile-lifecycle.ts": {
       "statements": 100,
       "branches": 93.54,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/use-connector-mutation-ownership.ts": {
+      "statements": 97.59,
+      "branches": 92,
+      "functions": 100,
+      "lines": 98.57
+    },
+    "src/connectors/templates/_shared/use-console-batch-ownership.ts": {
+      "statements": 100,
+      "branches": 95.23,
       "functions": 100,
       "lines": 100
     },
@@ -1342,16 +1366,16 @@
       "lines": 100
     },
     "src/connectors/templates/kafka/use-kafka-browser.ts": {
-      "statements": 92.07,
-      "branches": 77.27,
-      "functions": 88.88,
-      "lines": 97.64
+      "statements": 92.52,
+      "branches": 78.57,
+      "functions": 90.47,
+      "lines": 97.77
     },
     "src/connectors/templates/kafka/use-kafka-writes.ts": {
       "statements": 81.6,
-      "branches": 73.68,
+      "branches": 78,
       "functions": 76,
-      "lines": 86.66
+      "lines": 87.01
     },
     "src/connectors/templates/kafka/write-dialogs.tsx": {
       "statements": 76.19,
@@ -1805,15 +1829,9 @@
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": {
       "statements": 95.45,
-      "branches": 80.5,
+      "branches": 81.63,
       "functions": 100,
       "lines": 97.69
-    },
-    "src/connectors/templates/rabbitmq/use-rabbitmq-publish-ownership.ts": {
-      "statements": 98.94,
-      "branches": 95.12,
-      "functions": 100,
-      "lines": 100
     },
     "src/connectors/templates/redis/browser-helpers.ts": {
       "statements": 100,
@@ -1906,16 +1924,16 @@
       "lines": 100
     },
     "src/connectors/templates/redis/use-redis-browser.ts": {
-      "statements": 93.02,
-      "branches": 83.33,
-      "functions": 92.85,
-      "lines": 97.29
+      "statements": 93.47,
+      "branches": 85.29,
+      "functions": 94.11,
+      "lines": 97.46
     },
     "src/connectors/templates/redis/use-redis-mutations.ts": {
       "statements": 88.6,
-      "branches": 78.66,
+      "branches": 78.75,
       "functions": 88.88,
-      "lines": 93.65
+      "lines": 93.75
     },
     "src/connectors/templates/redis/value-workspace.tsx": {
       "statements": 95.23,
@@ -2080,10 +2098,16 @@
       "lines": 100
     },
     "src/connectors/templates/ssh/bulk-command-dialog.tsx": {
-      "statements": 84.27,
-      "branches": 70.87,
-      "functions": 88.46,
-      "lines": 93.49
+      "statements": 92.39,
+      "branches": 81.88,
+      "functions": 95.91,
+      "lines": 96.94
+    },
+    "src/connectors/templates/ssh/bulk-command-inputs.tsx": {
+      "statements": 87.5,
+      "branches": 70,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/ssh/connector-family.tsx": {
       "statements": 100,
@@ -2195,9 +2219,9 @@
     },
     "src/lib/api.ts": {
       "statements": 96.13,
-      "branches": 87.09,
+      "branches": 88.4,
       "functions": 100,
-      "lines": 96.75
+      "lines": 97
     },
     "src/lib/async-resource.ts": {
       "statements": 100,
@@ -2290,6 +2314,12 @@
       "lines": 100
     },
     "src/lib/gateway-contracts/connector-management-contracts.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/console-command-contract.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
@@ -2392,10 +2422,10 @@
       "lines": 100
     },
     "src/lib/local-action-retry.ts": {
-      "statements": 83.52,
-      "branches": 81.25,
+      "statements": 86.95,
+      "branches": 85.4,
       "functions": 100,
-      "lines": 87.5
+      "lines": 89.69
     },
     "src/lib/mcp-package.ts": {
       "statements": 100,

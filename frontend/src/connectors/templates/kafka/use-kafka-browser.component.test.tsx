@@ -124,7 +124,10 @@ it("does not commit messages after the selected topic is cleared", async () => {
   expect(result.current.browser.messages).toBeNull();
 });
 
-it("rejects malformed Kafka publish headers before the mutation is dispatched", async () => {
+it.each([
+  ["{}", "Headers must be a JSON array."],
+  ["{", "Headers must be valid JSON."],
+])("rejects malformed Kafka publish headers %s before the mutation is dispatched", async (headers, error) => {
   const { result } = renderHook(useHarness);
   await waitFor(() => expect(result.current.browser.filteredItems).toHaveLength(2));
   await act(async () => result.current.browser.selectItem(topics[0]));
@@ -136,13 +139,13 @@ it("rejects malformed Kafka publish headers before the mutation is dispatched", 
       key_encoding: "utf8",
       value: "hello",
       value_encoding: "utf8",
-      headers: "{}",
+      headers,
     });
   });
   vi.mocked(apiPost).mockClear();
   await act(async () => result.current.writes.publishMessage());
 
-  expect(result.current.writes.publishDialog.error).toBe("Headers must be a JSON array.");
+  expect(result.current.writes.publishDialog.error).toBe(error);
   expect(apiPost).not.toHaveBeenCalled();
 });
 
