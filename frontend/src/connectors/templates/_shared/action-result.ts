@@ -1,5 +1,6 @@
+import { isPendingConnectorActionStatus } from "../../../lib/gateway-contracts/connector-action-contract.ts";
+
 const successfulStatuses = new Set(["completed"]);
-const nonTerminalStatuses = new Set(["approval_pending", "running"]);
 
 type ActionItem = {
   status?: string;
@@ -25,12 +26,12 @@ export function connectorActionResultResponse(value: unknown): ActionItem {
 }
 
 export function connectorActionError(item: ActionItem | null | undefined, fallback = "Connector action failed.") {
-  if (item && (successfulStatuses.has(item.status || "") || nonTerminalStatuses.has(item.status || ""))) return "";
+  if (item && (successfulStatuses.has(item.status || "") || isPendingConnectorActionStatus(item.status))) return "";
   return item?.error || item?.display_text || fallback;
 }
 
 export function connectorActionPending(item: ActionItem | null | undefined) {
-  return Boolean(item && nonTerminalStatuses.has(item.status || ""));
+  return Boolean(item && isPendingConnectorActionStatus(item.status));
 }
 
 export function connectorActionRequestID(item: ActionItem | null | undefined) {

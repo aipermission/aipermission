@@ -152,7 +152,13 @@ function acknowledgedRequestIdentity(entry: RetryEntry, data: Record<string, unk
     if (retainConflicting) return {};
     throw retryIdentityChangedError();
   }
-  return { request_id: data.request_id };
+  const targetRef = typeof data.target_ref === "string" && data.target_ref ? data.target_ref : entry.target_ref;
+  const actionName = typeof data.action_name === "string" && data.action_name ? data.action_name : entry.action_name;
+  if ((entry.target_ref && entry.target_ref !== targetRef) || (entry.action_name && entry.action_name !== actionName)) {
+    if (retainConflicting) return {};
+    throw retryIdentityChangedError();
+  }
+  return { request_id: data.request_id, target_ref: targetRef, action_name: actionName };
 }
 
 export async function listLocalActionRetryEntries(): Promise<RetryListEntry[]> {
