@@ -89,6 +89,18 @@ func (m workflowExecutionMutations) WithTransaction(ctx context.Context, mutate 
 func (workflowExecutionMutations) Observe(context.Context, string, *int64, int64, string, any) {}
 
 func TestCallHoldsDeliveryLeaseThroughAuthorizationAndRequestInsertion(t *testing.T) {
+	testWorkflowDeliveryAndResult(t, connectortargets.ActionPermissionApprovalRequired, connectors.ActionResult{}, connectors.ResultApprovalPending)
+}
+
+func TestUnknownResultCapturesExactSessionHandleBeforeTerminalPersistence(t *testing.T) {
+	result := connectors.OutcomeUnknownResult("console_observation", map[string]any{"output_withheld": true}, nil)
+	result.DisplayText = ""
+	result.Handles = connectors.ActionHandles{SessionID: 7, SessionGeneration: 3}
+	testWorkflowDeliveryAndResult(t, connectortargets.ActionPermissionAlwaysRun, result, connectors.ResultOutcomeUnknown)
+}
+
+func testWorkflowDeliveryAndResult(t *testing.T, rule connectortargets.ActionPermissionRule, executionResult connectors.ActionResult, expected connectors.ResultStatus) {
+	t.Helper()
 	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "workflow.db"), "correct horse battery staple")
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +127,7 @@ func TestCallHoldsDeliveryLeaseThroughAuthorizationAndRequestInsertion(t *testin
 	}
 	if err := store.SetActionPermission(t.Context(), connectortargets.SetActionPermissionInput{
 		TokenID: storedToken.ID, TargetID: target.ID, ProfileID: profile.ID, ActionName: "query_readonly",
-		ExecutionRule: connectortargets.ActionPermissionApprovalRequired,
+		ExecutionRule: rule,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +138,7 @@ func TestCallHoldsDeliveryLeaseThroughAuthorizationAndRequestInsertion(t *testin
 		t.Fatal(err)
 	}
 	registry := connectors.NewRegistry()
-	if err := registry.Register(&prepareConnector{kind: target.ConnectorKind}); err != nil {
+	if err := registry.Register(&executionConnector{prepareConnector: prepareConnector{kind: target.ConnectorKind}, result: executionResult}); err != nil {
 		t.Fatal(err)
 	}
 	delivery := &workflowExecutionDelivery{}
@@ -150,13 +162,22 @@ func TestCallHoldsDeliveryLeaseThroughAuthorizationAndRequestInsertion(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Result.Status != connectors.ResultApprovalPending {
-		t.Fatalf("result status = %q, want approval_pending", result.Result.Status)
+	if result.Result.Status != expected {
+		t.Fatalf("result status = %q, want %q", result.Result.Status, expected)
 	}
 	if !<-held {
 		t.Fatal("delivery lease was released before the approval request became durable")
 	}
 	if delivery.held() {
 		t.Fatal("delivery lease remained held after the pending result returned")
+	}
+	if expected == connectors.ResultOutcomeUnknown {
+		stored, err := store.GetActionRequest(t.Context(), result.Request.ID)
+		if err != nil || stored.Status != expected || stored.SessionID == nil || *stored.SessionID != 7 || stored.SessionGeneration == nil || *stored.SessionGeneration != 3 {
+			t.Fatalf("unknown request did not capture exact session: %#v, %v", stored, err)
+		}
+		if result.Result.Handles.SessionID != 7 || result.Result.Handles.SessionGeneration != 3 || result.Result.DisplayText != "" {
+			t.Fatalf("terminal response lost safe handles: %#v", result.Result)
+		}
 	}
 }

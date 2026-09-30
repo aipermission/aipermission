@@ -44,9 +44,11 @@ func TestReadConsoleReturnsExactSessionHandle(t *testing.T) {
 }
 
 type delayedConsoleCommandSessions struct {
-	readyDelay time.Duration
-	readyErr   error
-	execCalled bool
+	readyDelay     time.Duration
+	readyErr       error
+	execCalled     bool
+	execContextErr error
+	execRemaining  time.Duration
 }
 
 func (s *delayedConsoleCommandSessions) EnsureReady(ctx context.Context, _ connectorapi.Principal, runtimeID int64) (connectorapi.ConsoleSessionHandle, error) {
@@ -61,8 +63,12 @@ func (s *delayedConsoleCommandSessions) EnsureReady(ctx context.Context, _ conne
 	return connectorapi.ConsoleSessionHandle{ID: 7, RuntimeID: runtimeID, Generation: 2}, nil
 }
 
-func (s *delayedConsoleCommandSessions) Exec(_ context.Context, _ connectorapi.Principal, runtimeID int64, command string) (connectorapi.ConsoleExecResult, error) {
+func (s *delayedConsoleCommandSessions) Exec(ctx context.Context, _ connectorapi.Principal, runtimeID int64, command string) (connectorapi.ConsoleExecResult, error) {
 	s.execCalled = true
+	s.execContextErr = ctx.Err()
+	if deadline, ok := ctx.Deadline(); ok {
+		s.execRemaining = time.Until(deadline)
+	}
 	return connectorapi.ConsoleExecResult{
 		SessionID:  7,
 		Generation: 2,
@@ -76,12 +82,16 @@ func TestExecuteConsoleCommandUsesSeparateConnectionDeadline(t *testing.T) {
 	sessions := &delayedConsoleCommandSessions{readyDelay: 40 * time.Millisecond}
 	principal := connectorapi.Principal{Kind: connectorapi.PrincipalMCPToken, TokenID: 3, WorkspaceID: "workspace", RuntimeInstanceID: "runtime"}
 
-	result, err := executeConsoleCommand(sessions, principal, 11, "date -u", 200*time.Millisecond, 5*time.Millisecond)
+	const commandTimeout = 30 * time.Millisecond
+	result, err := executeConsoleCommand(t.Context(), sessions, principal, 11, "date -u", 200*time.Millisecond, commandTimeout)
 	if err != nil {
 		t.Fatalf("execute command after delayed connection: %v", err)
 	}
 	if !sessions.execCalled || result.Command != "date -u" || result.SessionID != 7 {
 		t.Fatalf("unexpected execution result: %#v, exec_called=%v", result, sessions.execCalled)
+	}
+	if sessions.execContextErr != nil || sessions.execRemaining <= 0 || sessions.execRemaining > commandTimeout {
+		t.Fatalf("execution did not receive a fresh bounded context: remaining=%s err=%v", sessions.execRemaining, sessions.execContextErr)
 	}
 }
 
@@ -89,7 +99,7 @@ func TestExecuteConsoleCommandReturnsConnectionError(t *testing.T) {
 	sessions := &delayedConsoleCommandSessions{readyErr: errors.New("PTY request rejected")}
 	principal := connectorapi.Principal{Kind: connectorapi.PrincipalMCPToken, TokenID: 3, WorkspaceID: "workspace", RuntimeInstanceID: "runtime"}
 
-	_, err := executeConsoleCommand(sessions, principal, 11, "date -u", 200*time.Millisecond, 5*time.Millisecond)
+	_, err := executeConsoleCommand(t.Context(), sessions, principal, 11, "date -u", 200*time.Millisecond, 5*time.Millisecond)
 	if err == nil || !strings.Contains(err.Error(), "start SSH console session: PTY request rejected") {
 		t.Fatalf("connection error = %v", err)
 	}
