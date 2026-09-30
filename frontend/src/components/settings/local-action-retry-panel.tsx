@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   listLocalActionRetryEntries,
   localActionRetryLedgerChangedEvent,
+  localActionRetryObservationFailedEvent,
   resetLocalActionRetryLedger,
   resolveLocalActionRetryEntry,
 } from "../../lib/local-action-retry";
@@ -12,6 +13,7 @@ import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
+import { ServerRequestReconciliation } from "./server-request-reconciliation";
 
 export function LocalActionRetryPanel() {
   const [entries, setEntries] = useState<RetryListEntry[]>([]);
@@ -39,9 +41,11 @@ export function LocalActionRetryPanel() {
     };
     refresh();
     window.addEventListener(localActionRetryLedgerChangedEvent, refresh);
+    window.addEventListener(localActionRetryObservationFailedEvent, refresh);
     return () => {
       active = false;
       window.removeEventListener(localActionRetryLedgerChangedEvent, refresh);
+      window.removeEventListener(localActionRetryObservationFailedEvent, refresh);
     };
   }, []);
 
@@ -103,6 +107,7 @@ export function LocalActionRetryPanel() {
               </div>
             ))
           )}
+          <ServerRequestReconciliation />
         </CardContent>
       </Card>
       <Dialog

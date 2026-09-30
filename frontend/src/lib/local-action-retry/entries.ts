@@ -1,4 +1,14 @@
-import { attemptsStore, entriesStore, keysStore, maxActionAttempts, maxEntries, maxGlobalEntries, reservationsStore } from "./constants.ts";
+import {
+  attemptsStore,
+  entriesStore,
+  keysStore,
+  maxActionAttempts,
+  maxEntries,
+  maxGlobalEntries,
+  reconciliationsStore,
+  reservationsStore,
+} from "./constants.ts";
+import { recordMemoryReconciliation, recordStoredReconciliation } from "./reconciliations.ts";
 import { ledgerFullError, retryIdentityChangedError, storageError } from "./errors.ts";
 import {
   entryID,
@@ -264,7 +274,13 @@ export async function completeEntryAttempt(prepared: PreparedRetry, acknowledged
   );
 }
 
-export async function deleteEntryIfMatching(scope: RetryScope, signature: string, expectedKey: string, expectedRevision: number) {
+export async function deleteEntryIfMatching(
+  scope: RetryScope,
+  signature: string,
+  expectedKey: string,
+  expectedRevision: number,
+  reconciled = false,
+) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(scope.key);
@@ -273,6 +289,7 @@ export async function deleteEntryIfMatching(scope: RetryScope, signature: string
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
       removeExpiredMemoryAttempts();
       if (hasMemoryAttempts(entry.id)) return false;
+      if (reconciled) recordMemoryReconciliation(entry);
       entries.delete(signature);
       if (entries.size === 0) memoryEntries.delete(scope.key);
       removeUnusedMemorySigningKey(scope);
@@ -283,7 +300,7 @@ export async function deleteEntryIfMatching(scope: RetryScope, signature: string
   const database = await openRetryDatabase();
   const changed = await storesTransactionPromise(
     database,
-    [entriesStore, attemptsStore, keysStore, reservationsStore],
+    [entriesStore, attemptsStore, keysStore, reservationsStore, reconciliationsStore],
     "readwrite",
     async (stores) => {
       const id = entryID(scope.key, signature);
@@ -292,6 +309,7 @@ export async function deleteEntryIfMatching(scope: RetryScope, signature: string
       if (!entry || entry.key !== expectedKey || entry.revision !== expectedRevision) return false;
       if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
       if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) return false;
+      if (reconciled) await recordStoredReconciliation(stores.reconciliations, entry);
       await requestPromise(stores.entries.delete(id));
       await removeUnusedSigningKey(stores, scope.key);
       return true;
@@ -475,21 +493,28 @@ export async function replaceReconciledEntry(scope: RetryScope, expected: RetryE
       removeExpiredMemoryAttempts();
       if (hasMemoryAttempts(expected.id)) throw retryIdentityChangedError();
       const replacement = newRetryEntry(scope, expected.signature);
+      recordMemoryReconciliation(current!);
       entries.set(expected.signature, replacement);
       notifyChanged();
       return { ...replacement };
     });
   }
   const database = await openRetryDatabase();
-  const replacement = await storesTransactionPromise(database, [entriesStore, attemptsStore], "readwrite", async (stores) => {
-    await removeExpiredAttempts(stores.attempts, Date.now());
-    const current = await readStoredEntry(stores.entries, scope, expected.signature);
-    if (!sameRetryEntry(current, expected)) throw retryIdentityChangedError();
-    if ((await requestPromise(stores.attempts.index("entry_id").count(expected.id))) > 0) throw retryIdentityChangedError();
-    const next = newRetryEntry(scope, expected.signature);
-    await requestPromise(stores.entries.put(next));
-    return next;
-  });
+  const replacement = await storesTransactionPromise(
+    database,
+    [entriesStore, attemptsStore, reconciliationsStore],
+    "readwrite",
+    async (stores) => {
+      await removeExpiredAttempts(stores.attempts, Date.now());
+      const current = await readStoredEntry(stores.entries, scope, expected.signature);
+      if (!sameRetryEntry(current, expected)) throw retryIdentityChangedError();
+      if ((await requestPromise(stores.attempts.index("entry_id").count(expected.id))) > 0) throw retryIdentityChangedError();
+      const next = newRetryEntry(scope, expected.signature);
+      await recordStoredReconciliation(stores.reconciliations, current!);
+      await requestPromise(stores.entries.put(next));
+      return next;
+    },
+  );
   notifyChanged();
   return replacement;
 }

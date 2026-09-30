@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { apiGet } from "../lib/api";
 import { errorMessage } from "../lib/errors";
 import { useRequestGuard } from "../lib/request-guard";
@@ -11,9 +11,12 @@ import { DiagnosticsPanel } from "../components/settings/diagnostics-panel";
 import { HistoryLabelsPanel } from "../components/settings/history-labels-panel";
 import { HistoryRetentionPanel } from "../components/settings/history-retention-panel";
 import { MaintenanceConsolePanel } from "../components/settings/maintenance-console-panel";
-import { LocalActionRetryPanel } from "../components/settings/local-action-retry-panel";
 import { useBackupProviderState } from "../components/settings/use-backup-provider-state";
 import { Notice } from "../components/ui/notice";
+
+const LocalActionRetryPanel = lazy(() =>
+  import("../components/settings/local-action-retry-panel").then((module) => ({ default: module.LocalActionRetryPanel })),
+);
 
 export function SettingsPage() {
   const [database, setDatabase] = useState<{ state: "loading" | "ready" | "error"; data: SettingsDatabase | null; error: string | null }>({
@@ -53,7 +56,9 @@ export function SettingsPage() {
       {database.state === "error" ? <Notice tone="bad">{database.error}</Notice> : null}
       <BackupProviderPanel state={backupProvider} />
       <MaintenanceConsolePanel />
-      <LocalActionRetryPanel />
+      <Suspense fallback={<Notice>Loading unresolved local actions...</Notice>}>
+        <LocalActionRetryPanel />
+      </Suspense>
       <DiagnosticsPanel />
       <HistoryRetentionPanel />
       <HistoryLabelsPanel />

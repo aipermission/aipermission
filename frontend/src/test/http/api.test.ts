@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { databaseName, databaseVersion } from "../../lib/local-action-retry/constants.ts";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
@@ -603,7 +604,7 @@ test("local connector action requires explicit reconciliation after an unknown o
     return response(calls === 1 ? localActionResponse(options, "outcome_unknown") : localActionResponse(options));
   };
   try {
-    const body = { target_ref: "fixture:unknown", action_name: "mutate", input: {}, reason: "test" };
+    const body = { target_ref: "fixture:1:1", action_name: "mutate", input: {}, reason: "test" };
     await apiPost("/api/connector-actions/local-run", body);
     await assert.rejects(() => apiPost("/api/connector-actions/local-run", body), /new external attempt was canceled/i);
     assert.equal(keys.length, 1);
@@ -787,7 +788,7 @@ test("stale browser reconciliation cannot delete a newer retry identity", async 
     throw new TypeError("response lost");
   };
   try {
-    const body = { target_ref: "fixture:stale", action_name: "mutate", input: {}, reason: "test" };
+    const body = { target_ref: "fixture:2:1", action_name: "mutate", input: {}, reason: "test" };
     await apiPost("/api/connector-actions/local-run", body);
     const [stale] = await listLocalActionRetryEntries();
     assert.equal(await resolveLocalActionRetryEntry(stale), true);
@@ -882,7 +883,7 @@ async function seedRetryDatabase(scope: string, version: number) {
 
 async function readRetryDatabaseRecords() {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = globalThis.indexedDB.open("aipermission-local-action-retry", 3);
+    const request = globalThis.indexedDB.open(databaseName, databaseVersion);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
@@ -908,7 +909,7 @@ async function readRetryDatabaseRecords() {
 
 async function deleteRetrySigningKey(scope: string) {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = globalThis.indexedDB.open("aipermission-local-action-retry", 3);
+    const request = globalThis.indexedDB.open(databaseName, databaseVersion);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });

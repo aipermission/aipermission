@@ -1504,6 +1504,31 @@ can be created. A legacy localStorage retry ledger is not silently migrated
 because its signatures were not keyed; Settings requires an explicit
 reconciliation/reset first.
 
+Explicit connector reconciliation atomically records the exact workspace,
+request ID, target reference, and action name alongside the retry-entry CAS.
+These origin-local records contain no command text, input, or secret values.
+They suppress rediscovery of that exact `outcome_unknown` request after polling,
+remount, or another tab reads the same browser storage; they do not turn the
+request into a successful result or suppress a running request. Reconciliation
+records are bounded to 512 per origin and are reclaimed by matching definitive
+server observations. Capacity or quota failures preserve the protected retry
+entry. An explicit retry-storage reset removes this evidence, so any remaining
+server-side unknown requests are discovered and blocked again rather than
+silently treated as completed.
+
+If the original POST reply was lost entirely, no server request ID is inferred
+from a similar local target/action. Settings also lists unresolved server
+requests independently. After inspecting the exact request and external state,
+the operator can reconcile that server identity; the UI re-reads its exact ID
+with the captured workspace binding and requires unchanged target/action plus
+`outcome_unknown`. An unidentified local retry is reconciled separately, never
+automatically linked or removed by this server-side observation.
+The server list returns the newest 100 matching requests. Settings also supports
+an exact request-ID lookup, so older unknown requests remain recoverable even
+when newer reconciled requests still occupy that list. A storage-observation
+failure does not trigger another server lookup; recovery remains explicit and
+protected writes stay blocked.
+
 `GET /api/history/targets` returns target/profile facets derived from
 `history_entries`, not only currently active connector targets. Use it for
 history filters so archived targets remain discoverable in past activity. Some

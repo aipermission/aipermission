@@ -3,6 +3,8 @@ import { afterEach, test } from "node:test";
 import { prepareLocalActionRetry, preserveLocalActionRetryAttempt, releaseLocalActionRetryAttempt } from "../local-action-retry.ts";
 import { allEntries } from "./entries.ts";
 import { observeLocalActionRetryResponse } from "./observations.ts";
+import { reportObservationFailure } from "./observation-errors.ts";
+import { localActionRetryObservationFailedEvent } from "./constants.ts";
 import { memoryEntries, resetRetryStorage } from "./storage.ts";
 import { connectorApprovalFixture } from "../../test/connector-action-fixtures.ts";
 import type { ConnectorApproval } from "../gateway-contracts/security-contracts.ts";
@@ -13,6 +15,29 @@ const body = { path: "/api/connector-actions/local-run", body: { target_ref: "ex
 const detailPath = "/api/connector-action-approvals/71";
 
 afterEach(async () => resetRetryStorage());
+
+test("browser observation failures emit a failure event, not a ledger refresh, and tolerate unavailable event APIs", (t) => {
+  const originalWindow = globalThis.window;
+  const originalEvent = globalThis.CustomEvent;
+  const events: string[] = [];
+  const warn = t.mock.method(console, "warn", () => {});
+  try {
+    Reflect.set(globalThis, "window", { dispatchEvent: (event: CustomEvent) => events.push(event.type) });
+    reportObservationFailure();
+    assert.deepEqual(events, [localActionRetryObservationFailedEvent]);
+    Reflect.set(globalThis, "window", {});
+    reportObservationFailure();
+    Reflect.set(globalThis, "window", { dispatchEvent: () => assert.fail("CustomEvent is unavailable") });
+    Reflect.deleteProperty(globalThis, "CustomEvent");
+    reportObservationFailure();
+    assert.equal(warn.mock.calls.length, 3);
+    assert.deepEqual(events, [localActionRetryObservationFailedEvent]);
+  } finally {
+    if (originalWindow === undefined) Reflect.deleteProperty(globalThis, "window");
+    else Reflect.set(globalThis, "window", originalWindow);
+    Reflect.set(globalThis, "CustomEvent", originalEvent);
+  }
+});
 
 async function pendingRequest() {
   const prepared = await prepareLocalActionRetry(body, { workspaceID: workspace });

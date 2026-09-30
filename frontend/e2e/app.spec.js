@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mjs";
 import { observeSQLBrowserRuntime, verifySQLBrowserRuntime } from "./sql-editor-browser.mjs";
+import { scopedUICookieName } from "../src/lib/ui-cookie";
+import { databaseName, reconciliationsStore } from "../src/lib/local-action-retry/constants";
 
 test.beforeEach(async ({ page }) => {
   let unlocked = false;
@@ -14,6 +16,9 @@ test.beforeEach(async ({ page }) => {
   let mcpRuntimeEnabled = false;
   await page.route("http://localhost:8080/api/unlock/status", async (route) => {
     await route.fulfill({
+      headers: unlocked
+        ? { "X-AIPermission-Workspace": "browser-fixture-workspace", "access-control-expose-headers": "X-AIPermission-Workspace" }
+        : {},
       json: unlocked
         ? unlockedStatus()
         : {
@@ -86,6 +91,12 @@ test.beforeEach(async ({ page }) => {
   });
   await page.route("http://localhost:8080/api/connector-action-approvals", async (route) => {
     await route.fulfill({ json: [] });
+  });
+  await page.route("http://localhost:8080/api/connector-action-approvals?status=outcome_unknown", async (route) => {
+    await route.fulfill({
+      headers: { "X-AIPermission-Workspace": "browser-fixture-workspace", "access-control-expose-headers": "X-AIPermission-Workspace" },
+      json: [],
+    });
   });
   await page.route("http://localhost:8080/api/messages", async (route) => {
     await route.fulfill({ json: [] });
@@ -274,6 +285,81 @@ test("renders settings retention controls", async ({ page }) => {
   await page.getByRole("button", { name: "Save retention" }).click();
   await expect(page.getByText("Retention settings saved and cleanup ran.")).toBeVisible();
 });
+
+test("@high-risk persists an explicit server-only reconciliation across reload without marking execution successful", async ({
+  page,
+  context,
+}) => {
+  const request = { ...pendingApproval(), status: "outcome_unknown" };
+  const headers = {
+    "X-AIPermission-Workspace": "browser-fixture-workspace",
+    "access-control-expose-headers": "X-AIPermission-Workspace",
+  };
+  let verifiedReads = 0;
+  await page.route("http://localhost:8080/api/connector-action-approvals?status=outcome_unknown", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    expect(route.request().headers()["x-aipermission-workspace"]).toBe(headers["X-AIPermission-Workspace"]);
+    await route.fulfill({ headers, json: [request] });
+  });
+  await page.route("http://localhost:8080/api/connector-action-approvals/42", async (route) => {
+    expect(route.request().method()).toBe("GET");
+    expect(route.request().headers()["x-aipermission-workspace"]).toBe(headers["X-AIPermission-Workspace"]);
+    verifiedReads += 1;
+    await route.fulfill({ headers, json: request });
+  });
+  await unlock(page);
+  await context.addCookies([
+    {
+      name: scopedUICookieName("aipermission_workspace", new URL(page.url())),
+      value: headers["X-AIPermission-Workspace"],
+      url: new URL(page.url()).origin,
+      sameSite: "Strict",
+    },
+  ]);
+  await page.getByRole("link", { name: /Settings/ }).click();
+  await page.getByRole("button", { name: "Reconcile server request 42" }).click();
+  expect(verifiedReads).toBe(0);
+  await page.getByRole("dialog").getByRole("button", { name: "Reconcile server request", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reconcile server request 42" })).toHaveCount(0);
+  expect(verifiedReads).toBe(1);
+  const proof = {
+    scope: headers["X-AIPermission-Workspace"],
+    request_id: 42,
+    target_ref: request.target_ref,
+    action_name: request.action_name,
+  };
+  expect(await readReconciliationProofs(page)).toMatchObject([proof]);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Unresolved server requests" })).toBeVisible();
+  expect(await readReconciliationProofs(page)).toMatchObject([proof]);
+  await expect(page.getByRole("button", { name: "Reconcile server request 42" })).toHaveCount(0);
+  expect(request.status).toBe("outcome_unknown");
+  expect(verifiedReads).toBe(1);
+});
+
+async function readReconciliationProofs(page) {
+  return page.evaluate(
+    ({ name, store }) =>
+      new Promise((resolve, reject) => {
+        const open = indexedDB.open(name);
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          const read = database.transaction(store, "readonly").objectStore(store).getAll();
+          read.onsuccess = () => {
+            database.close();
+            resolve(read.result);
+          };
+          read.onerror = () => {
+            database.close();
+            reject(read.error);
+          };
+        };
+      }),
+    { name: databaseName, store: reconciliationsStore },
+  );
+}
 
 test("@accessibility keeps modal focus contained and returns it to the opener", async ({ page }) => {
   await page.goto("/");

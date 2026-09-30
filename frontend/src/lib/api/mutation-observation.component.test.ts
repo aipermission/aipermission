@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { apiGet, apiPost, currentWorkspaceBinding } from "../api";
 import {
   listLocalActionRetryEntries,
+  localActionRetryLedgerChangedEvent,
+  localActionRetryObservationFailedEvent,
   prepareLocalActionRetry,
   preserveLocalActionRetryAttempt,
   releaseLocalActionRetryAttempt,
@@ -178,7 +180,9 @@ it("ignores unrelated routes without reading local retry storage", async () => {
 it.each(["load", "settle", "promote"])("keeps a successful canonical read usable when local storage cannot %s", async (operation) => {
   const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
   const changed = vi.fn();
-  window.addEventListener("aipermission:local-action-retry-ledger-changed", changed);
+  const failed = vi.fn();
+  window.addEventListener(localActionRetryLedgerChangedEvent, changed);
+  window.addEventListener(localActionRetryObservationFailedEvent, failed);
   try {
     const observed = approval({ status: operation === "promote" ? "outcome_unknown" : "completed" });
     installGateway(observed, "detail");
@@ -193,11 +197,13 @@ it.each(["load", "settle", "promote"])("keeps a successful canonical read usable
     failure.mockRejectedValueOnce(new Error("synthetic storage failure with private metadata"));
     expect(await apiGet(observationPath("detail"))).toEqual(observed);
     expect(await listLocalActionRetryEntries()).toHaveLength(1);
-    expect(changed).toHaveBeenCalledOnce();
+    expect(changed).not.toHaveBeenCalled();
+    expect(failed).toHaveBeenCalledOnce();
     expect(warning).toHaveBeenCalledWith(expect.stringContaining("could not be persisted"));
     expect(JSON.stringify(warning.mock.calls)).not.toContain("private metadata");
   } finally {
-    window.removeEventListener("aipermission:local-action-retry-ledger-changed", changed);
+    window.removeEventListener(localActionRetryLedgerChangedEvent, changed);
+    window.removeEventListener(localActionRetryObservationFailedEvent, failed);
   }
 });
 

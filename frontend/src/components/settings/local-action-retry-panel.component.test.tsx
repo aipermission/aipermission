@@ -11,9 +11,12 @@ import type { RetryListEntry } from "../../lib/local-action-retry.ts";
 import { LocalActionRetryPanel } from "./local-action-retry-panel";
 import type { RetryEntry } from "../../lib/local-action-retry/records.ts";
 
+vi.mock("./server-request-reconciliation", () => ({ ServerRequestReconciliation: () => null }));
+
 vi.mock("../../lib/local-action-retry", () => ({
   listLocalActionRetryEntries: vi.fn(),
   localActionRetryLedgerChangedEvent: "aipermission:test-ledger-changed",
+  localActionRetryObservationFailedEvent: "aipermission:test-observation-failed",
   resetLocalActionRetryLedger: vi.fn(),
   resolveLocalActionRetryEntry: vi.fn(),
 }));
