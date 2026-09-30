@@ -91,6 +91,10 @@ confirmation. Missing profiles, invalid public keys and missing host trust are
 reported separately as preflight failures; a rejected preflight creates no new
 cleanup record, but earlier cleanup history remains. Connector-owned records contain public identity and
 confirmation evidence, not private key material.
+An unresolved record for the target also blocks remote cleanup after its old
+profile is removed or its username/key is replaced. Current profile membership
+cannot hide an unfinished historical cleanup. Completed retired groups are not
+authenticated again, and unrelated targets retain their own history boundaries.
 
 The cleanup writes a private temporary file in the same `.ssh` directory and
 atomically replaces `authorized_keys` only after the complete filtered file is

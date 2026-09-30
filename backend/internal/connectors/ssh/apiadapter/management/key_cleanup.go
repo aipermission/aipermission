@@ -23,6 +23,9 @@ func cleanupTargetKeys(ctx context.Context, gateway connectorapi.PeerIdentityGat
 		return 0, fmt.Errorf("%w: %v", errKeyCleanupPreflight, err)
 	}
 	journal := keycleanup.New(runtime.CredentialResources(keycleanup.ResourceKind))
+	if err := journal.RequireTargetHistoryResolved(ctx, target.ID); err != nil {
+		return 0, err
+	}
 	entries := make([]keycleanup.Entry, len(groups))
 	dispatch := make([]bool, len(groups))
 	for index, group := range groups {
