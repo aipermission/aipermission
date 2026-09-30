@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"io"
@@ -49,6 +50,11 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 		httptransport.WriteError(w, http.StatusUnsupportedMediaType, "database import requires multipart/form-data")
 		return
 	}
+	lease, revalidate, ok := component.admitImport(w, r)
+	if !ok {
+		return
+	}
+	defer lease.Release()
 	r, finishBody := guardImportBody(w, r, importBodyIdleTimeout)
 	defer finishBody()
 	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes)
@@ -86,10 +92,20 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 			return err
 		}
 		return output.Close()
-	}, nil)
+	}, nil, func() error {
+		release, err := component.dependencies.Lifecycle.AcquireMutationContext(r.Context())
+		if err != nil {
+			return err
+		}
+		lease.releaseLifecycle = release
+		if !revalidate() {
+			return errImportAuthorization
+		}
+		return nil
+	})
 }
 
-func (component *Component) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error) {
+func (component *Component) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error, beforeCommit func() error) {
 	if r.Context().Err() != nil {
 		httptransport.WriteError(w, http.StatusRequestTimeout, "database import was canceled")
 		return
@@ -101,6 +117,7 @@ func (component *Component) installImportedDatabase(w http.ResponseWriter, r *ht
 	var prepared uisession.Prepared
 	transition, err := component.dependencies.Lifecycle.Import(r.Context(), workspacelifecycle.ImportInput{
 		DatabaseName: databaseName, Password: password, Write: writeTemp, Mutate: mutate,
+		BeforeCommit: beforeCommit,
 		BeforePublish: func() error {
 			var err error
 			prepared, err = uisession.Prepare()
@@ -132,6 +149,11 @@ func (component *Component) installImportedDatabase(w http.ResponseWriter, r *ht
 
 func writeImportError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, errImportAuthorization):
+		// The publish-time authorizer already wrote the precise rejection.
+		return
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		httptransport.WriteError(w, http.StatusRequestTimeout, "database import was canceled")
 	case errors.Is(err, workspacelifecycle.ErrDatabaseExists), errors.Is(err, workspacelifecycle.ErrUnsupportedSchema):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, workspacelifecycle.ErrNameRequired), errors.Is(err, workspacelifecycle.ErrPasswordRequired),

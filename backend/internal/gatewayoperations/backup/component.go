@@ -68,6 +68,7 @@ type Dependencies struct {
 	ActiveRuntime       func(http.ResponseWriter) (Runtime, bool)
 	CurrentDatabaseName func() string
 	AuthorizeOperation  func(http.ResponseWriter, *http.Request) bool
+	AuthorizeImport     func(http.ResponseWriter, *http.Request) (func() bool, bool)
 	BeginAttempt        func(http.ResponseWriter, *http.Request) (PasswordAttempt, bool)
 	IssuePrepared       func(http.ResponseWriter, uisession.Prepared) error
 	AcquireOperation    backups.OperationLease

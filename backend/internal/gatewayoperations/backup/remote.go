@@ -43,7 +43,7 @@ func (component *Component) restoreTransientRemoteBackup(w http.ResponseWriter, 
 	defer prepared.Remove()
 	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
-	})
+	}, nil)
 }
 
 func parsePositivePathID(w http.ResponseWriter, r *http.Request, key, label string) (int64, bool) {
