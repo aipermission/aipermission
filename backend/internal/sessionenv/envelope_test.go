@@ -2,11 +2,44 @@ package sessionenv
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 )
+
+func FuzzCompleteValueRedaction(f *testing.F) {
+	marker := string(redactedValue)
+	f.Add([]byte("synthetic-secret"), []byte("error synthetic-secret"))
+	f.Add([]byte("REDACTED VAULT"), []byte(marker))
+	f.Add([]byte(marker+"private-tail-7291"), []byte(marker+"private-tail-"))
+	f.Add([]byte("prefix"+marker+"suffix"), []byte(strings.Repeat("prefix", 10)+marker+strings.Repeat("suffix", 10)))
+	f.Fuzz(func(t *testing.T, pattern, input []byte) {
+		if len(pattern) == 0 || len(pattern) > 64 || len(input) > 2048 {
+			return
+		}
+		digest := sha256.Sum256(append(bytes.Clone(pattern), input...))
+		synthetic := "fuzz-known-" + hex.EncodeToString(digest[:])
+		redactor, err := NewRedactor([][]byte{pattern, []byte(synthetic)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer redactor.Close()
+		value := append(bytes.Clone(input), []byte("\n"+synthetic)...)
+		redacted := redactor.Redact(value)
+		if bytes.Contains(redacted, []byte(synthetic)) {
+			t.Fatal("synthetic exact value survived")
+		}
+		if again := redactor.Redact(redacted); !bytes.Equal(again, redacted) {
+			t.Fatalf("unstable projection: %q -> %q", redacted, again)
+		}
+		if len(redacted) > len(value)*len(redactedValue)+len(redactedValue) {
+			t.Fatal("unbounded projection expansion")
+		}
+	})
+}
 
 func TestEnvelopeRejectsUnsafeNamesAndValues(t *testing.T) {
 	for _, name := range []string{"PATH", "LD_PRELOAD", "PROMPT_COMMAND", "lowercase", "1TOKEN"} {
@@ -97,6 +130,73 @@ func TestRedactorFailsClosedForPartialSecretPrefix(t *testing.T) {
 	got := string(redactor.Write([]byte("sec"))) + string(redactor.Close())
 	if got != "[REDACTED VAULT VALUE]" {
 		t.Fatalf("partial secret prefix output = %q", got)
+	}
+}
+
+func TestRedactorCompleteProjectionPreservesMarkersWithoutSkippingSecrets(t *testing.T) {
+	marker := string(redactedValue)
+	for _, secret := range []string{"REDACTED VAULT", "prefix" + marker, marker + "suffix", "VAULT VALUE]suffix", "prefix[REDACTED"} {
+		t.Run(secret, func(t *testing.T) {
+			redactor, err := NewRedactor([][]byte{[]byte(secret)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer redactor.Close()
+			if got := string(redactor.Redact([]byte("before " + marker + " after"))); got != "before "+marker+" after" {
+				t.Fatalf("placeholder changed: %q", got)
+			}
+			first := string(redactor.Redact([]byte("before " + secret + " after")))
+			if first != "before "+marker+" after" {
+				t.Fatalf("secret skipped at placeholder edge: %q", first)
+			}
+			if again := string(redactor.Redact([]byte(first))); again != first {
+				t.Fatalf("projection changed: %q -> %q", first, again)
+			}
+		})
+	}
+}
+
+func TestRedactorMarkerProtectionDoesNotLeakTruncatedSecretEdges(t *testing.T) {
+	marker := string(redactedValue)
+	for _, secret := range []string{marker + "private-tail-7291", "VAULT VALUE]private-tail-7291", "prefix" + marker + "private-tail-7291"} {
+		t.Run(secret, func(t *testing.T) {
+			redactor, err := NewRedactor([][]byte{[]byte(secret)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer redactor.Close()
+			partial := marker + "private-tail-"
+			if strings.HasPrefix(secret, "prefix") {
+				partial = "prefix" + partial
+			}
+			control, err := NewRedactor([][]byte{[]byte(secret)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := string(append(control.Write([]byte(partial)), control.Close()...))
+			if got := string(redactor.Redact([]byte(partial))); got != want {
+				t.Fatalf("partial prefix changed: %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestRedactorWithholdsNonConvergingMarkerEdgeProjection(t *testing.T) {
+	marker := string(redactedValue)
+	secret := "prefix" + marker + "suffix"
+	redactor, err := NewRedactor([][]byte{[]byte(secret)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer redactor.Close()
+	for _, input := range []string{"prefix" + secret + "suffix", strings.Repeat("prefix", 10) + secret + strings.Repeat("suffix", 10)} {
+		first := string(redactor.Redact([]byte(input)))
+		if first != marker {
+			t.Fatalf("unsafe assembled secret projection: %q", first)
+		}
+		if again := string(redactor.Redact([]byte(first))); again != first {
+			t.Fatalf("unstable projection: %q -> %q", first, again)
+		}
 	}
 }
 

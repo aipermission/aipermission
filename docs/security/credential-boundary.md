@@ -206,6 +206,17 @@ including an existing marker; their matching context is not split or discarded.
 Connection-test, provisioning, cleanup, and database-backup error projections
 use this same ordering; turning optional redaction off does not bypass it.
 
+Console session error text also crosses the session's exact Vault-value
+boundary before it is returned at startup, stored, or broadcast as an
+error/exit message. This covers environment application, post-validation,
+finalization, completion and startup-input failures. Safe startup display text
+survives redactor destruction while Go error classification remains available
+to internal recovery. Late text after an environment redactor is destroyed is
+withheld. Complete-value projections preserve whole Vault placeholders, without
+skipping actual secrets that span placeholder edges.
+Truncated prefixes crossing those edges still fail closed; a complete-value
+projection that does not reach a stable result within three passes is withheld.
+
 Known-value matching deliberately avoids replacing every occurrence of a
 one- or two-byte value because doing so would corrupt ordinary output. For text
 values, exact and delimited matches are redacted from one byte onward; embedded

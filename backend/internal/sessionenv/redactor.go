@@ -95,9 +95,95 @@ func (r *Redactor) Redact(value []byte) []byte {
 	r.mu.Unlock()
 	defer destroyByteSlices(patterns)
 
+	current := value
+	for range 3 {
+		next := redactCompleteValue(current, patterns)
+		if bytes.Equal(next, current) {
+			return next
+		}
+		current = next
+	}
+	return bytes.Clone(redactedValue)
+}
+
+func redactCompleteValue(value []byte, patterns [][]byte) []byte {
 	redactor := &Redactor{patterns: patterns}
-	output := redactor.Write(value)
-	return append(output, redactor.Close()...)
+	var output bytes.Buffer
+	processed, searchAt := 0, 0
+	for searchAt < len(value) {
+		relative := bytes.Index(value[searchAt:], redactedValue)
+		if relative < 0 {
+			break
+		}
+		position := searchAt + relative
+		searchAt = position + 1
+		if markerOverlapsPattern(value, position, patterns) {
+			continue
+		}
+		output.Write(redactor.Write(value[processed:position]))
+		// Complete each segment with the same stream matcher. Only a whole
+		// placeholder is exempt; actual secrets spanning its edges still match.
+		redactor.drain(&output, true)
+		output.Write(redactedValue)
+		processed = position + len(redactedValue)
+		searchAt = processed
+	}
+	output.Write(redactor.Write(value[processed:]))
+	redactor.drain(&output, true)
+	clear(redactor.pending[:cap(redactor.pending)])
+	return output.Bytes()
+}
+
+func markerOverlapsPattern(value []byte, position int, patterns [][]byte) bool {
+	markerEnd := position + len(redactedValue)
+	for _, pattern := range patterns {
+		if partialPatternCrossesMarker(value, position, pattern) {
+			return true
+		}
+		start := max(0, position-len(pattern)+1)
+		limit := min(len(value), markerEnd+len(pattern)-1)
+		for start < markerEnd {
+			relative := bytes.Index(value[start:limit], pattern)
+			if relative < 0 {
+				break
+			}
+			match := start + relative
+			if match < position || match+len(pattern) > markerEnd {
+				return true
+			}
+			start = match + 1
+		}
+	}
+	return false
+}
+
+func partialPatternCrossesMarker(value []byte, position int, pattern []byte) bool {
+	markerEnd := position + len(redactedValue)
+	if len(value) <= markerEnd {
+		return false
+	}
+	for start := position; start < markerEnd; start++ {
+		if suffix := value[start:]; len(suffix) < len(pattern) && bytes.HasPrefix(pattern, suffix) {
+			return true
+		}
+	}
+	// A prefix starting before this marker must contain the entire marker.
+	// Align only those occurrences rather than scanning every input suffix.
+	for offset := 0; offset < len(pattern); {
+		relative := bytes.Index(pattern[offset:], redactedValue)
+		if relative < 0 {
+			break
+		}
+		occurrence := offset + relative
+		start := position - occurrence
+		if start >= 0 && start < position {
+			if suffix := value[start:]; len(suffix) < len(pattern) && bytes.HasPrefix(pattern, suffix) {
+				return true
+			}
+		}
+		offset = occurrence + 1
+	}
+	return false
 }
 
 func (r *Redactor) drain(output *bytes.Buffer, final bool) {
