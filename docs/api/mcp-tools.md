@@ -102,6 +102,14 @@ changes the permission after a blocked result, create a new logical request
 with a new `idempotency_key`; retrying the old key deliberately replays the
 original blocked result.
 
+If current delivery authorization is lost, a recorded response can set
+`output_withheld: true` and omit input/result content and target metadata.
+The MCP bridge accepts the intentionally empty target reference/kind while
+still verifying the action name and any expected request ID/status. A supplied
+nonempty target reference must still match the caller's request. Withholding
+alone does not turn a completed request or its exact replay into
+`outcome_unknown`; keep the original request ID and idempotency key.
+
 Clients should discover targets and actions at runtime. Do not hardcode SSH,
 Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker,
 Kubernetes, or Mail as special MCP
