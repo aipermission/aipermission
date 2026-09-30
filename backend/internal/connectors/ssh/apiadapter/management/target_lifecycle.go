@@ -2,6 +2,7 @@ package management
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -59,57 +60,20 @@ func (Management) DeleteTarget(handler connectorapi.TargetDeletionGateway, w htt
 	}
 	removedKeys := int64(0)
 	if r.URL.Query().Get("remove_key") == "true" {
-		if len(profiles) == 0 {
-			writeError(w, http.StatusBadRequest, "remote SSH key cleanup requires a saved credential profile")
+		removedKeys, err = cleanupTargetKeys(r.Context(), gateway, runtime, target, profiles)
+		if err != nil {
+			if errors.Is(err, errKeyCleanupPreflight) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{
+					"error": "SSH key cleanup prerequisites are incomplete or invalid; verify saved profiles, public keys and host trust before retrying",
+					"code":  "ssh_key_cleanup_preflight_failed", "target_id": target.ID,
+				})
+				return nil
+			}
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"error": "SSH key cleanup is not confirmed; reconcile the saved cleanup record before retrying",
+				"code":  "ssh_key_cleanup_reconciliation_required", "target_id": target.ID,
+			})
 			return nil
-		}
-		cleanupSeen := map[string]bool{}
-		for _, profile := range profiles {
-			runtimeID, err := ensureLiveConsoleRuntimeIDForProfile(r.Context(), runtime, target.ID, profile.ID, profile.Label)
-			if err != nil {
-				handleTargetError(w, err)
-				return nil
-			}
-			remoteTarget, privateKey, err := TargetMaterialForRuntime(r.Context(), runtime, runtimeID)
-			if err != nil {
-				handleMaterialError(w, err)
-				return nil
-			}
-			keyStore, err := keyStore(runtime)
-			if err != nil {
-				writeInternalError(w)
-				return nil
-			}
-			sshKeyID := int64ConfigValue(profile.Public, "ssh_key_id")
-			key, err := keyStore.Get(r.Context(), sshKeyID)
-			if err != nil {
-				handleKeyError(w, err)
-				return nil
-			}
-			cleanupKey := remoteTarget.Username + "\x00" + publicKeyBlob(key.PublicKey)
-			if cleanupSeen[cleanupKey] {
-				continue
-			}
-			cleanupSeen[cleanupKey] = true
-			ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-			result, err := execution.RunCommand(ctx, ExecutionTarget(gateway, remoteTarget, privateKey), removeAuthorizedKeyCommand(key.PublicKey))
-			cancel()
-			if err != nil {
-				writeError(w, http.StatusBadGateway, "remote key uninstall failed")
-				return nil
-			}
-			if result.ExitCode != 0 {
-				message := strings.TrimSpace(result.Stderr + result.Stdout)
-				if message == "" {
-					message = "remote key uninstall failed"
-				}
-				if remoteKeyAlreadyAbsent(message) {
-					continue
-				}
-				writeError(w, http.StatusBadGateway, message)
-				return nil
-			}
-			removedKeys++
 		}
 	}
 	canceledCommands := int64(0)

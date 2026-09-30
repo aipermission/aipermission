@@ -356,10 +356,6 @@ func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
-func remoteKeyAlreadyAbsent(message string) bool {
-	return strings.Contains(message, "remote key uninstall removed 0 authorized_keys entries")
-}
-
 func removeAuthorizedKeyCommand(publicKey string) string {
 	blob := publicKeyBlob(publicKey)
 	delimiter := "__AIPERMISSION_AUTHORIZED_KEY__"
@@ -382,8 +378,8 @@ if [ -L "$ssh_dir" ] || [ -L "$key_file" ]; then
   exit 1
 fi
 if [ ! -e "$key_file" ]; then
-  echo "remote key uninstall removed 0 authorized_keys entries" >&2
-  exit 1
+  printf 'aipermission_key_removed=0\n'
+  exit 0
 fi
 if [ ! -d "$ssh_dir" ] || [ ! -f "$key_file" ] || [ ! -O "$ssh_dir" ] || [ ! -O "$key_file" ]; then
   echo "remote key uninstall failed: authorized_keys must be a regular file owned by the SSH user" >&2
@@ -416,8 +412,8 @@ case "$removed" in
   ''|*[!0-9]*) echo "remote key uninstall failed: invalid removal count" >&2; exit 1 ;;
 esac
 if [ "${removed:-0}" -eq 0 ]; then
-  echo "remote key uninstall removed 0 authorized_keys entries" >&2
-  exit 1
+  printf 'aipermission_key_removed=0\n'
+  exit 0
 fi
 chmod 600 "$tmp"
 mv -f "$tmp" "$key_file"
