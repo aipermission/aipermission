@@ -243,7 +243,7 @@ func TestTransportFailureMessageClassifiesCommonFailures(t *testing.T) {
 	}
 }
 
-func TestRemoveAuthorizedKeyCommandFailsWhenNoEntryRemoved(t *testing.T) {
+func TestRemoveAuthorizedKeyCommandConfirmsAbsenceWhenFileIsMissing(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
 		t.Fatalf("create .ssh: %v", err)
@@ -251,11 +251,11 @@ func TestRemoveAuthorizedKeyCommandFailsWhenNoEntryRemoved(t *testing.T) {
 	command := exec.Command("sh", "-c", removeAuthorizedKeyCommand("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMISSING aipermission-main"))
 	command.Env = append(os.Environ(), "HOME="+home)
 	output, err := command.CombinedOutput()
-	if err == nil {
-		t.Fatalf("expected command to fail when no key is removed, got %s", output)
+	if err != nil {
+		t.Fatalf("absence confirmation failed: %v %s", err, output)
 	}
-	if !strings.Contains(string(output), "removed 0") {
-		t.Fatalf("expected removed 0 message, got %s", output)
+	if string(output) != "aipermission_key_removed=0\n" {
+		t.Fatalf("expected exact absence protocol, got %s", output)
 	}
 }
 

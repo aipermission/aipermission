@@ -68,7 +68,29 @@ The SSH connector delete dialog offers:
 - delete the local record only
 - remove remote `authorized_keys` entries containing the selected gateway public key blob, then delete the local record
 
-Remote cleanup matches the public key blob, so it can remove entries even if the authorized_keys comment or options were changed. If cleanup fails or removes zero entries, the local connector target is kept so the user does not lose track of a possible remote leftover.
+Remote cleanup matches the public key material, so comments or installed key
+options do not change its identity. Profiles sharing the same remote user and
+key material form one cleanup group, even when they reference different local
+key records. The configured connection hostname is preserved for host-pin
+verification; the durable identity uses a separate canonical hostname.
+
+Before reading a private key or connecting, the connector validates every public
+profile/group and persists cleanup intent in its scoped encrypted database
+resource storage. A successful, exact removal response is durably confirmed;
+an exact response proving the key is already absent is also confirmation, not
+an error. Confirmed groups are not authenticated again when a later group or
+local archival step fails.
+
+Lost remote replies, cancellation and missing durable confirmation leave the
+intent unresolved and keep the local target available. Retrying cannot silently
+reconnect with that potentially revoked key. If confirmation committed but its
+local response was lost, a subsequent verified journal read can recover that
+confirmation and finish without connecting again. Changed target/profile/key/host-trust
+snapshots likewise require operator reconciliation rather than reusing an old
+confirmation. Missing profiles, invalid public keys and missing host trust are
+reported separately as preflight failures; a rejected preflight creates no new
+cleanup record, but earlier cleanup history remains. Connector-owned records contain public identity and
+confirmation evidence, not private key material.
 
 The cleanup writes a private temporary file in the same `.ssh` directory and
 atomically replaces `authorized_keys` only after the complete filtered file is
