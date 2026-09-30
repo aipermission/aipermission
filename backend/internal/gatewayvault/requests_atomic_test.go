@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
@@ -18,6 +19,7 @@ type atomicActionStub struct {
 	VaultActionApplication
 	runErr           error
 	cancelAfterWrite func()
+	output           any
 }
 
 func (stub atomicActionStub) PrepareTransactional(_ context.Context, request vaultrequests.Request) (vaultactions.TransactionalExecution, bool, error) {
@@ -31,7 +33,11 @@ func (stub atomicActionStub) PrepareTransactional(_ context.Context, request vau
 		if stub.runErr != nil {
 			return nil, nil, stub.runErr
 		}
-		return map[string]any{"created": true}, []vaultactions.TransactionalObservation{{Action: "vault.item.created", Payload: map[string]any{"request_id": request.ID}}}, nil
+		output := stub.output
+		if output == nil {
+			output = map[string]any{"created": true}
+		}
+		return output, []vaultactions.TransactionalObservation{{Action: "vault.item.created", Payload: map[string]any{"request_id": request.ID}}}, nil
 	}}, true, nil
 }
 
@@ -42,6 +48,7 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 		name              string
 		failObservation   bool
 		failEffect        bool
+		failProjection    bool
 		cancelEffect      bool
 		failBeforeTx      bool
 		loseCommitReply   bool
@@ -52,6 +59,7 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 	}{
 		{name: "commit", wantEffects: 1, wantStatus: vaultrequests.StatusCompleted},
 		{name: "effect rollback", failEffect: true, wantStatus: vaultrequests.StatusFailed},
+		{name: "projection rollback", failProjection: true, wantStatus: vaultrequests.StatusFailed},
 		{name: "canceled effect rollback", cancelEffect: true, wantStatus: vaultrequests.StatusFailed},
 		{name: "observation rollback", failObservation: true, wantStatus: vaultrequests.StatusFailed},
 		{name: "transaction unavailable", failBeforeTx: true, wantStatus: vaultrequests.StatusFailed},
@@ -62,13 +70,33 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			database, request := atomicRequestFixture(t)
 			observations := []string{}
+			inTransaction := false
 			runtime := Runtime{Requests: RequestRuntimePorts{
 				Store:              func(context.Context) vaultrequests.RequestStore { return vaultrequests.NewStore(database) },
 				RedactRequestError: func(_ context.Context, err error) string { return err.Error() },
 				RedactRequestValue: func(_ context.Context, value any) (any, error) { return value, nil },
-				SealRequest:        func(int64, any) (string, error) { return "sealed", nil },
-				OpenRequest:        func(int64, string, any) error { return nil },
-				RepairProjection:   func(context.Context, int64) error { return nil },
+				PrepareRequestValueRedactor: func(ctx context.Context) RequestProjectionRedactor {
+					if inTransaction {
+						t.Fatal("redaction policy was prepared inside the effect transaction")
+					}
+					if err := database.PingContext(ctx); err != nil {
+						t.Fatal(err)
+					}
+					return func(_ context.Context, value any) (any, error) {
+						if !inTransaction {
+							t.Fatal("atomic output was projected outside its transaction")
+						}
+						if test.failProjection {
+							return nil, errors.New("projection failed")
+						}
+						return vaultrequests.RedactProjection(value, func(text string) string {
+							return strings.ReplaceAll(text, "PRIVATE_CANARY", "[REDACTED]")
+						})
+					}
+				},
+				SealRequest:      func(int64, any) (string, error) { return "sealed", nil },
+				OpenRequest:      func(int64, string, any) error { return nil },
+				RepairProjection: func(context.Context, int64) error { return nil },
 				Observe: func(_ context.Context, _ string, _ *int64, _ int64, action string, _ any) {
 					observations = append(observations, action)
 				},
@@ -106,6 +134,8 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 						}
 						return nil
 					}
+					inTransaction = true
+					defer func() { inTransaction = false }()
 					if err := mutate(tx, appendObservation); err != nil {
 						return err
 					}
@@ -119,7 +149,7 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 				},
 			}}
 			executionCtx := t.Context()
-			stub := atomicActionStub{}
+			stub := atomicActionStub{output: map[string]any{"name": "PRIVATE_CANARY", "created": true}}
 			if test.failEffect {
 				stub.runErr = errors.New("effect failed after write")
 			}
@@ -149,6 +179,12 @@ func TestAtomicVaultEffectAndRequestCompletionCommitTogether(t *testing.T) {
 			persisted, err := vaultrequests.NewStore(database).Get(t.Context(), request.ID)
 			if err != nil || effects != test.wantEffects || persisted.Status != test.wantStatus {
 				t.Fatalf("effects=%d request=%#v err=%v", effects, persisted, err)
+			}
+			if test.wantEffects > 0 {
+				output, err := vaultrequests.RedactProjection(persisted.Output, func(value string) string { return value })
+				if err != nil || output.(map[string]any)["name"] != "[REDACTED]" {
+					t.Fatalf("unsafe atomic output: %#v err=%v", output, err)
+				}
 			}
 		})
 	}

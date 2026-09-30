@@ -1653,6 +1653,17 @@ policy before it reaches request rows, History, Audit, approval projections, or
 MCP responses. Exact normalized execution metadata is kept separately in a
 record-bound encrypted envelope. It is decrypted only inside the authorized
 execution path and is not a fallback display source.
+This includes selected item names in the public approval context and item or
+environment names in terminal output. Approval hashes, ownership checks, and
+idempotency comparisons still use the exact sealed execution context; a
+redaction collision does not make two different calls equivalent. Generated
+items and their redacted completion output commit in one transaction. Output
+projection failure rolls back generation; session workflows retain exact
+effect data for compensation without publishing it.
+Closed-schema object keys and approval machine context (action constants,
+ownership identifiers, hashes and peer identities) are not display labels and
+remain unchanged by custom patterns. Item names in the approval context and
+string metadata in execution output are redacted without renaming those keys.
 
 Vault action input is decoded against an action-specific strict schema before
 request persistence. Unknown keys are rejected, so an accidental raw `value`,

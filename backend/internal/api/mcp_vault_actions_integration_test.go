@@ -475,6 +475,13 @@ func TestMCPVaultGenerateAlwaysRunsWithoutReturningSecret(t *testing.T) {
 }
 
 func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.T) {
+	for _, mode := range []string{accesscontrol.RuleAlwaysRun, accesscontrol.RuleApprovalRequired} {
+		t.Run(mode, func(t *testing.T) { testVaultPublicMetadata(t, mode) })
+	}
+}
+
+func testVaultPublicMetadata(t *testing.T, mode string) {
+	t.Helper()
 	fixture := newAPITestFixture(t)
 	ctx := t.Context()
 	project, err := projectstore.NewStore(fixture.db).Create(ctx, "Redacted Vault Project")
@@ -485,29 +492,50 @@ func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.
 	capabilityPath := "/api/tokens/" + strconv.FormatInt(token.ID, 10) + "/project-capabilities"
 	capabilities := performJSON(fixture.server.Handler(), http.MethodPut, capabilityPath, "",
 		withCurrentAuthorizationRevision(t, fixture.server.Handler(), capabilityPath, accesscontrol.UpdateProjectCapabilitiesRequest{Capabilities: []accesscontrol.ProjectCapabilityInput{
-			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate, ExecutionRule: accesscontrol.RuleAlwaysRun},
+			{ProjectID: project.ID, CapabilityName: accesscontrol.VaultItemGenerate, ExecutionRule: mode},
 		}}),
 	)
 	if capabilities.Code != http.StatusOK {
 		t.Fatalf("set Vault capability: %d %s", capabilities.Code, capabilities.Body.String())
 	}
-	const canary = "PRIVATE-CANARY-7391"
+	const canary = "PRIVATE_CANARY_7391"
 	rule := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
-		Name: "Vault metadata canary", Pattern: `PRIVATE-CANARY-[0-9]+`, Enabled: true,
+		Name: "Vault metadata canary", Pattern: `PRIVATE_CANARY_[0-9]+`, Enabled: true,
 	})
 	if rule.Code != http.StatusCreated {
 		t.Fatalf("create redaction rule: %d %s", rule.Code, rule.Body.String())
 	}
+	if _, err := createSecurityPolicyRule(t, ctx, fixture.server.activeRuntime(), securitypolicy.RuleInput{
+		Name: "Protocol-shaped pattern", Pattern: `^(generate_item|vault-action-v3|name|items|item_id|secret_returned)$`, Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	callBody := mcpVaultActionCallRequest{
 		ProjectRef: project.Slug, ActionName: vaultrequests.ActionGenerateItem,
 		Input: map[string]any{
-			"name": "REDACTED_METADATA_TOKEN", "generator_kind": "random_token", "secret_type": "api_key",
+			"name": canary, "generator_kind": "random_token", "secret_type": "api_key",
 			"description": "exact execution " + canary,
 			"usage_notes": []any{map[string]any{"location": "service.env", "notes": "used by " + canary}},
 		},
 		Reason: "generate for " + canary, IdempotencyKey: "redacted-vault-metadata",
 	}
 	call := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
+	if mode == accesscontrol.RuleApprovalRequired {
+		var pending struct {
+			RequestID int64  `json:"request_id"`
+			Status    string `json:"status"`
+		}
+		if call.Code != http.StatusOK || json.Unmarshal(call.Body.Bytes(), &pending) != nil || pending.Status != vaultrequests.StatusApprovalPending {
+			t.Fatalf("pending Vault call: %d %s", call.Code, call.Body.String())
+		}
+		decision := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-action-approvals/"+strconv.FormatInt(pending.RequestID, 10)+"/run", "", vaultrequests.DecisionHTTPRequest{
+			ApprovalContextHash: displayedVaultApprovalContextHash(t, fixture, pending.RequestID),
+		})
+		if decision.Code != http.StatusOK {
+			t.Fatalf("approve Vault call: %d %s", decision.Code, decision.Body.String())
+		}
+		call = performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/vault-action-requests/"+strconv.FormatInt(pending.RequestID, 10), token.TokenValue, nil)
+	}
 	if call.Code != http.StatusOK || !strings.Contains(call.Body.String(), `"status":"completed"`) ||
 		!strings.Contains(call.Body.String(), "[REDACTED]") || strings.Contains(call.Body.String(), canary) {
 		t.Fatalf("redacted Vault call: %d %s", call.Code, call.Body.String())
@@ -517,34 +545,34 @@ func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.
 		t.Fatal(err)
 	}
 	requestID := int64(response["request_id"].(float64))
-	var publicInput, publicReason, sealed string
+	var publicInput, publicReason, publicContext, publicOutput, sealed string
 	if err := fixture.db.QueryRow(`
-		SELECT input_json, reason, encrypted_payload_json
+		SELECT input_json, reason, approval_context_json, output_json, encrypted_payload_json
 		FROM vault_action_requests WHERE id = ?`, requestID,
-	).Scan(&publicInput, &publicReason, &sealed); err != nil {
+	).Scan(&publicInput, &publicReason, &publicContext, &publicOutput, &sealed); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(publicInput, canary) || strings.Contains(publicReason, canary) || strings.Contains(sealed, canary) ||
+	if strings.Contains(publicInput+publicReason+publicContext+publicOutput+sealed, canary) ||
 		!strings.Contains(publicInput, "[REDACTED]") || !strings.Contains(publicReason, "[REDACTED]") {
 		t.Fatalf("unsafe Vault persistence input=%s reason=%s sealed=%s", publicInput, publicReason, sealed)
 	}
-	var historyInput, historySummary string
+	var historyInput, historySummary, historyOutput, historyPreview string
 	if err := fixture.db.QueryRow(`
-		SELECT input_json, summary FROM history_entries
+		SELECT input_json, summary, output_json, preview_json FROM history_entries
 		WHERE source_ref_type = 'vault_action_request' AND source_ref_id = ?`, requestID,
-	).Scan(&historyInput, &historySummary); err != nil {
+	).Scan(&historyInput, &historySummary, &historyOutput, &historyPreview); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(historyInput, canary) || strings.Contains(historySummary, canary) {
+	if strings.Contains(historyInput+historySummary+historyOutput+historyPreview, canary) {
 		t.Fatalf("Vault history exposed canary input=%s summary=%s", historyInput, historySummary)
 	}
 	var description, usageNote string
-	if err := fixture.db.QueryRow(`SELECT description FROM vault_items WHERE name = 'REDACTED_METADATA_TOKEN'`).Scan(&description); err != nil {
+	if err := fixture.db.QueryRow(`SELECT description FROM vault_items WHERE name = ?`, canary).Scan(&description); err != nil {
 		t.Fatal(err)
 	}
 	if err := fixture.db.QueryRow(`
 		SELECT notes FROM vault_item_usage_notes
-		WHERE vault_item_id = (SELECT id FROM vault_items WHERE name = 'REDACTED_METADATA_TOKEN')`,
+		WHERE vault_item_id = (SELECT id FROM vault_items WHERE name = ?)`, canary,
 	).Scan(&usageNote); err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +580,7 @@ func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.
 		t.Fatalf("execution metadata changed description=%q usage_note=%q", description, usageNote)
 	}
 	conflict := callBody
-	conflict.Reason = "generate for PRIVATE-CANARY-9999"
+	conflict.Reason = "generate for PRIVATE_CANARY_9999"
 	responseRecorder := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, conflict)
 	if responseRecorder.Code != http.StatusConflict {
 		t.Fatalf("redaction-colliding idempotency input = %d %s", responseRecorder.Code, responseRecorder.Body.String())
@@ -563,6 +591,14 @@ func TestMCPVaultActionRedactsPublicMetadataWithoutChangingExecution(t *testing.
 	}
 	if strings.Contains(auditPayloads, canary) {
 		t.Fatalf("Vault audit payload exposed canary: %s", auditPayloads)
+	}
+	replay := performJSON(fixture.server.Handler(), http.MethodPost, "/api/mcp/vault-actions/call", token.TokenValue, callBody)
+	if replay.Code != http.StatusOK || strings.Contains(replay.Body.String(), canary) || !strings.Contains(replay.Body.String(), `"status":"completed"`) {
+		t.Fatalf("unsafe replay: %d %s", replay.Code, replay.Body.String())
+	}
+	var count int
+	if err := fixture.db.QueryRow(`SELECT COUNT(*) FROM vault_items WHERE name = ?`, canary).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("duplicate generate effect: count=%d err=%v", count, err)
 	}
 }
 
@@ -584,8 +620,20 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatalf("trusted peer identity: %#v %v", identities, err)
 	}
 	const secretValue = "vault-session-secret-must-never-persist-123"
+	const itemName = "PRIVATE_CANARY_4921"
+	rule := performJSON(fixture.server.Handler(), http.MethodPost, "/api/settings/redaction-rules", "", securitypolicy.RuleInput{
+		Name: "Session metadata canary", Pattern: `PRIVATE_CANARY_[0-9]+`, Enabled: true,
+	})
+	if rule.Code != http.StatusCreated {
+		t.Fatalf("create session redaction rule: %d %s", rule.Code, rule.Body.String())
+	}
+	if _, err := createSecurityPolicyRule(t, ctx, runtime, securitypolicy.RuleInput{
+		Name: "Session protocol-shaped pattern", Pattern: `^(restart_session_with_environment|vault-action-v3|session_id|session_generation|runtime_id)$`, Enabled: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
 	createItem := performJSON(fixture.server.Handler(), http.MethodPost, "/api/vault-items", "", projectvault.CreateHTTPRequest{
-		Name: "SESSION_E2E_TOKEN", Value: secretValue,
+		Name: itemName, Value: secretValue,
 		OwnerProjectID: project.ID, SecretType: "api_key", Source: "imported",
 	})
 	if createItem.Code != http.StatusCreated {
@@ -661,7 +709,10 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 			Output:       closedTerminalOutput(),
 			PeerIdentity: identities[0],
 			ApplyEnvironment: func(_ context.Context, environment gatewayoperations.SessionEnvironment) error {
-				return environment.ForEach(func(_ string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
+				return environment.ForEach(func(name string, value []byte, _ bool, _ int64, _ int64, _ int64) error {
+					if name != itemName {
+						return fmt.Errorf("execution environment name changed: %q", name)
+					}
 					appliedValues = append(appliedValues, string(value))
 					return nil
 				})
@@ -727,6 +778,14 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 		t.Fatal(err)
 	}
 	requestID := int64(pending["request_id"].(float64))
+	approval := performJSON(fixture.server.Handler(), http.MethodGet, "/api/vault-action-approvals/"+strconv.FormatInt(requestID, 10), "", nil)
+	if approval.Code != http.StatusOK || strings.Contains(approval.Body.String(), itemName) {
+		t.Fatalf("unsafe approval metadata: %d %s", approval.Code, approval.Body.String())
+	}
+	approvalBody := decodeRouteResponse[vaultrequests.Request](t, approval.Body.Bytes())
+	if approvalBody.ApprovalContext["action_name"] != vaultrequests.ActionRestartSession || approvalBody.ApprovalContext["schema"] != vaultrequests.ApprovalContextSchema {
+		t.Fatal("redaction changed machine approval context")
+	}
 	run := performJSON(
 		fixture.server.Handler(),
 		http.MethodPost,
@@ -761,22 +820,26 @@ func TestMCPVaultSessionApplyPromptAlwaysAndHumanIsolation(t *testing.T) {
 	}) {
 		t.Fatal("MCP token unexpectedly received access to a human Vault session")
 	}
+	assertVaultSessionMetadataRedacted(t, fixture, always.Body.String()+run.Body.String(), itemName, secretValue)
+}
 
+func assertVaultSessionMetadataRedacted(t *testing.T, fixture apiTestFixture, responses string, forbidden ...string) {
+	t.Helper()
 	var persisted string
 	if err := fixture.db.QueryRow(`
 		SELECT
 			COALESCE(group_concat(payload_json, ''), '') ||
-			COALESCE((SELECT group_concat(input_json || output_json || error, '') FROM vault_action_requests), '') ||
-			COALESCE((SELECT group_concat(input_text || input_json || output_text || output_json || error, '') FROM history_entries), '') ||
+			COALESCE((SELECT group_concat(input_json || approval_context_json || output_json || error, '') FROM vault_action_requests), '') ||
+			COALESCE((SELECT group_concat(input_text || input_json || preview_json || output_text || output_json || error, '') FROM history_entries), '') ||
 			COALESCE((SELECT group_concat(transcript || error, '') FROM console_sessions), '')
 		FROM audit_logs`,
 	).Scan(&persisted); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(persisted, secretValue) ||
-		strings.Contains(always.Body.String(), secretValue) ||
-		strings.Contains(run.Body.String(), secretValue) {
-		t.Fatal("Vault secret leaked into a persisted or MCP response surface")
+	for _, value := range forbidden {
+		if strings.Contains(persisted+responses, value) {
+			t.Fatal("Vault value or metadata leaked into a persisted or MCP response surface")
+		}
 	}
 }
 
