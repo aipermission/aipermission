@@ -34,3 +34,74 @@ func TestRedactBasicKeepsShellPWDOutput(t *testing.T) {
 		}
 	}
 }
+
+func TestRedactBasicPreservesExistingMandatoryMarkers(t *testing.T) {
+	for _, marker := range []string{"[REDACTED]", "[REDACTED CREDENTIAL]", "[REDACTED VAULT VALUE]", "[REDACTED PRIVATE KEY]"} {
+		for _, prefix := range []string{"password=", "token: ", "api-key='"} {
+			closingQuote := ""
+			if strings.HasSuffix(prefix, "'") {
+				closingQuote = "'"
+			}
+			input := prefix + marker + closingQuote + " password=new-secret"
+			want := prefix + marker + closingQuote + " password=[REDACTED]"
+			if got := RedactBasic(input); got != want {
+				t.Fatalf("masked text = %q; want %q", got, want)
+			}
+			if got := RedactBasic(want); got != want {
+				t.Fatalf("repeated masked text = %q; want %q", got, want)
+			}
+		}
+	}
+}
+
+func TestRedactBasicMasksQuotedMarkerDelimiterSuffix(t *testing.T) {
+	for _, marker := range []string{"[REDACTED]", "[REDACTED CREDENTIAL]", "[REDACTED VAULT VALUE]", "[REDACTED PRIVATE KEY]"} {
+		for _, quote := range []string{"'", `"`} {
+			for _, delimiter := range []string{";", ","} {
+				input := "password=" + quote + marker + delimiter + "synthetic-secret-7291" + quote
+				want := "password=" + quote + "[REDACTED]" + quote
+				if got := RedactBasic(input); got != want {
+					t.Fatalf("masked quoted secret = %q; want %q", got, want)
+				}
+			}
+		}
+	}
+}
+
+func TestRedactBasicQuotedValuesAndIncompleteQuotes(t *testing.T) {
+	for _, test := range []struct{ input, want string }{
+		{`password="space separated secret"`, `password="[REDACTED]"`},
+		{`password='embedded\'quote secret'`, `password='[REDACTED]'`},
+		{`password="embedded\"quote secret"`, `password="[REDACTED]"`},
+		{`password="unfinished-secret`, `password="[REDACTED]`},
+		{`password='unfinished-secret`, `password='[REDACTED]`},
+		{`PWD='/home/developer'`, `PWD='/home/developer'`},
+	} {
+		if got := RedactBasic(test.input); got != test.want {
+			t.Fatalf("masked quoted value = %q; want %q", got, test.want)
+		}
+	}
+}
+
+func TestRedactBasicMasksMarkerPrefixedSecrets(t *testing.T) {
+	for _, marker := range []string{"[REDACTED]", "[REDACTED CREDENTIAL]", "[REDACTED VAULT VALUE]", "[REDACTED PRIVATE KEY]"} {
+		for _, quote := range []string{"", "'", `"`} {
+			input := "password=" + quote + marker + "synthetic-secret-7291" + quote
+			want := "password=" + quote + "[REDACTED]" + quote
+			if got := RedactBasic(input); got != want {
+				t.Fatalf("masked marker-prefixed secret = %q; want %q", got, want)
+			}
+		}
+	}
+}
+
+func TestRedactBasicPreservesDelimitedMarkers(t *testing.T) {
+	for _, marker := range []string{"[REDACTED]", "[REDACTED CREDENTIAL]", "[REDACTED VAULT VALUE]", "[REDACTED PRIVATE KEY]"} {
+		for _, delimiter := range []string{";", ","} {
+			input := "password=" + marker + delimiter + " unrelated=value"
+			if got := RedactBasic(input); got != input {
+				t.Fatalf("masked delimited marker = %q; want %q", got, input)
+			}
+		}
+	}
+}

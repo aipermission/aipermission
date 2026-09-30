@@ -184,6 +184,14 @@ Generic file-transfer browse, stat, conflict, batch-validation, and transfer
 failure paths load the same runtime credential boundary before returning,
 logging, auditing, or persisting connector-originated error text.
 
+Known-value masking runs before optional basic/custom rules can change a
+credential's text, and runs again after those rules. Known-value matching and
+built-in masking preserve mandatory credential markers on repeated projection.
+Custom rules still see the complete masked text and may mask a larger region,
+including an existing marker; their matching context is not split or discarded.
+Connection-test, provisioning, cleanup, and database-backup error projections
+use this same ordering; turning optional redaction off does not bypass it.
+
 Known-value matching deliberately avoids replacing every occurrence of a
 one- or two-byte value because doing so would corrupt ordinary output. For text
 values, exact and delimited matches are redacted from one byte onward; embedded

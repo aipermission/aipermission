@@ -496,8 +496,8 @@ func (localActionTestConnector) ExecuteAction(ctx context.Context, runtime conne
 		}
 		return connectors.ActionResult{
 			Status:      connectors.ResultCompleted,
-			Output:      map[string]any{"echo": "permitted-target-output-may-be-sensitive-7f3a", "reflection": secret},
-			DisplayText: "permitted-target-output-may-be-sensitive-7f3a " + secret,
+			Output:      map[string]any{"echo": "permitted-target-output-may-be-sensitive-7f3a", "reflection": "password=" + secret},
+			DisplayText: "permitted-target-output-may-be-sensitive-7f3a password=" + secret,
 			Metadata:    map[string]any{"reflection": secret},
 		}, nil
 	}

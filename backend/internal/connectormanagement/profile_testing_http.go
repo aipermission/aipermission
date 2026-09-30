@@ -121,7 +121,7 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 		httptransport.WriteJSON(w, http.StatusOK, ConnectionTestResponse{
 			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 			Status:     string(connectors.TestUnknownError),
-			Message:    boundary.Redact(scope.Runtime.RedactText(r.Context(), err.Error())),
+			Message:    scope.Runtime.redactCredentialText(r.Context(), err.Error(), boundary),
 			DurationMS: time.Since(start).Milliseconds(),
 		})
 		return
@@ -134,7 +134,7 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 	httptransport.WriteJSON(w, http.StatusOK, ConnectionTestResponse{
 		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 		OK: result.Status == connectors.TestOK, Status: string(result.Status),
-		Message: boundary.Redact(scope.Runtime.RedactText(r.Context(), result.Message)),
+		Message: scope.Runtime.redactCredentialText(r.Context(), result.Message, boundary),
 		Details: details, DurationMS: time.Since(start).Milliseconds(),
 	})
 }

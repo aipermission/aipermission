@@ -64,13 +64,13 @@ func (r *Redactor) ValueWithLimits(ctx context.Context, value any, sensitiveFiel
 			return outputFieldDeclared(key, capabilityFields)
 		},
 		RedactText: func(value string) string {
-			return boundary.Redact(r.persistText(ctx, value))
+			return r.redactCredentialText(ctx, value, boundary.Redact, r.persistText)
 		},
 		RedactKey: func(value string) string {
-			return boundary.RedactKey(r.persistText(ctx, value))
+			return r.redactCredentialText(ctx, value, boundary.RedactKey, r.persistText)
 		},
 		RedactCapability: func(value string) string {
-			return boundary.Redact(r.capabilityText(ctx, value))
+			return r.redactCredentialText(ctx, value, boundary.Redact, r.capabilityText)
 		},
 	})
 }
@@ -84,7 +84,11 @@ func (r *Redactor) Text(ctx context.Context, value string, boundary RedactionBou
 		return "", ErrRedactorUnavailable
 	}
 	boundary = effectiveRedactionBoundary(boundary)
-	return boundary.Redact(r.persistText(ctx, value)), nil
+	return r.redactCredentialText(ctx, value, boundary.Redact, r.persistText), nil
+}
+
+func (r *Redactor) redactCredentialText(ctx context.Context, value string, credentials func(string) string, optional TextRedactor) string {
+	return RedactCredentialText(value, credentials, func(text string) string { return optional(ctx, text) })
 }
 
 func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result connectors.ActionResult, boundary RedactionBoundary, hints ...connectors.OutputHint) (connectors.ActionResult, error) {
