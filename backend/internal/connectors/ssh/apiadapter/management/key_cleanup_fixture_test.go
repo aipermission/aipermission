@@ -59,9 +59,10 @@ func (store *cleanupResourceProbe) Update(ctx context.Context, id int64, input c
 
 type cleanupRuntime struct {
 	connectorapi.TargetLifecycleRuntime
-	keys     *cleanupResourceProbe
-	journal  *cleanupResourceProbe
-	profiles []connectors.CredentialProfileView
+	keys        *cleanupResourceProbe
+	journal     *cleanupResourceProbe
+	profiles    []connectors.CredentialProfileView
+	profilesErr error
 }
 
 func (runtime *cleanupRuntime) CredentialResources(kind string) connectorapi.CredentialResourceStore {
@@ -75,7 +76,7 @@ func (runtime *cleanupRuntime) CredentialResources(kind string) connectorapi.Cre
 }
 
 func (runtime *cleanupRuntime) ListCredentialProfiles(context.Context, int64) ([]connectors.CredentialProfileView, error) {
-	return runtime.profiles, nil
+	return runtime.profiles, runtime.profilesErr
 }
 
 func (*cleanupRuntime) ListRuntimeSurfacesForProfile(context.Context, int64, int64, string) ([]connectorapi.RuntimeSurface, error) {

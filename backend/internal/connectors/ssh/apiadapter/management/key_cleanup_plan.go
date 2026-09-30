@@ -1,6 +1,7 @@
 package management
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/keycleanup"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"golang.org/x/crypto/ssh"
 )
@@ -20,6 +22,7 @@ import (
 type keyCleanupGroup struct {
 	Identity       keycleanup.Identity
 	PublicKey      string
+	PublicKeys     []sshkeys.SSHKey
 	ConnectionHost string
 }
 
@@ -44,15 +47,7 @@ func planKeyCleanup(ctx context.Context, gateway connectorapi.PeerIdentityGatewa
 		return nil, err
 	}
 	profiles = slices.Clone(profiles)
-	slices.SortFunc(profiles, func(a, b connectors.CredentialProfileView) int {
-		if a.ID < b.ID {
-			return -1
-		}
-		if a.ID > b.ID {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(profiles, func(a, b connectors.CredentialProfileView) int { return cmp.Compare(a.ID, b.ID) })
 	groups := []keyCleanupGroup{}
 	indexes := map[string]int{}
 	for _, profile := range profiles {
@@ -91,6 +86,7 @@ func planKeyCleanup(ctx context.Context, gateway connectorapi.PeerIdentityGatewa
 			ID: profile.ID, Revision: profile.UpdatedAt, SecretRevision: profile.SecretRevision,
 			PublicDigest: publicDigest, KeyID: key.ID, KeyRevision: key.UpdatedAt,
 		})
+		groups[index].PublicKeys = append(groups[index].PublicKeys, key)
 	}
 	for index := range groups {
 		identity, err := keycleanup.NewIdentity(groups[index].Identity)

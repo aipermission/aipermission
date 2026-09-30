@@ -40,5 +40,6 @@ var (
 	_ connectorapi.RuntimeAdapter                    = adapter{}
 	_ connectorapi.TargetDeleter                     = adapter{}
 	_ connectorapi.TargetOperationRunner             = adapter{}
+	_ connectorapi.TargetOperationLifecyclePolicy    = adapter{}
 	_ connectorapi.TCPTransportAdapter               = adapter{}
 )
