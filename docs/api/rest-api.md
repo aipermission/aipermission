@@ -1507,6 +1507,16 @@ overlapping replay replies cannot discard the batch. `outcome_unknown` and
 external attempt. Console command IDs and connector approval IDs have distinct
 observation namespaces even when their numeric values collide.
 
+The bulk dialog blocks another submission while the current workspace has a
+protected batch, including after closing, reopening, or remounting the dialog.
+Admission is reserved atomically in the retry ledger, not just by disabling a
+button. Background recovery only reads known command IDs with bounded,
+workspace-bound requests; it never resubmits a command. Failed result reads
+retain the last execution status and output, display a separate refresh error,
+and permit a later bounded read to recover. Activity-feed refresh failures do
+not change execution outcomes. Closing the dialog aborts its observations, and
+late replies cannot replace a new workspace's draft or results.
+
 The History page uses stable cursor pagination ordered by `(created_at, id)`.
 The first page includes an exact `total` by default. Follow `next_cursor` for
 later pages; cursor pages omit the count unless `include_total=true` is

@@ -5,6 +5,7 @@ import {
   newActionAttempt,
   newRetryEntry,
   retryEntryBlocksMutation,
+  retryEntryBlocksConsoleBatch,
   sameRetryEntry,
   validActionAttempt,
   validRetryEntry,
@@ -121,13 +122,17 @@ export async function reserveEntry(
 function assertMutationReservation(
   entries: RetryEntry[],
   scope: RetryScope,
-  subject: Pick<RetryEntry, "target_ref" | "mutation_guard">,
+  subject: Pick<RetryEntry, "target_ref" | "mutation_guard" | "request_kind">,
   actionNames?: readonly string[],
 ) {
-  if (!subject.mutation_guard || !subject.target_ref) return;
+  if (!subject.mutation_guard) return;
   for (const entry of entries) {
     if (!validRetryEntry(entry, scope.key)) throw storageError();
-    if (retryEntryBlocksMutation(entry, subject.target_ref, actionNames)) throw retryIdentityChangedError();
+    const blocked =
+      subject.request_kind === "console_batch"
+        ? retryEntryBlocksConsoleBatch(entry)
+        : Boolean(subject.target_ref && retryEntryBlocksMutation(entry, subject.target_ref, actionNames));
+    if (blocked) throw retryIdentityChangedError();
   }
 }
 

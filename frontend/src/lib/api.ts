@@ -58,7 +58,7 @@ export async function apiGet(path: string, options: APIOptions = {}): Promise<un
 
 export async function apiPost(path: string, body: Record<string, unknown>, options: APIOptions = {}): Promise<unknown> {
   const requestWorkspace = currentWorkspaceBinding();
-  const prepared = await preparePostBody(path, body, requestWorkspace, options.exclusiveMutationActions);
+  const prepared = await preparePostBody(path, body, requestWorkspace, options);
   let finalized = false;
   try {
     const response = await fetch(`${apiUrl}${path}`, {
@@ -142,16 +142,18 @@ function isAcknowledgedLocalActionResponse(data: unknown, body: unknown) {
   }
 }
 
-async function preparePostBody(
-  path: string,
-  body: unknown,
-  workspaceID: string,
-  exclusiveMutationActions?: readonly string[],
-): Promise<PreparedPost> {
+async function preparePostBody(path: string, body: unknown, workspaceID: string, options: APIOptions): Promise<PreparedPost> {
   const policy = idempotentPostPolicy(path, body);
   if (!policy) return { body, retry: null, invalidResponseMessage: "" };
   if (objectRecord(body)?.idempotency_key) return { body, retry: null, ...policy };
-  const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID, exclusiveMutationActions });
+  const retry = await prepareLocalActionRetry(
+    { path, body: body || {} },
+    {
+      workspaceID,
+      exclusiveMutationActions: options.exclusiveMutationActions,
+      exclusiveConsoleBatch: options.exclusiveConsoleBatch,
+    },
+  );
   return { body: { ...objectRecord(body), idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 

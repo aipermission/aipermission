@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { bulkCommandResponse, bulkCommandDetailResponse } from "./bulk-command-contracts";
 
-const item = { request_id: 41, target_id: 7, target_name: "Example", status: "running" };
+const item = { request_id: 41, target_id: 7, target_name: "Example", status: "running" as const };
 describe("Bulk command response ownership", () => {
   it("accepts unique positive request identities and verified output", () => {
-    expect(bulkCommandResponse({ parallelism: 3, items: [item] })).toEqual({ parallelism: 3, items: [item] });
-    expect(bulkCommandDetailResponse({ id: 41, status: "completed", stdout: "ok", exit_code: 0 }, item)).toMatchObject({
+    expect(bulkCommandResponse({ parallelism: 3, items: [item] })).toEqual({ parallelism: 3, items: [{ ...item, observed: false }] });
+    expect(bulkCommandDetailResponse({ id: 41, runtime_id: 7, status: "completed", stdout: "ok", exit_code: 0 }, item)).toMatchObject({
       request_id: 41,
       target_id: 7,
       status: "completed",
@@ -34,6 +34,13 @@ describe("Bulk command response ownership", () => {
       { id: 41, status: "completed", stderr: [] },
     ])
       expect(() => bulkCommandDetailResponse(value, item)).toThrow();
-    expect(bulkCommandDetailResponse({ id: 41, status: "completed", target_id: 999 }, item).target_id).toBe(7);
+    expect(bulkCommandDetailResponse({ id: 41, runtime_id: 7, status: "completed", target_id: 999, target_name: 123 }, item)).toMatchObject(
+      {
+        target_id: 7,
+        target_name: "Example",
+        observed: true,
+      },
+    );
+    expect(() => bulkCommandDetailResponse({ id: 41, runtime_id: 99, status: "completed" }, item)).toThrow(/runtime mismatch/);
   });
 });

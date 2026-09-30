@@ -95,6 +95,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/_shared/use-connector-mutation-ownership.ts": [
     "src/connectors/templates/_shared/use-connector-mutation-ownership.component.test.tsx",
   ],
+  "src/connectors/templates/_shared/use-console-batch-ownership.ts": ["src/test/console/use-console-batch-ownership.component.test.tsx"],
   "src/connectors/templates/redis/use-redis-browser.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
   "src/connectors/templates/redis/use-redis-mutations.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
   "src/connectors/templates/s3/use-s3-browser.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
@@ -110,6 +111,7 @@ export const asyncStateOwnerTests = {
     "src/lib/api/mutation-observation.component.test.ts",
     "src/lib/local-action-retry/mutation-admission.component.test.ts",
     "src/lib/api/command-batch-observation.component.test.ts",
+    "src/lib/local-action-retry/console-batch-admission.component.test.ts",
   ],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.tsx"],
