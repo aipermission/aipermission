@@ -379,7 +379,10 @@ test("writeTOMLMCPConfig preserves array-of-table sections after the selected se
 
   const content = await fs.readFile(filePath, "utf8");
   const parsed = parseTOML(content);
-  assert.deepEqual(parsed.profiles.map((profile) => ({ ...profile })), [{ name: "first" }, { name: "second" }]);
+  assert.deepEqual(
+    parsed.profiles.map((profile) => ({ ...profile })),
+    [{ name: "first" }, { name: "second" }],
+  );
   assert.equal(parsed.mcp_servers.aipermission.command, "npx");
   assert.doesNotMatch(content, /command = "old"/);
 });
