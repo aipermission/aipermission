@@ -4,6 +4,7 @@ import { connectorActionResponse } from "../../../lib/gateway-contracts/security
 import { requireCompletedConnectorAction } from "./action-result.ts";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import type { createRequestGuard } from "../../../lib/request-guard";
+import type { APIOptions } from "../../../lib/api-types";
 
 export type ConnectorActionState = { state: string; error: string; message: string };
 export type GuardedConnectorActionOptions = {
@@ -21,7 +22,8 @@ export type GuardedConnectorActionOptions = {
   onPending?: ((_item: ConnectorActionResponse) => void) | null;
   suppressError?: boolean;
   successMessage?: ((_item: ConnectorActionResponse) => string) | null;
-  post?: (_path: string, _payload: Record<string, unknown>, _options: { signal: AbortSignal }) => Promise<unknown>;
+  exclusiveMutationActions?: readonly string[];
+  post?: (_path: string, _payload: Record<string, unknown>, _options: APIOptions & { signal: AbortSignal }) => Promise<unknown>;
 };
 type ActionFeedback = Pick<GuardedConnectorActionOptions, "setState" | "onRefreshActivity"> & { canUpdateState: () => boolean };
 
@@ -40,6 +42,7 @@ export async function runGuardedConnectorAction({
   onPending = null,
   suppressError = false,
   successMessage = null,
+  exclusiveMutationActions,
   post = apiPost,
 }: GuardedConnectorActionOptions): Promise<ConnectorActionResponse | null> {
   const request = requestGuard.begin(channel || actionName);
@@ -56,7 +59,7 @@ export async function runGuardedConnectorAction({
           input,
           reason,
         },
-        { signal: request.signal },
+        { signal: request.signal, ...(exclusiveMutationActions ? { exclusiveMutationActions } : {}) },
       ),
       { targetRef, actionName },
     );
@@ -66,7 +69,7 @@ export async function runGuardedConnectorAction({
     return await handleCompletedAction({ item, request, canUpdateState, setState, onRefreshActivity, onCompleted, successMessage });
   } catch (error) {
     if (!request.isCurrent()) return null;
-    if (outcomeUnknown(error)) await handleUnknownOutcome({ error, product, canUpdateState, setState, onRefreshActivity });
+    if (connectorActionUnknownOutcome(error)) await handleUnknownOutcome({ error, product, canUpdateState, setState, onRefreshActivity });
     if (canUpdateState()) {
       setState(
         suppressError
@@ -130,7 +133,7 @@ async function handleCompletedAction({
   return request.isCurrent() ? item : null;
 }
 
-function outcomeUnknown(error: unknown): Record<string, unknown> | null {
+export function connectorActionUnknownOutcome(error: unknown): Record<string, unknown> | null {
   if (!error || typeof error !== "object") return null;
   const actionItem: unknown = "actionItem" in error ? error.actionItem : null;
   if (actionItem && typeof actionItem === "object" && "status" in actionItem && actionItem.status === "outcome_unknown")
@@ -148,7 +151,7 @@ async function handleUnknownOutcome({
   setState,
   onRefreshActivity,
 }: ActionFeedback & { error: unknown; product: string }) {
-  const uncertain = outcomeUnknown(error);
+  const uncertain = connectorActionUnknownOutcome(error);
   if (!uncertain) throw error;
   let message =
     typeof uncertain.error === "string" && uncertain.error ? uncertain.error : errorMessage(error, `${product} action outcome is unknown.`);

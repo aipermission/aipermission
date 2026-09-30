@@ -96,7 +96,7 @@ export function RedisKeyBrowser({ browser, styles }: { browser: RedisBrowser; st
           type="button"
           variant="outline"
           className="h-8 px-3 text-xs text-red-600"
-          disabled={(browser.selectedCount === 0 && !browser.activeKey) || connectorActionBusy(browser.state)}
+          disabled={browser.mutationLocked || (browser.selectedCount === 0 && !browser.activeKey) || connectorActionBusy(browser.state)}
           onClick={browser.deleteSelected}
         >
           <Trash2 className="h-3.5 w-3.5" />

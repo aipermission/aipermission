@@ -1562,6 +1562,16 @@ The local UI can recover ownership of an unresolved action outside the bounded
 activity feed with `target_ref`, `action_name`, and `active=true`; active means
 `approval_pending`, `running`, or `outcome_unknown`, and a fully scoped query
 returns at most the newest matching request.
+Redis / Valkey, Kafka / Redpanda, and RabbitMQ write dialogs use a shared,
+workspace-and-profile-scoped mutation owner. They discover each write action
+separately and retain its retry identity across dialog closure, draft changes,
+session changes, and remounts. IndexedDB admission checks competing writes in
+the same transaction as identity creation, including writes from another tab.
+Observation reads carry the captured workspace binding and have bounded
+timeouts. A failed read does not turn the remote request into a failed write.
+Known request IDs are read directly when absent from the active listing;
+unconfirmed identities remain protected. Unknown outcomes require operator
+reconciliation in Settings, never an automatic new key or mutation POST.
 `GET /api/connector-action-approvals/{id}` transiently decrypts the exact
 bounded prepared preview from its encrypted execution envelope for a pending
 request so the operator can review what will run. This detail endpoint requires

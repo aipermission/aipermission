@@ -33,11 +33,17 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path: string, options: APIOptions = {}): Promise<unknown> {
-  const requestWorkspace = currentWorkspaceBinding();
+  const requestWorkspace = options.workspaceBinding || currentWorkspaceBinding();
   const request = boundedReadSignal(options.signal, options.timeoutMs);
   try {
-    const response = await fetch(`${apiUrl}${path}`, { signal: request.signal, credentials: "include" });
-    const data = await readResponse(response);
+    const response = await fetch(`${apiUrl}${path}`, {
+      signal: request.signal,
+      credentials: "include",
+      ...(options.workspaceBinding ? { headers: workspaceHeaders({}, requestWorkspace) } : {}),
+    });
+    const data = await readResponse(response, { captureWorkspace: !options.workspaceBinding });
+    if (options.workspaceBinding && response.headers.get(workspaceHeaderName) !== requestWorkspace)
+      throw new Error("Gateway read workspace binding mismatch.");
     if (requestWorkspace && response.headers.get(workspaceHeaderName) === requestWorkspace)
       await observeLocalActionRetryResponse(path, data, requestWorkspace);
     return data;
@@ -51,7 +57,7 @@ export async function apiGet(path: string, options: APIOptions = {}): Promise<un
 
 export async function apiPost(path: string, body: Record<string, unknown>, options: APIOptions = {}): Promise<unknown> {
   const requestWorkspace = currentWorkspaceBinding();
-  const prepared = await preparePostBody(path, body, requestWorkspace);
+  const prepared = await preparePostBody(path, body, requestWorkspace, options.exclusiveMutationActions);
   let finalized = false;
   try {
     const response = await fetch(`${apiUrl}${path}`, {
@@ -130,11 +136,16 @@ function isAcknowledgedLocalActionResponse(data: unknown, body: unknown) {
   }
 }
 
-async function preparePostBody(path: string, body: unknown, workspaceID: string): Promise<PreparedPost> {
+async function preparePostBody(
+  path: string,
+  body: unknown,
+  workspaceID: string,
+  exclusiveMutationActions?: readonly string[],
+): Promise<PreparedPost> {
   const policy = idempotentPostPolicy(path, body);
   if (!policy) return { body, retry: null, invalidResponseMessage: "" };
   if (objectRecord(body)?.idempotency_key) return { body, retry: null, ...policy };
-  const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID });
+  const retry = await prepareLocalActionRetry({ path, body: body || {} }, { workspaceID, exclusiveMutationActions });
   return { body: { ...objectRecord(body), idempotency_key: retry.idempotencyKey }, retry, ...policy };
 }
 

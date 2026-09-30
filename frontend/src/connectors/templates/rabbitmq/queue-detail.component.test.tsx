@@ -2,20 +2,38 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet } from "../../../lib/api";
-import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import type { ConnectorActionResponse, ConnectorApproval } from "../../../lib/gateway-contracts/security-contracts";
+import { mutationObservationQueue, mutationTestWorkspace, setupMutationRetryStorage } from "../../../test/connector-mutation-test-state";
+import { connectorApprovalFixture } from "../../../test/connector-action-fixtures";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { QueueDetail } from "./queue-detail";
 import { useRabbitMQBrowser } from "./use-rabbitmq-browser";
 import type { RabbitBrowserProps } from "./browser-types";
 
-vi.mock("../../../lib/api", () => ({ apiGet: vi.fn() }));
-vi.mock("../_shared/action-runner", () => ({ runGuardedConnectorAction: vi.fn() }));
+setupMutationRetryStorage();
+vi.mock("../../../lib/api", () => ({ apiGet: vi.fn(), currentWorkspaceBinding: () => mutationTestWorkspace }));
+vi.mock("../_shared/action-runner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../_shared/action-runner")>()),
+  runGuardedConnectorAction: vi.fn(),
+}));
+vi.mock("../_shared/observation-scheduler", () => ({
+  scheduleObservation: (...args: Parameters<typeof observations.schedule>) => observations.schedule(...args),
+}));
 
 const queues = [{ name: "jobs.ready", vhost: "/", state: "running", messages: 2 }];
+const observations = mutationObservationQueue();
+let observedApproval: ConnectorApproval | null = null;
 
 beforeEach(() => {
-  vi.mocked(apiGet).mockReset().mockResolvedValue([]);
+  observations.clear();
+  observedApproval = null;
+  vi.mocked(apiGet)
+    .mockReset()
+    .mockImplementation(async (path) => {
+      if (path === "/api/connector-action-approvals/72") return observedApproval;
+      return observedApproval?.status === "approval_pending" ? [observedApproval] : [];
+    });
   vi.mocked(runGuardedConnectorAction)
     .mockReset()
     .mockImplementation(async ({ actionName, input }) => {
@@ -224,10 +242,24 @@ it("keeps the form locked through approval pending until a terminal activity arr
   expect(vi.mocked(runGuardedConnectorAction).mock.calls.filter(([options]) => options.actionName === "publish_message")).toHaveLength(
     calls.length,
   );
-  const pending = { id: 72, target_ref: "rabbitmq:1:1", action_name: "publish_message", status: "approval_pending" };
+  const pending = connectorApprovalFixture({
+    id: 72,
+    target_ref: "rabbitmq:1:1",
+    action_name: "publish_message",
+    status: "approval_pending",
+  });
+  observedApproval = pending;
   view.rerender(<QueueWorkspace approvals={{ state: "ready", data: [pending] }} />);
   expectPublishLocked();
+  observedApproval = { ...pending, status: "completed" };
   view.rerender(<QueueWorkspace approvals={{ state: "ready", data: [{ ...pending, status: "completed" }] }} />);
+  expectPublishLocked();
+  await waitFor(() => expect(observations.pending).toBe(1));
+  await observations.advance();
+  expect(apiGet).toHaveBeenCalledWith(
+    "/api/connector-action-approvals/72",
+    expect.objectContaining({ workspaceBinding: mutationTestWorkspace, signal: expect.any(AbortSignal) }),
+  );
   await waitFor(() => expect(screen.getByRole("button", { name: "Back to detail" })).toBeEnabled());
   expect(screen.getByRole("textbox", { name: "Publish payload" })).toHaveValue("Owned payload");
 });

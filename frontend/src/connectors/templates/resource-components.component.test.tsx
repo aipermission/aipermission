@@ -145,6 +145,7 @@ it("drives the split Redis key and value surfaces", async () => {
   const user = userEvent.setup();
   const browser = {
     product: "Redis",
+    mutationLocked: false,
     keys: ["user:1"],
     selectedKeys: [],
     selectedCount: 0,

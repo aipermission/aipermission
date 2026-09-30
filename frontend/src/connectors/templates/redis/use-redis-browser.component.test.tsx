@@ -6,8 +6,15 @@ import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/sec
 import type { GuardedConnectorActionOptions } from "../_shared/action-runner";
 import type { RedisBrowserProps } from "./browser-types";
 import { errorMessage } from "../../../lib/errors";
+import { mutationTestWorkspace, setupMutationRetryStorage } from "../../../test/connector-mutation-test-state";
 
-vi.mock("../_shared/action-runner", () => ({ runGuardedConnectorAction: vi.fn() }));
+setupMutationRetryStorage();
+vi.mock("../../../lib/api", () => ({ apiGet: vi.fn(async () => []), currentWorkspaceBinding: () => mutationTestWorkspace }));
+
+vi.mock("../_shared/action-runner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../_shared/action-runner")>()),
+  runGuardedConnectorAction: vi.fn(),
+}));
 
 type MockActionOptions = GuardedConnectorActionOptions & { input: Record<string, unknown> };
 type ActionResolver = (_response: ConnectorActionResponse | null) => void;
@@ -37,7 +44,7 @@ beforeEach(() => {
 function renderBrowser({ active = false } = {}) {
   const props: RedisBrowserProps = {
     target: { ref: "redis:1:1", connector_kind: "redis", config: {} },
-    approvals: { data: [] },
+    approvals: { state: "ready", data: [] },
     session: { active, startedAt: active ? "2026-09-07T12:00:00Z" : "" },
     onRefreshActivity: vi.fn(),
   };
@@ -45,8 +52,9 @@ function renderBrowser({ active = false } = {}) {
 }
 
 describe("useRedisBrowser", () => {
-  it("drops pending writes and stale status when the target changes", () => {
+  it("drops pending writes and stale status when the target changes", async () => {
     const hook = renderBrowser();
+    await waitFor(() => expect(hook.result.current.mutationLocked).toBe(false));
     act(() => {
       hook.result.current.setNewKey("session:key");
       hook.result.current.setNewValue("value");
@@ -223,6 +231,7 @@ describe("useRedisBrowser", () => {
         pending.set(String(input.key), { resolve, reject });
       });
     const hook = renderBrowser();
+    await waitFor(() => expect(hook.result.current.mutationLocked).toBe(false));
     act(() => {
       hook.result.current.setNewKey("old");
       hook.result.current.setNewValue("old value");
@@ -231,6 +240,7 @@ describe("useRedisBrowser", () => {
     act(() => void hook.result.current.confirmPendingAction());
     await waitFor(() => expect(pending.has("old")).toBe(true));
     hook.rerender({ ...hook.props, target: { ref: "redis:2:2", config: {} } });
+    await waitFor(() => expect(hook.result.current.mutationLocked).toBe(false));
     act(() => {
       hook.result.current.setNewKey("current");
       hook.result.current.setNewValue("current value");
@@ -260,6 +270,7 @@ describe("useRedisBrowser", () => {
         finish = resolve;
       });
     const { result } = renderBrowser();
+    await waitFor(() => expect(result.current.mutationLocked).toBe(false));
     act(() => {
       result.current.setNewKey("key");
       result.current.setNewValue("value");

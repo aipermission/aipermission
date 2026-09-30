@@ -173,6 +173,17 @@ key, keyed signature, and reservation/revision metadata; raw action input and
 credential values do not enter browser storage. See the canonical
 [browser retry ledger contract](../api/rest-api.md#history-and-connector-approvals).
 
+For write dialogs, reuse `useConnectorMutationOwnership` from the shared
+template directory and supply the connector's write-action names. Run writes
+through its `run` callback and pass `exclusiveMutationActions` to the shared
+action runner; this reserves ownership atomically before dispatch. Keep
+ownership scoped to workspace and full `target_ref`, not a view, draft,
+selected resource, or presentation session. Do not reset it when a dialog
+closes or a read fails. The shared observer only releases confirmed terminal
+requests; unknown outcomes retain their ledger identity for explicit operator
+reconciliation. Add component tests for lost replies, remounts, draft changes,
+workspace changes, and simultaneous admissions.
+
 `ActionResult.Output` may use a typed Go struct, map, slice, pointer, or custom
 JSON marshaler, but it must encode as JSON. Before persistence or external
 projection, the gateway converts it to canonical JSON primitives, recursively

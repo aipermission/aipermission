@@ -31,7 +31,7 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   }
 
   async function runWrite(channel: string, operation: () => Promise<unknown>, onSuccess: () => Promise<unknown>) {
-    if (submitting.current) return;
+    if (submitting.current || browser.mutationLocked) return;
     const request = requestGuard.begin("write");
     submitting.current = true;
     setPendingWrite(channel);
@@ -48,6 +48,7 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   }
 
   function openPublishDialog() {
+    if (browser.mutationLocked) return;
     invalidateWrite();
     const firstPartition = browser.activeDetail?.partitions?.[0]?.partition ?? 0;
     browser.setState({ state: "idle", error: "", message: "" });
@@ -55,7 +56,7 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   }
 
   async function publishMessage() {
-    if (submitting.current || !publishDialog.open) return;
+    if (submitting.current || browser.mutationLocked || !publishDialog.open) return;
     const form = publishDialog.form;
     const headers = parseHeaders(form.headers);
     if (headers.error) {
@@ -89,6 +90,7 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   }
 
   function openOffsetDialog() {
+    if (browser.mutationLocked) return;
     invalidateWrite();
     const first = offsetPartitions[0];
     const selection = first ? offsetSelectionValue(first) : "";
@@ -98,7 +100,7 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   }
 
   async function setConsumerGroupOffset() {
-    if (submitting.current || !offsetDialog.open) return;
+    if (submitting.current || browser.mutationLocked || !offsetDialog.open) return;
     const selected = parseOffsetSelection(offsetDialog.form.selection);
     if (!selected) {
       setOffsetDialog((current) => ({ ...current, error: "Choose one topic partition." }));
@@ -134,8 +136,8 @@ export function useKafkaWrites({ browser }: { browser: ReturnType<typeof useKafk
   return {
     publishDialog,
     offsetDialog,
-    publishPending: pendingWrite === "publish",
-    offsetPending: pendingWrite === "offset",
+    publishPending: pendingWrite === "publish" || browser.mutationLocked,
+    offsetPending: pendingWrite === "offset" || browser.mutationLocked,
     offsetPartitions,
     openPublishDialog,
     publishMessage,

@@ -20,6 +20,7 @@ export const emptyRedisConfirmDialog: Readonly<RedisConfirmState> = Object.freez
 export function useRedisMutations(options: RedisMutationOptions) {
   const {
     resetKey,
+    mutationLocked,
     product,
     activeKey,
     keyResult,
@@ -145,12 +146,13 @@ export function useRedisMutations(options: RedisMutationOptions) {
   }
 
   function openConfirm(value: Omit<RedisConfirmState, "open" | "pending" | "error">) {
+    if (mutationLocked) return;
     requests.invalidate("confirm");
     setConfirmDialog({ open: true, ...value, pending: false, error: "" });
   }
 
   async function confirmPendingAction() {
-    if (!confirmDialog.onConfirm || pendingAction.current?.isCurrent()) return;
+    if (mutationLocked || !confirmDialog.onConfirm || pendingAction.current?.isCurrent()) return;
     const request = requests.begin("confirm");
     pendingAction.current = request;
     setConfirmDialog((current) => ({ ...current, pending: true }));
@@ -168,7 +170,7 @@ export function useRedisMutations(options: RedisMutationOptions) {
   }
 
   return {
-    confirmDialog,
+    confirmDialog: { ...confirmDialog, pending: confirmDialog.pending || mutationLocked },
     closeConfirmDialog: () => {
       requests.invalidate("confirm");
       setConfirmDialog(emptyRedisConfirmDialog);

@@ -48,6 +48,8 @@ test("retry predicates reject malformed persisted data without property coercion
     { ...entry, request_id: 0 },
     { ...entry, target_ref: {} },
     { ...entry, action_name: "" },
+    { ...entry, mutation_guard: "true" },
+    { ...entry, mutation_guard: {} },
   ]) {
     assert.equal(validRetryEntry(value, scope.key), false);
   }

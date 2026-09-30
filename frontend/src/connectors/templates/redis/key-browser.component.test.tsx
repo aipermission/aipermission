@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiPost } from "../../../lib/api";
+import { apiGet, apiPost } from "../../../lib/api";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { connectorActionRequest, connectorApprovalFixture } from "../../../test/connector-action-fixtures";
 import { connectorConsoleTheme } from "../_shared/console-theme";
@@ -9,12 +9,20 @@ import { RedisConfirmDialog } from "./confirm-dialog";
 import { RedisKeyBrowser } from "./key-browser";
 import { useRedisBrowser } from "./use-redis-browser";
 import { RedisValueWorkspace } from "./value-workspace";
+import { mutationTestWorkspace, setupMutationRetryStorage } from "../../../test/connector-mutation-test-state";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+setupMutationRetryStorage();
+
+vi.mock("../../../lib/api", () => ({
+  apiPost: vi.fn(),
+  apiGet: vi.fn(async () => []),
+  currentWorkspaceBinding: () => mutationTestWorkspace,
+}));
 const stored = new Map<string, string>();
 const expiry = new Map<string, number>();
 
 beforeEach(() => {
+  vi.mocked(apiGet).mockReset().mockResolvedValue([]);
   stored.clear();
   stored.set("alpha", "Alpha value").set("beta", "Beta value").set("gamma", "Gamma value");
   expiry.clear();
@@ -68,7 +76,7 @@ function actionCalls() {
 
 function Workspace({
   serverFamily = "redis",
-  approvals = { data: [] },
+  approvals = { state: "ready", data: [] },
 }: {
   serverFamily?: string;
   approvals?: Parameters<typeof useRedisBrowser>[0]["approvals"];
@@ -170,6 +178,18 @@ it("removes selected keys only after the destructive dialog is confirmed", async
     expect.objectContaining({ action_name: "delete_keys", input: { keys: ["alpha", "beta"] } }),
     expect.anything(),
   );
+});
+
+it("disables destructive controls while a discovered write remains pending", async () => {
+  vi.mocked(apiGet).mockResolvedValueOnce([connectorApprovalFixture({ target_ref: "redis:1:1", action_name: "set_string" })]);
+  const user = userEvent.setup();
+  render(<Workspace />);
+  await screen.findByTitle("alpha");
+  await user.click(screen.getByRole("checkbox", { name: "Select alpha" }));
+  expect(screen.getByRole("button", { name: "Delete 1" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Delete 1" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(actionCalls().filter((item) => item.action_name === "delete_keys")).toEqual([]);
 });
 
 it("edits a string and TTL through the real confirmation and reload flow", async () => {

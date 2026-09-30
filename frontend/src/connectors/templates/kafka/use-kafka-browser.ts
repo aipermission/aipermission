@@ -1,11 +1,15 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { currentWorkspaceBinding } from "../../../lib/api";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
+import { useConnectorMutationOwnership } from "../_shared/use-connector-mutation-ownership";
 import { detailMatchesSelection } from "./console-helpers";
 import { kafkaOutputDetail, kafkaOutputResources } from "./resource-output";
 import type { KafkaBrowserProps, KafkaDetail, KafkaResource, KafkaView } from "./console-types";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 
 const defaultRead = Object.freeze({ partition: "0", start_position: "recent", offset: "0", max_records: "20" });
+const mutationActions = ["publish_message", "set_consumer_group_offset"] as const;
 
 export function useKafkaBrowser({ target, approvals, session, onRefreshActivity }: KafkaBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -20,8 +24,9 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
   const [messages, setMessages] = useState<unknown>(null);
   const [readForm, setReadForm] = useState<{ partition: string; start_position: string; offset: string; max_records: string }>(defaultRead);
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
-  const scopeKey = `${target.ref}:${activeSession.startedAt || "inactive"}`;
+  const scopeKey = `${currentWorkspaceBinding()}:${target.ref}:${activeSession.startedAt || "inactive"}`;
   const requestGuard = useRequestGuard(scopeKey);
+  const mutationsOwner = useConnectorMutationOwnership(target.ref, mutationActions, approvals?.state);
   const items = view === "topics" ? topics : groups;
   const filteredItems = useMemo(() => filterItems(items, query), [items, query]);
   const activeDetail = detailMatchesSelection(detailIdentity, view, selectedName) ? detail : null;
@@ -51,18 +56,22 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
 
   async function runAction(actionName: string, input: Record<string, unknown>, reason: string, busy = "loading", channel = actionName) {
     try {
-      const item = await runGuardedConnectorAction({
-        requestGuard,
-        channel,
-        targetRef: target.ref,
-        actionName,
-        input,
-        reason,
-        busy,
-        product,
-        setState,
-        onRefreshActivity,
-      });
+      const execute = (onPending?: (_item: ConnectorActionResponse) => void) =>
+        runGuardedConnectorAction({
+          requestGuard,
+          channel,
+          targetRef: target.ref,
+          actionName,
+          input,
+          reason,
+          busy,
+          product,
+          setState,
+          onRefreshActivity,
+          onPending,
+          exclusiveMutationActions: mutationActions.some((name) => name === actionName) ? mutationActions : undefined,
+        });
+      const item = mutationActions.some((name) => name === actionName) ? await mutationsOwner.run(execute) : await execute();
       return item?.output || null;
     } catch {
       return null;
@@ -165,6 +174,7 @@ export function useKafkaBrowser({ target, approvals, session, onRefreshActivity 
     state,
     setState,
     latestAction,
+    mutationLocked: mutationsOwner.locked,
     refreshList,
     changeView,
     selectItem,

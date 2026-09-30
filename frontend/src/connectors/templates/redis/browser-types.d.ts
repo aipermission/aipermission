@@ -11,7 +11,7 @@ export type RedisKeyResult = {
   truncated?: boolean;
   [field: string]: unknown;
 };
-export type RedisActionOptions = Pick<GuardedConnectorActionOptions, "actionName" | "reason" | "input" | "busy" | "channel">;
+export type RedisActionOptions = Pick<GuardedConnectorActionOptions, "actionName" | "reason" | "input" | "busy" | "channel" | "onPending">;
 export type RedisRunAction = (_options: RedisActionOptions) => Promise<ConnectorActionResponse | null>;
 export type RedisConfirmState = {
   open: boolean;
@@ -30,13 +30,14 @@ export type RedisBrowserProps = {
     connector_kind?: string;
     config?: { server_family?: string; host?: string; port?: string | number; database?: string | number; connection_mode?: string };
   };
-  approvals?: { data?: { target_ref?: string; display_text?: string; status?: string; action_name?: string }[] };
+  approvals?: { state?: string; data?: { target_ref?: string; display_text?: string; status?: string; action_name?: string }[] };
   session?: { active: boolean; startedAt?: string } | null;
   onRefreshActivity?: () => unknown;
 };
 export type RedisStyles = ReturnType<typeof connectorConsoleTheme>;
 export type RedisMutationOptions = {
   resetKey: string;
+  mutationLocked: boolean;
   product: string;
   activeKey: string;
   keyResult: RedisKeyResult | null;

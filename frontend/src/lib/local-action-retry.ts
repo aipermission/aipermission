@@ -37,13 +37,19 @@ export type LegacyRetryEntry = {
 };
 export type RetryListEntry = RetryEntry | LegacyRetryEntry;
 
-export async function prepareLocalActionRetry(body: unknown, options: { workspaceID?: string } = {}): Promise<PreparedRetry> {
+export async function prepareLocalActionRetry(
+  body: unknown,
+  options: { workspaceID?: string; exclusiveMutationActions?: readonly string[] } = {},
+): Promise<PreparedRetry> {
   const scope = currentRetryScope(options.workspaceID);
   assertNoLegacyLedger(scope);
   const signedRequest = await requestSignature(scope, body || {});
   let reservationActive = true;
   try {
     let existing = await getEntry(scope, signedRequest.signature);
+    const subject = requestSubject(body, options.exclusiveMutationActions);
+    if (subject.mutation_guard && existing && (existing.state === "pending" || existing.state === "outcome_unknown"))
+      throw retryIdentityChangedError();
     let reconciled = false;
     if (existing?.state === "outcome_unknown") {
       const confirmed = await requestReconciliation(existing);
@@ -55,7 +61,13 @@ export async function prepareLocalActionRetry(body: unknown, options: { workspac
       existing = await replaceReconciledEntry(scope, existing);
       reconciled = true;
     }
-    const reservation = await reserveEntry(scope, signedRequest.signature, signedRequest.reservationID);
+    const reservation = await reserveEntry(
+      scope,
+      signedRequest.signature,
+      signedRequest.reservationID,
+      subject,
+      options.exclusiveMutationActions,
+    );
     reservationActive = false;
     return {
       scope,
@@ -68,6 +80,19 @@ export async function prepareLocalActionRetry(body: unknown, options: { workspac
   } finally {
     if (reservationActive) await releaseSigningReservation(scope, signedRequest.reservationID);
   }
+}
+
+function requestSubject(value: unknown, actions?: readonly string[]): Pick<RetryEntry, "target_ref" | "action_name" | "mutation_guard"> {
+  const request = objectRecord(value);
+  if (request?.path !== "/api/connector-actions/local-run") return {};
+  const body = objectRecord(request.body);
+  if (typeof body?.target_ref !== "string" || !/^[a-z][a-z0-9_-]*:[1-9]\d*:[1-9]\d*$/.test(body.target_ref)) return {};
+  if (typeof body.action_name !== "string" || !/^[a-z][a-z0-9_]*$/.test(body.action_name)) return {};
+  return {
+    target_ref: body.target_ref,
+    action_name: body.action_name,
+    ...(actions?.includes(body.action_name) ? { mutation_guard: true } : {}),
+  };
 }
 
 export async function markLocalActionRetryOutcome(prepared: unknown, value: unknown) {

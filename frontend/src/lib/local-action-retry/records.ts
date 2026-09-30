@@ -29,6 +29,7 @@ export type RetryEntry = {
   request_id?: number | null;
   target_ref?: string;
   action_name?: string;
+  mutation_guard?: boolean;
   operation_ref?: string;
   [field: string]: unknown;
 };
@@ -96,10 +97,17 @@ export function validRetryEntry(value: unknown, scope: string, signature = ""): 
     Number.isSafeInteger(entry.revision) &&
     entry.revision > 0 &&
     validRequestIdentityMetadata(entry) &&
+    (entry.mutation_guard === undefined || typeof entry.mutation_guard === "boolean") &&
     (entry.operation_ref === undefined || (typeof entry.operation_ref === "string" && entry.operation_ref.length <= 128)) &&
     typeof entry.created_at === "string" &&
     typeof entry.updated_at === "string"
   );
+}
+
+export function retryEntryBlocksMutation(entry: RetryEntry, targetRef: string, actionNames?: readonly string[]) {
+  if (entry.state === "retired") return false;
+  if (!entry.target_ref || !entry.action_name) return true;
+  return entry.target_ref === targetRef && (entry.mutation_guard === true || Boolean(actionNames?.includes(entry.action_name)));
 }
 
 function validRequestIdentityMetadata(entry: Record<string, unknown>) {
