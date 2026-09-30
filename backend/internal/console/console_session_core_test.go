@@ -348,7 +348,7 @@ func TestConsoleSessionManagerUsesFreshObserveContextAfterExecutionTimeout(t *te
 		return run()
 	}
 
-	execCtx, cancelExec := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	execCtx, cancelExec := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancelExec()
 	result, err := manager.Exec(execCtx, token, session.runtimeID, "sleep 5")
 	if err != nil {

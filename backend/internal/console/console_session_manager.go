@@ -432,12 +432,18 @@ func (m *Manager) EnsureReady(ctx context.Context, principal executionprincipal.
 }
 
 func (m *Manager) implicitSession(ctx context.Context, principal executionprincipal.Principal, runtimeID int64) (*managedConsoleSession, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if session := m.activeForRuntime(runtimeID); session != nil {
 		return session, nil
 	}
 	lock := m.runtimeLifecycle(runtimeID)
 	lock.Lock()
 	defer lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if session := m.activeForRuntime(runtimeID); session != nil {
 		return session, nil
 	}
@@ -709,7 +715,12 @@ func (m *Manager) authorizeOperation(
 	if closed {
 		return ErrManagerClosed
 	}
-	protectedRun := func() error { return session.runAuthorizedWork(run) }
+	protectedRun := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return session.runAuthorizedWork(run)
+	}
 	if operation == OperationClose {
 		protectedRun = run
 	}
