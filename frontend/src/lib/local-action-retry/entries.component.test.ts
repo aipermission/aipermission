@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
-import { allEntries, getEntry, releaseEntryAttempt, replaceReconciledEntry, reserveEntry } from "./entries.ts";
+import { allEntries, getEntry, releaseEntryAttempt, replaceReconciledEntry, reserveEntry, updateEntryIfMatching } from "./entries.ts";
 import { reserveSigningKey } from "./signing.ts";
 import { openRetryDatabase, requestPromise, resetRetryStorage, transactionPromise } from "./storage.ts";
 import type { PreparedRetry } from "./records.ts";
@@ -55,5 +55,21 @@ describe("typed retry entry storage", () => {
     expect(replacement.key).not.toBe(entry.key);
     await expect(replaceReconciledEntry(scope, entry)).rejects.toThrow("retry identity changed");
     expect(await getEntry(scope, signature)).toEqual(replacement);
+  });
+
+  it.each(["indexeddb", "memory"])("%s rejects reservation after a previously observed pending entry became unknown", async (storage) => {
+    if (storage === "memory") vi.stubGlobal("window", undefined);
+    const { entry, attempt } = await reserve();
+    const prepared: PreparedRetry = {
+      scope,
+      signature,
+      idempotencyKey: entry.key,
+      revision: entry.revision,
+      attemptID: attempt.id,
+      reused: false,
+    };
+    await updateEntryIfMatching(prepared, (current) => ({ ...current, state: "outcome_unknown", revision: current.revision + 1 }));
+    await expect(reserve()).rejects.toThrow("retry identity changed");
+    expect(await getEntry(scope, signature)).toMatchObject({ state: "outcome_unknown", key: entry.key });
   });
 });

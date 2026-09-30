@@ -1449,8 +1449,15 @@ IndexedDB ledger. Cross-tab reservations are transactional, and request
 signatures use a non-extractable origin-local HMAC key rather than persisting
 raw request input. The ledger is scoped by an opaque per-installation database
 identity that remains stable across rename but rotates when a database copy is
-imported or restored. Transport failures reuse the same identity on the next
-identical submission. An `outcome_unknown` identity is never discarded automatically:
+imported or restored. Transport failures and acknowledged `running` or
+`approval_pending` connector actions reuse the same identity on the next
+identical submission, including browser storage reconnection. A pending reply
+records the request ID but does not count as terminal completion. Only a
+definitive terminal replay releases that identity. Overlapping attempts merge
+their observations atomically without replacing the idempotency key: pending
+replies cannot downgrade an unknown outcome, and a terminal identity stays
+retired until its remaining attempts drain. A different terminal request ID
+cannot release the protected identity. An `outcome_unknown` identity is never discarded automatically:
 the operator must inspect History and external state, then explicitly mark it
 reconciled in Settings or confirm that the next identical submission is a new
 external attempt. Browser storage corruption also fails closed and requires an

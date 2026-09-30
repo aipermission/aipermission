@@ -12,6 +12,7 @@ export type NativeSaveHandle = { createWritable: () => Promise<NativeFileWriter>
 export type SaveFilePicker = (_options: { suggestedName: string }) => Promise<NativeSaveHandle>;
 export type PostPolicy = {
   acknowledged?: (_data: unknown) => boolean;
+  pending?: (_data: unknown) => boolean;
   retireOnError?: (_error: unknown) => boolean;
   invalidResponseMessage: string;
 };
