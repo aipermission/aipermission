@@ -105,6 +105,10 @@ func DataRuntime(workspace Workspace, kind string) connectorapi.ConnectorDataRun
 	return connectortransport.DataRuntime(workspace.runtime, kind)
 }
 
+func ScopedResourceRuntime(workspace Workspace, kind string) connectorapi.ScopedResourceRuntime {
+	return connectortransport.ScopedResourceRuntime(workspace.runtime, kind)
+}
+
 func LiveRuntime(workspace Workspace, kind string) connectorapi.LiveConsoleRuntime {
 	return connectortransport.LiveRuntime(workspace.runtime, kind)
 }

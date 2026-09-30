@@ -202,15 +202,15 @@ func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *Work
 		command := connectorports.CommandTransport(workspace, adapterFor, application.trust)
 		capabilities[command.ConnectorRuntimeCapability()] = command
 	}
-	adapter, _ := application.adapters.For(kind).(connectorapi.RuntimeAdapter)
-	if adapter != nil {
-		gateway, runtime := application.ports.RuntimeActionPorts(workspace, kind)
-		var err error
-		capabilities, err = mergeRuntimeCapabilities(capabilities, adapter.RuntimeCapabilities(gateway, runtime))
-		if err != nil {
-			log.Printf("connector runtime capabilities rejected kind=%s error=%v", kind, err)
-			return nil
-		}
+	capabilities, err := composeAdapterCapabilities(
+		capabilities, application.adapters.For(kind), connectorports.ScopedResourceRuntime(workspace, kind),
+		func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
+			return application.ports.RuntimeActionPorts(workspace, kind)
+		},
+	)
+	if err != nil {
+		log.Printf("connector runtime capabilities rejected kind=%s error=%v", kind, err)
+		return nil
 	}
 	if len(capabilities) == 0 {
 		return nil

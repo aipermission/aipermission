@@ -190,9 +190,8 @@ type EventSink interface {
 	Emit(ctx context.Context, event ActionEvent) error
 }
 
-// RuntimeCapability is implemented by connector-owned live/runtime services
-// that are injected only for reviewed gateway adapters. Structured connectors
-// should normally not need a runtime capability.
+// RuntimeCapability is implemented by reviewed transport, live-runtime and
+// connector-owned durable resource services. It never exposes the raw gateway.
 type RuntimeCapability interface {
 	ConnectorRuntimeCapability() string
 }
@@ -280,10 +279,9 @@ type RuntimeContext struct {
 	Secrets   SecretAccessor
 	Events    EventSink
 	Principal Principal
-	// Capabilities is reserved for gateway-owned runtime adapters that need
-	// live transports, file transfer, or other long-lived resources. Normal
-	// structured connectors should use Target, Profile, Secrets, and their own
-	// client code instead of depending on gateway internals.
+	// Capabilities contains reviewed transport or connector-owned runtime and
+	// persistent resource services. Structured connectors still own their protocol
+	// client code and must not depend on raw gateway internals.
 	Capabilities RuntimeCapabilityResolver
 }
 
