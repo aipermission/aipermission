@@ -358,6 +358,10 @@ func shellQuote(value string) string {
 
 func removeAuthorizedKeyCommand(publicKey string) string {
 	blob := publicKeyBlob(publicKey)
+	keyType := ""
+	if fields := strings.Fields(publicKey); len(fields) >= 2 {
+		keyType = fields[0]
+	}
 	delimiter := "__AIPERMISSION_AUTHORIZED_KEY__"
 	for strings.Contains(blob, "\n"+delimiter+"\n") {
 		delimiter += "_X"
@@ -392,21 +396,7 @@ count=""
 trap 'rm -f "$tmp"; [ -z "$count" ] || rm -f "$count"' 0
 trap 'exit 1' 1 2 3 15
 count="$(mktemp "$ssh_dir/.authorized_keys.count.XXXXXXXX")"
-awk -v key_blob="$KEY_BLOB" '
-BEGIN { removed = 0 }
-{
-  keep = 1
-  for (i = 1; i <= NF; i++) {
-    if ($i == key_blob) {
-      keep = 0
-      removed++
-      break
-    }
-  }
-  if (keep) print
-}
-END { print removed > "/dev/stderr" }
-' "$key_file" 2>"$count" > "$tmp"
+awk -v key_blob="$KEY_BLOB" -v key_type=` + shellQuote(keyType) + ` '` + authorizedKeyIdentityFilter + `' "$key_file" 2>"$count" > "$tmp"
 removed="$(cat "$count")"
 case "$removed" in
   ''|*[!0-9]*) echo "remote key uninstall failed: invalid removal count" >&2; exit 1 ;;

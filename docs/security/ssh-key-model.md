@@ -97,6 +97,13 @@ atomically replaces `authorized_keys` only after the complete filtered file is
 ready. It rejects symlinked or non-owned key paths rather than risking a
 partial rewrite. If the remote shell lacks the required file tools or the
 replacement fails, the original key file and local target remain unchanged.
+Only the key type and blob fields identify a removal candidate; matching text
+inside a comment or quoted option does not. The option scanner follows OpenSSH's
+quote-escape and space/tab boundaries, preserving CRLF lines that are retained.
+Unclosed field quotes, interior field carriage returns, or a matching candidate with
+unsupported option syntax stop publication without confirming absence. This
+syntax check is not a replacement for OpenSSH's authorization-option policy
+validation; ambiguous cleanup requires external verification and reconciliation.
 
 ## Security Boundary
 
