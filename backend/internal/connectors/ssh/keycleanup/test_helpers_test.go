@@ -143,7 +143,7 @@ func beginTest(t *testing.T, journal *Journal, identity Identity) Entry {
 func seedTestEntry(t *testing.T, store *memoryStore, record Record) Entry {
 	t.Helper()
 	var err error
-	record.Version = 1
+	record.Version = recordVersion
 	record.Generation, err = newGeneration()
 	if err != nil {
 		t.Fatal(err)

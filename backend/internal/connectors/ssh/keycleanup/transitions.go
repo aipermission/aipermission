@@ -21,22 +21,29 @@ func (journal *Journal) Confirm(ctx context.Context, expected Entry) (Entry, err
 	})
 }
 
-// Attest records a human's external verification of key absence for the current
-// identity. It does not authenticate, execute a cleanup command, or erase history.
-func (journal *Journal) Attest(ctx context.Context, expected Entry, current Identity, reason string) (Entry, error) {
-	if err := current.validate(); err != nil {
+// Attest records explicit external absence evidence for every historical and
+// selected location. The caller must recompute/bind the current deletion context
+// under lifecycle exclusion. This never authenticates or erases earlier proof.
+func (journal *Journal) Attest(ctx context.Context, expected Entry, decision Attestation) (Entry, error) {
+	if err := expected.Record.validate(); err != nil {
 		return Entry{}, err
 	}
-	if !expected.Record.overlaps(current) {
+	if err := decision.Identity.validate(); err != nil {
+		return Entry{}, err
+	}
+	if !expected.Record.overlaps(decision.Identity) {
 		return Entry{}, errors.New("SSH key revocation attestation identity does not match")
 	}
-	reason = strings.TrimSpace(reason)
-	if err := validateReason(reason); err != nil {
+	decision.Reason = strings.TrimSpace(decision.Reason)
+	if err := validateReason(decision.Reason); err != nil {
+		return Entry{}, err
+	}
+	if err := validateEvidence(expected.Record, decision); err != nil {
 		return Entry{}, err
 	}
 	return journal.transition(ctx, expected, func(record *Record) error {
 		record.Status = Attested
-		record.Attestations = append(record.Attestations, Attestation{Identity: current, Reason: reason})
+		record.Attestations = append(record.Attestations, decision)
 		return nil
 	})
 }

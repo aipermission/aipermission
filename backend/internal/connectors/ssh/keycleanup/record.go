@@ -15,7 +15,8 @@ import (
 
 const ResourceKind = "key_revocation"
 
-const recordType = "key_revocation.v1"
+const recordType = "key_revocation.v2"
+const recordVersion = 2
 
 type Status string
 
@@ -39,8 +40,10 @@ type Record struct {
 }
 
 type Attestation struct {
-	Identity Identity `json:"identity"`
-	Reason   string   `json:"reason"`
+	Identity      Identity          `json:"identity"`
+	ContextDigest string            `json:"deletion_context_digest"`
+	Coverage      []AbsenceEvidence `json:"coverage"`
+	Reason        string            `json:"reason"`
 }
 
 type Entry struct {
@@ -57,7 +60,7 @@ func newGeneration() (string, error) {
 }
 
 func (record Record) validate() error {
-	if record.Version != 1 {
+	if record.Version != recordVersion {
 		return errors.New("unsupported SSH key revocation record version")
 	}
 	if err := record.Identity.validate(); err != nil {
@@ -86,6 +89,9 @@ func (record Record) validate() error {
 			prefix := Record{Identity: record.Identity, Attestations: record.Attestations[:index]}
 			if !prefix.overlaps(attestation.Identity) {
 				return errors.New("disconnected SSH key revocation attestation identity")
+			}
+			if err := validateEvidence(prefix, attestation); err != nil {
+				return err
 			}
 		}
 	default:

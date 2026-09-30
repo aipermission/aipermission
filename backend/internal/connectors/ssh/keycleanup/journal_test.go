@@ -94,7 +94,7 @@ func TestJournalAttestationIsGenerationAndCurrentSnapshotBound(t *testing.T) {
 	intent := beginTest(t, journal, identity)
 	current := testIdentity(t)
 	current.Profiles[0].KeyID++
-	attested, err := journal.Attest(ctx, intent, current, " Verified absence in the provider console ")
+	attested, err := journal.Attest(ctx, intent, decisionForTest(t, intent, current, " Verified absence in the provider console "))
 	if err != nil || attested.Record.Status != Attested || len(attested.Record.Attestations) != 1 || attested.Record.Attestations[0].Reason != "Verified absence in the provider console" {
 		t.Fatalf("attestation = %#v, %v", attested, err)
 	}
@@ -104,7 +104,7 @@ func TestJournalAttestationIsGenerationAndCurrentSnapshotBound(t *testing.T) {
 	if _, dispatch, err := journal.Begin(ctx, identity); dispatch || !errors.Is(err, ErrReconciliationRequired) {
 		t.Fatalf("attestation applied to old snapshot: %t, %v", dispatch, err)
 	}
-	if _, err := journal.Attest(ctx, intent, current, "repeat"); !errors.Is(err, ErrStaleGeneration) {
+	if _, err := journal.Attest(ctx, intent, decisionForTest(t, intent, current, "repeat")); !errors.Is(err, ErrStaleGeneration) {
 		t.Fatalf("stale attestation = %v", err)
 	}
 	current.TargetRevision = "another snapshot"
@@ -118,11 +118,11 @@ func TestJournalAttestationRejectsUnrelatedIdentityOrMissingReason(t *testing.T)
 	intent := beginTest(t, journal, testIdentity(t))
 	current := testIdentity(t)
 	current.KeyDigest = testDigest(t, "another key")
-	if _, err := journal.Attest(context.Background(), intent, current, "confirmed"); err == nil {
+	if _, err := journal.Attest(context.Background(), intent, decisionForTest(t, intent, current, "confirmed")); err == nil {
 		t.Fatal("unrelated key was attested")
 	}
 	for _, reason := range []string{"", "   ", string(make([]byte, 2001))} {
-		if _, err := journal.Attest(context.Background(), intent, testIdentity(t), reason); err == nil {
+		if _, err := journal.Attest(context.Background(), intent, decisionForTest(t, intent, testIdentity(t), reason)); err == nil {
 			t.Fatal("invalid reason was accepted")
 		}
 	}

@@ -67,7 +67,7 @@ func (journal *Journal) Begin(ctx context.Context, identity Identity) (entry Ent
 	if err != nil {
 		return Entry{}, false, err
 	}
-	record := Record{Version: 1, Identity: identity, Generation: generation, Status: Intent}
+	record := Record{Version: recordVersion, Identity: identity, Generation: generation, Status: Intent}
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return Entry{}, false, err
