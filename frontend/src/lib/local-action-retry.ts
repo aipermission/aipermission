@@ -73,15 +73,19 @@ export async function prepareLocalActionRetry(body: unknown, options: { workspac
 export async function markLocalActionRetryOutcome(prepared: unknown, value: unknown) {
   if (!validPreparedRetry(prepared)) return;
   const data = objectRecord(value);
-  const changed = await updateEntryIfMatching(prepared, (entry) => ({
-    ...entry,
-    state: "outcome_unknown",
-    revision: entry.revision + 1,
-    request_id: typeof data?.request_id === "number" && Number.isSafeInteger(data.request_id) ? data.request_id : null,
-    operation_ref: localActionOperationRef(data),
-    assistant_hint: String(data?.assistant_hint || "").slice(0, 1024),
-    updated_at: new Date().toISOString(),
-  }));
+  const changed = await updateEntryIfMatching(
+    prepared,
+    (entry) => ({
+      ...entry,
+      state: "outcome_unknown",
+      revision: entry.revision + 1,
+      ...acknowledgedRequestIdentity(entry, data, true),
+      operation_ref: localActionOperationRef(data) || entry.operation_ref,
+      assistant_hint: String(data?.assistant_hint || entry.assistant_hint || "").slice(0, 1024),
+      updated_at: new Date().toISOString(),
+    }),
+    true,
+  );
   if (changed) return;
   const current = await getEntry(prepared.scope, prepared.signature);
   if (
@@ -102,9 +106,9 @@ function localActionOperationRef(data: Record<string, unknown> | null) {
   return "";
 }
 
-export async function completeLocalActionRetry(prepared: unknown) {
+export async function completeLocalActionRetry(prepared: unknown, acknowledgedTerminal = false, requestID?: number) {
   if (!validPreparedRetry(prepared)) return;
-  return completeEntryAttempt(prepared);
+  return completeEntryAttempt(prepared, acknowledgedTerminal, requestID);
 }
 
 export async function releaseLocalActionRetryAttempt(prepared: unknown) {
@@ -117,13 +121,19 @@ export async function retireLocalActionRetryAttempt(prepared: unknown) {
   return retireEntryAttempt(prepared);
 }
 
-export async function preserveLocalActionRetryAttempt(prepared: unknown) {
+export async function preserveLocalActionRetryAttempt(prepared: unknown, value?: unknown) {
   if (!validPreparedRetry(prepared)) return;
-  const changed = await updateEntryIfMatching(prepared, (entry) => ({
-    ...entry,
-    revision: entry.revision + 1,
-    updated_at: new Date().toISOString(),
-  }));
+  const data = objectRecord(value);
+  const changed = await updateEntryIfMatching(
+    prepared,
+    (entry) => ({
+      ...entry,
+      ...acknowledgedRequestIdentity(entry, data),
+      revision: entry.revision + 1,
+      updated_at: new Date().toISOString(),
+    }),
+    true,
+  );
   if (changed) return;
   const current = await getEntry(prepared.scope, prepared.signature);
   if (
@@ -134,6 +144,15 @@ export async function preserveLocalActionRetryAttempt(prepared: unknown) {
     return;
   }
   throw retryIdentityChangedError();
+}
+
+function acknowledgedRequestIdentity(entry: RetryEntry, data: Record<string, unknown> | null, retainConflicting = false) {
+  if (typeof data?.request_id !== "number" || !Number.isSafeInteger(data.request_id) || data.request_id < 1) return {};
+  if (entry.request_id != null && entry.request_id !== data.request_id) {
+    if (retainConflicting) return {};
+    throw retryIdentityChangedError();
+  }
+  return { request_id: data.request_id };
 }
 
 export async function listLocalActionRetryEntries(): Promise<RetryListEntry[]> {

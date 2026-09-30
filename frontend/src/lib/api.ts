@@ -66,8 +66,12 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
     if (response.ok && prepared.acknowledged && !prepared.acknowledged(data)) {
       throw new Error(prepared.invalidResponseMessage);
     }
-    if (prepared.retry && response.ok && objectRecord(data)?.status !== "outcome_unknown") {
-      await completeLocalActionRetry(prepared.retry);
+    if (prepared.retry && response.ok && prepared.pending?.(data)) {
+      await preserveLocalActionRetryAttempt(prepared.retry, data);
+      finalized = true;
+    } else if (prepared.retry && response.ok && objectRecord(data)?.status !== "outcome_unknown") {
+      const requestID = objectRecord(data)?.request_id;
+      await completeLocalActionRetry(prepared.retry, true, typeof requestID === "number" ? requestID : undefined);
       finalized = true;
     }
     if (prepared.retry && response.ok && objectRecord(data)?.status === "outcome_unknown") {
@@ -133,6 +137,7 @@ function idempotentPostPolicy(path: string, body: unknown): PostPolicy | null {
   if (path === "/api/connector-actions/local-run") {
     return {
       acknowledged: (data) => isAcknowledgedLocalActionResponse(data, body),
+      pending: (data) => objectRecord(data)?.status === "running" || objectRecord(data)?.status === "approval_pending",
       invalidResponseMessage: "Invalid connector action response from gateway.",
     };
   }

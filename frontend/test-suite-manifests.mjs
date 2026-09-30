@@ -104,7 +104,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/s3/use-s3-upload.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
   "src/connectors/templates/ssh/bulk-command-dialog.tsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.tsx"],
   "src/connectors/templates/ssh/operations.tsx": ["src/connectors/templates/ssh/console.component.test.tsx"],
-  "src/lib/api.ts": ["src/lib/gateway-contracts/api-transport.component.test.tsx"],
+  "src/lib/api.ts": ["src/lib/gateway-contracts/api-transport.component.test.tsx", "src/lib/api/pending-mutation.component.test.ts"],
   "src/lib/request-guard.ts": ["src/lib/request-guard.test.ts"],
   "src/lib/use-async-action.ts": ["src/lib/use-async-action.component.test.tsx"],
   "src/lib/load-project-options.ts": ["src/connectors/editor/use-connector-inventory.component.test.tsx"],

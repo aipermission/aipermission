@@ -31,6 +31,7 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
       let entry = entries.get(signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
+        if (entry.state === "outcome_unknown") throw retryIdentityChangedError();
         if (entry.state === "retired") {
           if (hasMemoryAttempts(entry.id)) throw retryIdentityChangedError();
           entries.delete(signature);
@@ -67,6 +68,7 @@ export async function reserveEntry(scope: RetryScope, signature: string, reserva
       let entry = await readStoredEntry(stores.entries, scope, signature);
       if (entry) {
         if (!validRetryEntry(entry, scope.key, signature)) throw storageError();
+        if (entry.state === "outcome_unknown") throw retryIdentityChangedError();
         if (entry.state === "retired") {
           if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) throw retryIdentityChangedError();
           await requestPromise(stores.entries.delete(id));
@@ -105,7 +107,11 @@ export async function getEntry(scope: RetryScope, signature: string) {
   return readStoredEntry(database.transaction(entriesStore).objectStore(entriesStore), scope, signature);
 }
 
-export async function updateEntryIfMatching(prepared: PreparedRetry, update: (_entry: RetryEntry) => RetryEntry) {
+export async function updateEntryIfMatching(
+  prepared: PreparedRetry,
+  update: (_entry: RetryEntry) => RetryEntry,
+  allowNewerRevision = false,
+) {
   if (!usesIndexedDB()) {
     return withMemoryTransaction(() => {
       const entries = memoryEntries.get(prepared.scope.key);
@@ -116,8 +122,7 @@ export async function updateEntryIfMatching(prepared: PreparedRetry, update: (_e
         cleanupRetiredMemoryEntry(prepared.scope, entries, entry);
         return true;
       }
-      if (!entries || !entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
-      if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
+      if (!entries || !matchingEntry(entry, prepared, allowNewerRevision)) return false;
       entries.set(prepared.signature, update(entry));
       notifyChanged();
       return true;
@@ -136,8 +141,7 @@ export async function updateEntryIfMatching(prepared: PreparedRetry, update: (_e
         await cleanupRetiredStoredEntry(stores, prepared.scope, id, entry);
         return true;
       }
-      if (!entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
-      if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
+      if (!matchingEntry(entry, prepared, allowNewerRevision)) return false;
       await requestPromise(stores.entries.put(update(entry)));
       return true;
     },
@@ -179,7 +183,7 @@ export async function retireEntryAttempt(prepared: PreparedRetry) {
   );
 }
 
-export async function completeEntryAttempt(prepared: PreparedRetry) {
+export async function completeEntryAttempt(prepared: PreparedRetry, acknowledgedTerminal = false, requestID?: number) {
   if (!prepared?.attemptID) return false;
   return mutateAfterReleasingAttempt(
     prepared,
@@ -188,8 +192,14 @@ export async function completeEntryAttempt(prepared: PreparedRetry) {
         cleanupRetiredMemoryEntry(prepared.scope, entries, entry);
         return true;
       }
-      if (!entries || !matchingEntry(entry, prepared)) return false;
-      if (hasMemoryAttempts(entry.id)) return false;
+      if (!entries || !matchingEntry(entry, prepared, acknowledgedTerminal)) return false;
+      if (acknowledgedTerminal) assertTerminalRequestIdentity(entry, requestID);
+      if (acknowledgedTerminal && entry.state !== "pending") return false;
+      if (hasMemoryAttempts(entry.id)) {
+        if (!acknowledgedTerminal) return false;
+        entries.set(entry.signature, terminalEntry(entry));
+        return true;
+      }
       entries.delete(prepared.signature);
       if (entries.size === 0) memoryEntries.delete(prepared.scope.key);
       removeUnusedMemorySigningKey(prepared.scope);
@@ -200,8 +210,14 @@ export async function completeEntryAttempt(prepared: PreparedRetry) {
         await cleanupRetiredStoredEntry(stores, prepared.scope, id, entry);
         return true;
       }
-      if (!matchingEntry(entry, prepared)) return false;
-      if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) return false;
+      if (!matchingEntry(entry, prepared, acknowledgedTerminal)) return false;
+      if (acknowledgedTerminal) assertTerminalRequestIdentity(entry, requestID);
+      if (acknowledgedTerminal && entry.state !== "pending") return false;
+      if ((await requestPromise(stores.attempts.index("entry_id").count(id))) > 0) {
+        if (!acknowledgedTerminal) return false;
+        await requestPromise(stores.entries.put(terminalEntry(entry)));
+        return true;
+      }
       await requestPromise(stores.entries.delete(id));
       await removeUnusedSigningKey(stores, prepared.scope.key);
       return true;
@@ -281,10 +297,19 @@ function attemptExpectation(prepared: PreparedRetry): AttemptExpectation {
   };
 }
 
-function matchingEntry(entry: RetryEntry | undefined, prepared: PreparedRetry): entry is RetryEntry {
-  if (!entry || entry.key !== prepared.idempotencyKey || entry.revision !== prepared.revision) return false;
+function matchingEntry(entry: RetryEntry | undefined, prepared: PreparedRetry, allowNewerRevision = false): entry is RetryEntry {
+  if (!entry || entry.key !== prepared.idempotencyKey) return false;
   if (!validRetryEntry(entry, prepared.scope.key, prepared.signature)) throw storageError();
-  return true;
+  return entry.revision === prepared.revision || (allowNewerRevision && entry.revision > prepared.revision);
+}
+
+function terminalEntry(entry: RetryEntry): RetryEntry {
+  // Retain the completed identity until overlapping attempts drain; late pending replies must not revive it.
+  return { ...entry, state: "retired", revision: entry.revision + 1, updated_at: new Date().toISOString() };
+}
+
+function assertTerminalRequestIdentity(entry: RetryEntry, requestID?: number) {
+  if (requestID !== undefined && entry.request_id != null && entry.request_id !== requestID) throw retryIdentityChangedError();
 }
 
 function retiredIdentity(entry: RetryEntry | undefined, prepared: PreparedRetry) {
