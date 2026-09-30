@@ -243,7 +243,7 @@ func TestConnectorCapabilityPortsStayLeastPrivilege(t *testing.T) {
 		{name: "runtime action gateway", value: (*RuntimeActionGateway)(nil), methods: []string{"ConnectorCreateAndRunDownloadBatch", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
 		{name: "file transfer gateway", value: (*FileTransferGateway)(nil), methods: []string{"ConnectorRuntimeCapabilities", "ConnectorTrustStorePath"}},
 		{name: "target deletion gateway", value: (*TargetDeletionGateway)(nil), methods: []string{"ConnectorDeleteTargetRecord", "ConnectorFinalizeDeletedTarget", "ConnectorRestartConsoleSession", "ConnectorTrustStorePath"}},
-		{name: "target operation gateway", value: (*TargetOperationGateway)(nil), methods: []string{"ConnectorTrustStorePath", "ConnectorWriteAudit"}},
+		{name: "target operation gateway", value: (*TargetOperationGateway)(nil), methods: []string{"ConnectorTrustStorePath", "ConnectorWriteAudit", "ConnectorWriteTargetAudit"}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

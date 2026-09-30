@@ -282,6 +282,7 @@ type TargetDeletionGateway interface {
 type TargetOperationGateway interface {
 	PeerIdentityGateway
 	ConnectorWriteAudit(ctx context.Context, actorType string, tokenID *int64, runtimeID int64, action string, payload any)
+	ConnectorWriteTargetAudit(ctx context.Context, action string, payload any) error
 }
 
 type Registry struct {

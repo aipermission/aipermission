@@ -228,6 +228,17 @@ reacquire it; missing admission ports or identity fail closed. Acquire any
 connector-owned snapshots only inside the admitted call, and do not release
 the admission before completing persistence or mutation reconciliation.
 
+For local human target management without an execution surface, use
+`TargetOperationGateway.ConnectorWriteTargetAudit(ctx, action, payload)`. The
+scoped gateway verifies the current public target/kind and supplies authoritative
+target metadata around the payload. It uses the required, redacted observation
+writer and returns persistence errors; it does not create a runtime surface or
+accept caller-selected actor/token/runtime identity. Keep runtime observations
+on `ConnectorWriteAudit` with a validated target-owned runtime ID. An audit
+failure after domain persistence is not rollback proof: expose uncertain outcome
+and observe the durable domain record instead of blindly replaying a mutation.
+Observation audit is not a replacement for the mutation owner's durable proof.
+
 New connectors such as HTTP API connectors should follow the
 target/profile/action path by default. If they need a capability beyond the
 shared action runner, design a reusable adapter contract first instead of

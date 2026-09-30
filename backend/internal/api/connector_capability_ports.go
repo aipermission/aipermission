@@ -47,6 +47,9 @@ func (s *Server) newConnectorRuntimeApplication() *gatewayinfra.ConnectorRuntime
 				Audit: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, actor string, tokenID *int64, runtimeID int64, action string, payload any) {
 					s.writeObservationAudit(ctx, runtime, actor, tokenID, runtimeID, action, payload)
 				},
+				TargetAudit: func(ctx context.Context, runtime *gatewayinfra.WorkspaceHandle, action string, payload any) error {
+					return s.writeAuditRequired(ctx, runtime, "user", nil, 0, action, payload)
+				},
 			},
 		},
 	)

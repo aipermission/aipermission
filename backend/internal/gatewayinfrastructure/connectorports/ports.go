@@ -53,9 +53,10 @@ type WorkspaceTransferPorts struct {
 }
 
 type WorkspaceTargetPorts struct {
-	Delete   func(context.Context, connectortargets.Target, map[string]any) error
-	Finalize func(context.Context, connectortargets.Target, string, map[string]any) (int64, error)
-	Audit    func(context.Context, string, *int64, int64, string, any)
+	Delete      func(context.Context, connectortargets.Target, map[string]any) error
+	Finalize    func(context.Context, connectortargets.Target, string, map[string]any) (int64, error)
+	Audit       func(context.Context, string, *int64, int64, string, any)
+	TargetAudit func(context.Context, string, any) error
 }
 
 type PortsDependencies struct {
