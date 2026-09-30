@@ -15,6 +15,7 @@ func FuzzBasicRedaction(f *testing.F) {
 	f.Add([]byte("Authorization: Bearer abc.def-123"))
 	f.Add([]byte(privateKeyBegin + "\nsecret\n" + privateKeyEnd))
 	f.Add([]byte("PWD=/home/developer/workspace"))
+	f.Add([]byte(`{"password":"synthetic-json-secret","stdout":"password=\"synthetic-json-secret\""}`))
 
 	f.Fuzz(func(t *testing.T, input []byte) {
 		if len(input) > 128<<10 {
@@ -24,15 +25,15 @@ func FuzzBasicRedaction(f *testing.F) {
 		secret := "fuzz_" + hex.EncodeToString(digest[:])
 		commonToken := "ghp_" + hex.EncodeToString(digest[:])
 		value := fmt.Sprintf(
-			"%s\npassword=%s\nAuthorization: Bearer %s\n%s\n%s\n%s\n%s",
-			string(input), secret, secret, commonToken, privateKeyBegin, secret, privateKeyEnd,
+			"%s\npassword=%s\nAuthorization: Bearer %s\n%s\n%s\n%s\n%s\n{\"password\":%q}",
+			string(input), secret, secret, commonToken, privateKeyBegin, secret, privateKeyEnd, secret,
 		)
 		redacted := RedactBasic(value)
 		if strings.Contains(redacted, secret) || strings.Contains(redacted, commonToken) {
 			t.Fatalf("synthetic secret survived redaction")
 		}
 		if repeated := RedactBasic(redacted); repeated != redacted {
-			t.Fatalf("basic redaction is not idempotent")
+			t.Fatalf("basic redaction is not idempotent: %q -> %q", redacted, repeated)
 		}
 		if len(redacted) > len(value)*4+1024 {
 			t.Fatalf("redacted output expanded unexpectedly: input=%d output=%d", len(value), len(redacted))

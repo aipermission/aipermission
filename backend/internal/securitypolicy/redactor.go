@@ -9,7 +9,7 @@ import (
 var (
 	privateKeyBlockPattern = regexp.MustCompile(`(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----`)
 	bearerTokenPattern     = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+/=-]+`)
-	namedSecretPattern     = regexp.MustCompile(`(?i)\b(password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|private[_-]?key)\b(\s*[:=]\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\[REDACTED(?: CREDENTIAL| VAULT VALUE| PRIVATE KEY)?\][^\s'";,]*|['"]?[^\s'"]+)`)
+	namedSecretPattern     = regexp.MustCompile(`(?i)\b(` + namedSecretKeys + `)\b(\s*[:=]\s*)('(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\[REDACTED(?: CREDENTIAL| VAULT VALUE| PRIVATE KEY)?\][^\s'";,]*|['"]?[^\s'"]+)`)
 	commonTokenPattern     = regexp.MustCompile(`\b(ghp|gho|ghu|ghs|github_pat|sk|xoxb|xoxp|xapp|ya29)[A-Za-z0-9_./=-]{16,}\b`)
 )
 
@@ -18,6 +18,7 @@ type compiledRule struct {
 }
 
 const redactionFailureMarker = "[REDACTED]"
+const namedSecretKeys = `password|passwd|pwd|token|api[_-]?key|secret|access[_-]?key|private[_-]?key`
 
 func (s *Service) Mode(ctx context.Context) string {
 	settings, err := s.ReadSettings(ctx)
@@ -110,6 +111,19 @@ func (s *Service) compiledRules(ctx context.Context) ([]compiledRule, error) {
 }
 
 func RedactBasic(value string) string {
+	// Masking malformed text can expose another recognized shape. Only return a
+	// stable projection; withhold ambiguous text if bounded normalization stalls.
+	for range 3 {
+		redacted := redactBasicJSONText(value, 0)
+		if redacted == value {
+			return value
+		}
+		value = redacted
+	}
+	return redactionFailureMarker
+}
+
+func redactBasicText(value string) string {
 	if value == "" {
 		return value
 	}
@@ -124,8 +138,7 @@ func RedactBasic(value string) string {
 		if parts[1] == "PWD" && strings.HasPrefix(secret, "/") {
 			return match
 		}
-		if secret == "[REDACTED]" || secret == "[REDACTED CREDENTIAL]" ||
-			secret == "[REDACTED VAULT VALUE]" || secret == "[REDACTED PRIVATE KEY]" {
+		if isRedactionMarker(secret) {
 			return match
 		}
 		return parts[1] + parts[2] + openingQuote + "[REDACTED]" + closingQuote
@@ -139,6 +152,11 @@ func RedactBasic(value string) string {
 		}
 		return prefix + "[REDACTED]"
 	})
+}
+
+func isRedactionMarker(value string) bool {
+	return value == "[REDACTED]" || value == "[REDACTED CREDENTIAL]" ||
+		value == "[REDACTED VAULT VALUE]" || value == "[REDACTED PRIVATE KEY]"
 }
 
 func namedSecretValue(value string) (secret, openingQuote, closingQuote string) {
