@@ -285,6 +285,8 @@ func executeReadMessages(ctx context.Context, runtime connectors.RuntimeContext,
 		ctx,
 		runtime,
 		kgo.ConsumePartitions(map[string]map[int32]kgo.Offset{req.Topic: {req.Partition: kgo.NewOffset().At(startOffset)}}),
+		// A bounded sample must fail if its selected range disappears, not rewind.
+		kgo.ConsumeResetOffset(kgo.NoResetOffset()),
 		kgo.FetchMaxBytes(fetchMaxBytes),
 		kgo.FetchMaxPartitionBytes(fetchMaxBytes),
 		kgo.MaxConcurrentFetches(1),
