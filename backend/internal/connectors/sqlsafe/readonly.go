@@ -89,22 +89,14 @@ func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
 			offset++
 			continue
 		}
-		first, end := postgresIdentifierAt(normalized, offset)
+		schema, name, end, parts := postgresIdentifierChainAt(normalized, offset)
 		cursor := skipSQLSpace(normalized, end)
-		schema, name := "", first
-		if cursor < len(normalized) && normalized[cursor] == '.' {
-			cursor = skipSQLSpace(normalized, cursor+1)
-			if cursor >= len(normalized) || !postgresIdentifierStart(normalized[cursor]) {
-				offset = end
-				continue
-			}
-			schema = first
-			name, end = postgresIdentifierAt(normalized, cursor)
-			cursor = skipSQLSpace(normalized, end)
-		}
 		if cursor >= len(normalized) || normalized[cursor] != '(' {
 			offset = end
 			continue
+		}
+		if parts > 2 {
+			return nil, fmt.Errorf("unsupported PostgreSQL function qualification: use an unqualified name or schema.function")
 		}
 		if schema == "" && strings.EqualFold(name, "explain") && strings.TrimSpace(normalized[:offset]) == "" {
 			offset = cursor + 1
@@ -123,6 +115,24 @@ func PostgreSQLFunctionCalls(sql string) ([]FunctionCall, error) {
 		offset = cursor + 1
 	}
 	return calls, nil
+}
+
+func postgresIdentifierChainAt(sql string, start int) (schema, name string, end, parts int) {
+	name, end = postgresIdentifierAt(sql, start)
+	parts = 1
+	for {
+		cursor := skipSQLSpace(sql, end)
+		if cursor >= len(sql) || sql[cursor] != '.' {
+			return schema, name, end, parts
+		}
+		cursor = skipSQLSpace(sql, cursor+1)
+		if cursor >= len(sql) || !postgresIdentifierStart(sql[cursor]) {
+			return schema, name, end, parts
+		}
+		schema = name
+		name, end = postgresIdentifierAt(sql, cursor)
+		parts++
+	}
 }
 
 func isPostgreSQLDeclarationList(sql string, identifierStart int, openParen int, schema string, cteSyntaxParens map[int]struct{}) bool {

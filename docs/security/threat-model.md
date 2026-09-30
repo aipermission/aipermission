@@ -189,6 +189,19 @@ Mitigations:
 - operator instructions tell agents to prefer readable, non-interactive command bodies
 - users can copy approval command text for external review before running it
 
+### Read-Only SQL Function Resolution
+
+Postgres read-only queries run in read-only transactions with catalog-only
+function resolution and a conservative approved-function list. The SQL scanner
+consumes complete qualified identifiers; function calls with three or more name
+parts are unsupported and rejected before execution. Use approved unqualified
+functions or explicit `pg_catalog.function` calls. Ordinary table/column paths
+are not rejected merely for having multiple parts.
+
+This is an action-policy boundary, not a replacement for database privileges.
+Use dedicated read-only profiles and review database extensions, casts, and
+other server-side execution capabilities.
+
 ### Process Memory And Local State
 
 Risk: a local process compromise reads backend memory or restarts the gateway to clear counters.
