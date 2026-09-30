@@ -74,6 +74,8 @@ func scanRecord(scanner interface{ Scan(...any) error }) (Record, error) {
 	if item.Status == "running" {
 		item.RetryAfterSeconds = 3
 		item.AssistantHint = RunningAssistantHint
+	} else if item.Status == "outcome_unknown" {
+		item.AssistantHint = commandObservationUnknown
 	}
 	return item, nil
 }

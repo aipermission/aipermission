@@ -13,10 +13,11 @@ import (
 )
 
 type testActiveSessions struct {
-	result     console.ExecResult
-	err        error
-	interrupts int
-	wait       func(context.Context) (console.ExecResult, error)
+	result       console.ExecResult
+	err          error
+	interrupts   int
+	interruptErr error
+	wait         func(context.Context) (console.ExecResult, error)
 }
 
 type transientCommandProjection struct {
@@ -86,7 +87,7 @@ func (s *testActiveSessions) InterruptActive(
 	console.SessionHandle,
 ) error {
 	s.interrupts++
-	return nil
+	return s.interruptErr
 }
 
 func TestRuntimeRedactsTerminalResultsBeforePersistence(t *testing.T) {
@@ -146,7 +147,7 @@ func TestRuntimeFinishesBackgroundCommandsAndInterruptsTimeouts(t *testing.T) {
 	}
 	owner.FinishActive(t.Context(), timedOutID, principal, console.SessionHandle{ID: 45, RuntimeID: runtimeID, Generation: 1})
 	timedOut, err := NewStore(database).Get(t.Context(), timedOutID, 0, "")
-	if err != nil || timedOut.Status != "error" || !strings.Contains(timedOut.Error, "timed out") || sessions.interrupts != 1 {
+	if err != nil || timedOut.Status != "outcome_unknown" || timedOut.SessionID == nil || *timedOut.SessionID != 45 || !strings.Contains(timedOut.Error, "timed out") || sessions.interrupts != 1 {
 		t.Fatalf("timed-out background request = %#v interrupts=%d err=%v", timedOut, sessions.interrupts, err)
 	}
 }

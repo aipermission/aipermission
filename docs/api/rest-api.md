@@ -556,7 +556,8 @@ count:
   "target_ids": [3, 4, 7],
   "command": "apt update",
   "reason": "weekly package metadata refresh",
-  "confirmation": "RUN ON 3 TARGETS"
+  "confirmation": "RUN ON 3 TARGETS",
+  "idempotency_key": "weekly-package-refresh-001"
 }
 ```
 
@@ -564,7 +565,20 @@ The backend validates duplicate IDs, command size, and confirmation text before
 creating history rows. Execution is limited to a small parallelism window so a
 large target selection does not fan out all SSH sessions at once. The response
 returns the command request IDs; poll `GET /api/console/command-requests/{id}`
-or use the History page for per-target output, exit code, error, and status:
+or use the History page for per-target output, exit code, error, and status.
+
+Replay an uncertain submission with its unchanged input and original
+`idempotency_key` to recover those request IDs without another dispatch. A
+post-dispatch observation failure is `outcome_unknown`, not an ordinary error;
+the command record retains the available session ID but withholds output that
+could not be authorized. A background timeout also remains uncertain even if
+an interrupt was sent, because interruption does not prove completion or rollback.
+Inspect that existing session and external state before starting a new attempt.
+If terminal persistence retries are exhausted, the running gateway retains a
+sanitized pending completion and available session ID for shutdown recovery;
+this does not guarantee recovery after process loss while storage is unwritable.
+
+A typical accepted response is:
 
 ```json
 {

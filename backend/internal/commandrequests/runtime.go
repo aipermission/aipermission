@@ -37,20 +37,21 @@ type RuntimeDependencies struct {
 }
 
 type Runtime struct {
-	store             *Store
-	codec             CommandCodec
-	projection        Projection
-	redact            Redactor
-	sessions          ActiveSessions
-	backgroundTimeout time.Duration
-	workerMu          sync.Mutex
-	workerCtx         context.Context
-	workerCancel      context.CancelFunc
-	workerWG          sync.WaitGroup
-	workerDone        chan struct{}
-	workerWait        sync.Once
-	workersClosed     bool
-	workerErrors      map[int64]error
+	store              *Store
+	codec              CommandCodec
+	projection         Projection
+	redact             Redactor
+	sessions           ActiveSessions
+	backgroundTimeout  time.Duration
+	workerMu           sync.Mutex
+	workerCtx          context.Context
+	workerCancel       context.CancelFunc
+	workerWG           sync.WaitGroup
+	workerDone         chan struct{}
+	workerWait         sync.Once
+	workersClosed      bool
+	workerErrors       map[int64]error
+	pendingCompletions map[int64]Completion
 }
 
 func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
@@ -186,6 +187,7 @@ func (r *Runtime) SetSession(ctx context.Context, id, sessionID int64) error {
 		return r.store.SetSession(attempt, r.projection, id, sessionID)
 	})
 	if err != nil {
+		r.retainPendingCompletion(unknownCommandCompletion(id, sessionID, "session binding could not be persisted"))
 		r.recordWorkerError(id, fmt.Errorf("persist command session %d: %w", id, err))
 	}
 	return err
@@ -200,6 +202,7 @@ func (r *Runtime) Finish(ctx context.Context, completion Completion) error {
 	completion.Error = r.redact(ctx, completion.Error)
 	err := r.persistCompletion(ctx, completion)
 	if err != nil {
+		r.retainPendingCompletion(completion)
 		r.recordWorkerError(completion.ID, fmt.Errorf("persist command completion %d: %w", completion.ID, err))
 	} else {
 		r.clearWorkerError(completion.ID)
@@ -221,16 +224,16 @@ func (r *Runtime) FinishActive(parent context.Context, requestID int64, principa
 		if parent.Err() != nil {
 			return
 		}
-		if errors.Is(err, context.DeadlineExceeded) {
-			cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cleanupCancel()
-			_ = r.sessions.InterruptActive(cleanup, principal, handle)
-			_ = r.Finish(cleanup, Completion{ID: requestID, Status: "error", Error: "command timed out while running in background"})
-			return
-		}
 		cleanup, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanupCancel()
-		_ = r.Finish(cleanup, Completion{ID: requestID, Status: "error", Error: err.Error()})
+		detail := "command result could not be observed"
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			detail = "command timed out while running in background; interruption does not confirm completion"
+			if interruptErr := r.sessions.InterruptActive(cleanup, principal, handle); interruptErr != nil {
+				detail = "command timed out while running in background and could not be interrupted"
+			}
+		}
+		_ = r.Finish(cleanup, unknownCommandCompletion(requestID, handle.ID, detail))
 		return
 	}
 	status := "completed"
@@ -260,10 +263,7 @@ func (r *Runtime) persistCompletion(ctx context.Context, completion Completion) 
 	if err == nil {
 		return nil
 	}
-	unknown := Completion{
-		ID: completion.ID, Status: "outcome_unknown", SessionID: completion.SessionID,
-		Error: commandOutcomeUnknown,
-	}
+	unknown := uncertainCompletion(completion)
 	unknownErr := r.retryPersistence(ctx, func(attempt context.Context) error {
 		err := r.store.Finish(attempt, r.projection, unknown)
 		if !errors.Is(err, ErrNotRunning) {
@@ -313,6 +313,7 @@ func (r *Runtime) recordWorkerError(requestID int64, err error) {
 func (r *Runtime) clearWorkerError(requestID int64) {
 	r.workerMu.Lock()
 	delete(r.workerErrors, requestID)
+	delete(r.pendingCompletions, requestID)
 	r.workerMu.Unlock()
 }
 
@@ -325,6 +326,9 @@ func (r *Runtime) hasWorkerErrors() bool {
 func (r *Runtime) CancelRunning(ctx context.Context, errorText string) error {
 	if err := r.validate(); err != nil {
 		return err
+	}
+	if err := r.recoverPendingCompletions(ctx); err != nil {
+		return ignoreClosedDatabase(err)
 	}
 	var err error
 	if r.hasWorkerErrors() {
