@@ -96,6 +96,23 @@ profile is removed or its username/key is replaced. Current profile membership
 cannot hide an unfinished historical cleanup. Completed retired groups are not
 authenticated again, and unrelated targets retain their own history boundaries.
 
+Historical reconciliation records explicit external absence evidence for every
+distinct recorded host/port, remote user, key-material fingerprint and trusted
+host-pin set, plus the selected location. DNS names and shared host pins are not
+automatically treated as equivalent locations. Each subject requires an absence
+assertion, an external verification method and a bounded explanation; verifying
+only the replacement endpoint cannot resolve the original location. The original
+key fingerprint can be displayed from its recorded material digest without
+reading a private key or substituting a replacement key.
+
+Evidence also carries the deletion-context digest and exact journal generation.
+The operation owner must recompute/check the complete current public context
+under lifecycle exclusion before submitting a decision. Every historical proof
+prefix is validated independently, so a later complete proof cannot conceal an
+earlier incomplete one. Journal format v2 rejects v1 records rather than silently
+promoting an older current-endpoint assertion into complete historical evidence.
+The journal never contacts a remote host to obtain that operator evidence.
+
 The cleanup writes a private temporary file in the same `.ssh` directory and
 atomically replaces `authorized_keys` only after the complete filtered file is
 ready. It rejects symlinked or non-owned key paths rather than risking a

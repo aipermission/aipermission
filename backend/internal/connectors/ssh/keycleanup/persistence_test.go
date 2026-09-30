@@ -55,7 +55,7 @@ func TestJournalPersistsPartialCleanupAcrossEncryptedDatabaseReopen(t *testing.T
 	if _, dispatch, err := journal.Begin(ctx, second); dispatch || !errors.Is(err, ErrReconciliationRequired) {
 		t.Fatalf("uncertain second cleanup lost its fence: %t, %v", dispatch, err)
 	}
-	attested, err := journal.Attest(ctx, secondEntry, second, "Verified absent through the independent provider console")
+	attested, err := journal.Attest(ctx, secondEntry, decisionForTest(t, secondEntry, second, "Verified absent through the independent provider console"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestJournalPersistsPartialCleanupAcrossEncryptedDatabaseReopen(t *testing.T
 	if err != nil || dispatch || !reflect.DeepEqual(entry, attested) {
 		t.Fatalf("attestation state changed across reopen: %#v, %t, %v", entry, dispatch, err)
 	}
-	if _, err := New(reopened).Attest(ctx, secondEntry, second, "Stale evidence"); !errors.Is(err, ErrStaleGeneration) {
+	if _, err := New(reopened).Attest(ctx, secondEntry, decisionForTest(t, secondEntry, second, "Stale evidence")); !errors.Is(err, ErrStaleGeneration) {
 		t.Fatalf("reopen accepted stale attestation: %v", err)
 	}
 }
@@ -137,7 +137,7 @@ func TestJournalUsesScopedPublicEvidenceWithoutReadingCredentialSecrets(t *testi
 		if err != nil || len(entries) != 1 || entries[0].ResourceID != entry.ResourceID {
 			t.Fatalf("journal listed a foreign resource: %#v, %v", entries, err)
 		}
-		if _, err := journal.Attest(ctx, entry, entry.Record.Identity, "Verified absence independently"); err != nil {
+		if _, err := journal.Attest(ctx, entry, decisionForTest(t, entry, entry.Record.Identity, "Verified absence independently")); err != nil {
 			t.Fatal(err)
 		}
 		entries, err = journal.List(ctx)
@@ -150,7 +150,7 @@ func TestJournalUsesScopedPublicEvidenceWithoutReadingCredentialSecrets(t *testi
 			t.Fatalf("journal changed foreign resource: %#v, %v", persistedForeign, err)
 		}
 	}
-	if _, err := journal.Attest(ctx, entry, entry.Record.Identity, "Repeat independent absence verification"); err != nil {
+	if _, err := journal.Attest(ctx, entry, decisionForTest(t, entry, entry.Record.Identity, "Repeat independent absence verification")); err != nil {
 		t.Fatalf("journal should not decrypt secret payloads: %v", err)
 	}
 }
@@ -164,7 +164,7 @@ func TestJournalReopenRetainsHistoricalEndpointAndTrustAttestations(t *testing.T
 	intent := beginTest(t, journal, original)
 	changed := testIdentity(t)
 	changed.Host, changed.HostFingerprints = "new.test", []string{testFingerprint("new")}
-	attested, err := journal.Attest(ctx, intent, changed, "Verified absence on the changed endpoint")
+	attested, err := journal.Attest(ctx, intent, decisionForTest(t, intent, changed, "Verified absence at all original and changed locations"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestJournalReopenRetainsHistoricalEndpointAndTrustAttestations(t *testing.T
 	if _, dispatch, err := journal.Begin(ctx, alias); dispatch || !errors.Is(err, ErrReconciliationRequired) {
 		t.Fatalf("reopened historical endpoint alias dispatched: %t, %v", dispatch, err)
 	}
-	attested, err = journal.Attest(ctx, attested, alias, "Verified absence for the imported key alias")
+	attested, err = journal.Attest(ctx, attested, decisionForTest(t, attested, alias, "Verified absence at all locations for the imported key alias"))
 	if err != nil {
 		t.Fatal(err)
 	}

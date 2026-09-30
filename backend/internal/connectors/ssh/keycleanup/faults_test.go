@@ -110,13 +110,13 @@ func TestJournalMalformedOrDuplicatedRecordsFailClosed(t *testing.T) {
 		"json":     func(r *connectorapi.CredentialResource) { r.PublicData = "{" },
 		"trailing": func(r *connectorapi.CredentialResource) { r.PublicData += " {}" },
 		"unknown field": func(r *connectorapi.CredentialResource) {
-			r.PublicData = strings.Replace(r.PublicData, `"version":1`, `"version":1,"unknown":true`, 1)
+			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":2,"unknown":true`, 1)
 		},
 		"duplicate field": func(r *connectorapi.CredentialResource) {
-			r.PublicData = strings.Replace(r.PublicData, `"version":1`, `"version":1,"version":1`, 1)
+			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":2,"version":2`, 1)
 		},
 		"version": func(r *connectorapi.CredentialResource) {
-			r.PublicData = strings.Replace(r.PublicData, `"version":1`, `"version":2`, 1)
+			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":1`, 1)
 		},
 		"status": func(r *connectorapi.CredentialResource) {
 			r.PublicData = strings.Replace(r.PublicData, `"status":"intent"`, `"status":"success"`, 1)

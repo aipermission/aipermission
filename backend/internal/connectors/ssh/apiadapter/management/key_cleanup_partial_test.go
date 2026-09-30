@@ -101,7 +101,7 @@ func TestKeyCleanupMalformedJournalAndMissingTrustRejectBeforePrivateKeyDelivery
 			var server *cleanupSSHServer
 			if cause == "malformed" {
 				server = startCleanupSSHServer(t, fixture, "operator")
-				_, err := fixture.runtime.journal.Create(t.Context(), connectorapi.CreateCredentialResourceInput{Name: "invalid-evidence", ResourceType: "key_revocation.v1", PublicData: "{}", Secret: struct{}{}})
+				_, err := fixture.runtime.journal.Create(t.Context(), connectorapi.CreateCredentialResourceInput{Name: "invalid-evidence", ResourceType: "key_revocation.v2", PublicData: "{}", Secret: struct{}{}})
 				if err != nil {
 					t.Fatal(err)
 				}

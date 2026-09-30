@@ -17,7 +17,7 @@ func TestJournalAttestationRetainsAllHistoricalAliasFences(t *testing.T) {
 	intent := beginTest(t, journal, original)
 	changed := testIdentity(t)
 	changed.Host, changed.HostFingerprints = "new.test", []string{testFingerprint("new-host")}
-	attested, err := journal.Attest(ctx, intent, changed, "Verified absence on the replacement endpoint")
+	attested, err := journal.Attest(ctx, intent, decisionForTest(t, intent, changed, "Verified absence at original and replacement locations"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestJournalAttestationRetainsAllHistoricalAliasFences(t *testing.T) {
 	if _, dispatch, err := journal.Begin(ctx, alias); dispatch || !errors.Is(err, ErrReconciliationRequired) {
 		t.Fatalf("attested endpoint alias escaped historical fence: %t, %v", dispatch, err)
 	}
-	aliasAttested, err := journal.Attest(ctx, attested, alias, "Verified absence after importing the same key")
+	aliasAttested, err := journal.Attest(ctx, attested, decisionForTest(t, attested, alias, "Verified absence at all locations after importing the same key"))
 	if err != nil || len(aliasAttested.Record.Attestations) != 2 {
 		t.Fatalf("chained attestation = %#v, %v", aliasAttested, err)
 	}
@@ -67,7 +67,7 @@ func TestJournalEveryOverlappingHistoryMustBeResolvedInEitherListOrder(t *testin
 			if _, dispatch, err := journal.Begin(ctx, identity); dispatch || !errors.Is(err, ErrReconciliationRequired) {
 				t.Fatalf("one resolved history masked unresolved intent: %t, %v", dispatch, err)
 			}
-			if _, err := journal.Attest(ctx, second, identity, "Both histories externally verified for this exact snapshot"); err != nil {
+			if _, err := journal.Attest(ctx, second, decisionForTest(t, second, identity, "Both histories externally verified for this exact snapshot")); err != nil {
 				t.Fatal(err)
 			}
 			if _, dispatch, err := journal.Begin(ctx, identity); err != nil || dispatch || len(store.rows) != 2 {
@@ -88,7 +88,7 @@ func TestJournalLostAttestationResponsesKeepAuthenticationSuppressed(t *testing.
 			changed := testIdentity(t)
 			changed.Profiles[0].KeyID++
 			store.updateErr, store.updateAfter = errors.New("lost attestation response"), after
-			if _, err := journal.Attest(ctx, intent, changed, "Externally verified absence"); err == nil {
+			if _, err := journal.Attest(ctx, intent, decisionForTest(t, intent, changed, "Externally verified absence")); err == nil {
 				t.Fatal("lost response was reported successful")
 			}
 			store.updateErr = nil
@@ -118,7 +118,7 @@ func TestJournalRejectsCanonicalButInvalidAttestationData(t *testing.T) {
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			store := newMemoryStore()
-			record := Record{Identity: identity, Status: Attested, Attestations: []Attestation{{Identity: testIdentity(t), Reason: "External verification"}}}
+			record := attestedRecordForTest(t, identity)
 			mutate(&record)
 			seedTestEntry(t, store, record)
 			if _, dispatch, err := New(store).Begin(context.Background(), identity); err == nil || dispatch {
@@ -136,7 +136,7 @@ func TestJournalRejectsCanonicalButInvalidAttestationData(t *testing.T) {
 		row.PublicData = string(encoded)
 		return row
 	}
-	if _, err := New(store).Attest(context.Background(), intent, identity, "External verification"); err == nil {
+	if _, err := New(store).Attest(context.Background(), intent, decisionForTest(t, intent, identity, "External verification")); err == nil {
 		t.Fatal("mismatched attestation readback reported success")
 	}
 }

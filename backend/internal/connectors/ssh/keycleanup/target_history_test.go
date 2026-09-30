@@ -35,7 +35,7 @@ func TestTargetHistoryRetainsOriginalAndAttestedTargetScopes(t *testing.T) {
 	entry := beginTest(t, journal, identity)
 	alias := testIdentity(t)
 	alias.TargetID, alias.Profiles[0].ID = 10, 20
-	if _, err := journal.Attest(t.Context(), entry, alias, "Externally verified historical and current key absence"); err != nil {
+	if _, err := journal.Attest(t.Context(), entry, decisionForTest(t, entry, alias, "Externally verified historical and current key absence")); err != nil {
 		t.Fatal(err)
 	}
 	for _, targetID := range []int64{identity.TargetID, alias.TargetID, 99} {
