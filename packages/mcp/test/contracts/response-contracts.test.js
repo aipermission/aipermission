@@ -84,6 +84,40 @@ test("action contracts bind successful responses to the requested identity", () 
   );
 });
 
+test("withheld connector replays hide target metadata but retain action and request identity", () => {
+  const response = {
+    ...connectorActionResponse,
+    target_ref: "",
+    connector_kind: "",
+    output_withheld: true,
+    replayed: true,
+  };
+  const expected = {
+    target_ref: connectorActionResponse.target_ref,
+    action_name: connectorActionResponse.action_name,
+    request_id: connectorActionResponse.request_id,
+  };
+  assert.deepEqual(projectGatewaySuccess(responseContracts.connectorActionCall, response, expected), response);
+  assert.deepEqual(projectGatewaySuccess(responseContracts.connectorActionRequest, response, expected), response);
+  for (const invalid of [
+    { ...response, action_name: "set_string" },
+    { ...response, action_name: "" },
+    { ...response, request_id: response.request_id + 1 },
+    { ...response, target_ref: "redis:99:99", connector_kind: "redis" },
+    { ...response, connector_kind: "redis" },
+    { ...response, output: { secret: "must-not-escape" } },
+    { ...response, input: {} },
+    { ...response, display_text: "withheld content" },
+    { ...response, error: "withheld content" },
+  ]) {
+    assert.throws(() => projectGatewaySuccess(responseContracts.connectorActionCall, invalid, expected), /contract validation/);
+  }
+  assert.throws(
+    () => projectGatewaySuccess(responseContracts.connectorActionRequest, response, { ...expected, status: "running" }),
+    /contract validation/,
+  );
+});
+
 test("Vault action contracts keep input and output bound to their action", () => {
   const generated = vaultActionResponse({
     action_name: "generate_item",

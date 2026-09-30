@@ -248,6 +248,12 @@ authorized connector read actions may return bounded content, such as S3
 `download_object` `content_base64` or SSH command output; treat it as sensitive
 target data.
 
+`output_withheld: true` means current permission no longer authorizes delivery
+of the recorded input/output or target metadata. Empty target identity is
+intentional in that envelope; action and request identity checks still apply.
+Retain the request ID and original idempotency key. Withholding does not mean
+the action failed or should be executed again with a new key.
+
 ## Operator Skill
 
 Install only the AIPermission native operator skill for your AI client:

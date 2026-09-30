@@ -294,7 +294,13 @@ export function projectGatewaySuccess(schema, value, expected = undefined) {
     throw gatewayContractError();
   }
   if (expected && result.data?.status !== "stopped") {
+    const hiddenConnectorTarget =
+      (schema === responseContracts.connectorActionCall || schema === responseContracts.connectorActionRequest) &&
+      result.data.output_withheld === true &&
+      result.data.target_ref === "" &&
+      result.data.connector_kind === "";
     for (const [field, expectedValue] of Object.entries(expected)) {
+      if (hiddenConnectorTarget && (field === "target_ref" || field === "connector_kind")) continue;
       if (expectedValue !== undefined && result.data?.[field] !== expectedValue) {
         throw gatewayContractError();
       }
