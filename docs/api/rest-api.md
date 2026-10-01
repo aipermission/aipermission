@@ -818,6 +818,13 @@ where practical; if the gateway process, Docker container, or computer restarts,
 unfinished queues should be started again. `cancel` cancels the active queue and
 cleans staged temporary files.
 
+During shutdown recovery, transfer states, affected batch aggregates, and the
+derived history projection are updated in one transaction. Counts and byte
+totals retain completed/canceled items alongside the interrupted items.
+Terminal batches report zero speed and ETA; an active batch without a measurable
+rate keeps ETA unknown (`-1`). An aggregate or history error rolls back the
+shutdown transition rather than publishing a partial summary.
+
 `POST /api/file-transfer-batches/{id}/queue` edits pending items in a paused
 queue:
 

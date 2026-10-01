@@ -298,87 +298,6 @@ func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorT
 	return true, nil
 }
 
-func (s *Store) FailActive(ctx context.Context, transferError string, batchError string) error {
-	now := nowString()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin active file transfer shutdown: %w", err)
-	}
-	defer tx.Rollback()
-	ids, err := transferIDsByStatuses(ctx, tx, StatusPendingApproval, StatusPending, StatusRunning, StatusPaused)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-			UPDATE file_transfers
-			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-			WHERE status IN (?, ?)`,
-		StatusFailed,
-		strings.TrimSpace(transferError),
-		FailureKindInterrupted,
-		now,
-		now,
-		StatusPendingApproval,
-		StatusPending,
-	); err != nil {
-		return fmt.Errorf("interrupt undispatched file transfers: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-			UPDATE file_transfers
-			SET status = ?, error = ?, failure_kind = ?,
-				failure_details_json = CASE WHEN remote_staging_ref != ''
-					THEN json_patch(failure_details_json, json_object(
-						'remote_cleanup_pending', json('true'),
-						'recovery_hint', 'Connector-owned staging cleanup will be retried when this workspace opens.'))
-					ELSE failure_details_json END,
-				completed_at = COALESCE(completed_at, ?), updated_at = ?
-			WHERE status IN (?, ?)`,
-		StatusFailed,
-		strings.TrimSpace(transferError),
-		FailureKindOutcomeUnknown,
-		now,
-		now,
-		StatusRunning,
-		StatusPaused,
-	); err != nil {
-		return fmt.Errorf("mark dispatched file transfers outcome unknown: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-			UPDATE file_transfer_batches
-			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-			WHERE status IN (?, ?)`,
-		StatusFailed,
-		strings.TrimSpace(batchError),
-		FailureKindInterrupted,
-		now,
-		now,
-		StatusPendingApproval,
-		StatusPending,
-	); err != nil {
-		return fmt.Errorf("interrupt undispatched file transfer batches: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-			UPDATE file_transfer_batches
-			SET status = ?, error = ?, failure_kind = ?, completed_at = COALESCE(completed_at, ?), updated_at = ?
-			WHERE status IN (?, ?)`,
-		StatusFailed,
-		strings.TrimSpace(batchError),
-		FailureKindOutcomeUnknown,
-		now,
-		now,
-		StatusRunning,
-		StatusPaused,
-	); err != nil {
-		return fmt.Errorf("mark dispatched file transfer batches outcome unknown: %w", err)
-	}
-	if err := syncTransferHistoryIDsWithExecutor(ctx, tx, ids); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit active file transfer shutdown: %w", err)
-	}
-	return nil
-}
 func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -412,8 +331,10 @@ func recalculateBatch(ctx context.Context, execer batchRecalculator, id int64) e
 			canceled_items = (SELECT COUNT(*) FROM file_transfers WHERE batch_id = ? AND status = ?),
 			size_bytes = COALESCE((SELECT SUM(size_bytes) FROM file_transfers WHERE batch_id = ?), 0),
 			transferred_bytes = COALESCE((SELECT SUM(transferred_bytes) FROM file_transfers WHERE batch_id = ?), 0),
-			bytes_per_second = COALESCE((SELECT SUM(bytes_per_second) FROM file_transfers WHERE batch_id = ? AND status IN (?, ?)), 0),
+			bytes_per_second = CASE WHEN status IN (?, ?, ?) THEN 0
+				ELSE COALESCE((SELECT SUM(bytes_per_second) FROM file_transfers WHERE batch_id = ? AND status IN (?, ?)), 0) END,
 			eta_seconds = CASE
+				WHEN status IN (?, ?, ?) THEN 0
 				WHEN COALESCE((SELECT SUM(bytes_per_second) FROM file_transfers WHERE batch_id = ? AND status IN (?, ?)), 0) > 0
 				THEN CAST((
 					COALESCE((SELECT SUM(size_bytes) FROM file_transfers WHERE batch_id = ?), 0) -
@@ -429,7 +350,9 @@ func recalculateBatch(ctx context.Context, execer batchRecalculator, id int64) e
 		id, StatusCanceled,
 		id,
 		id,
+		StatusCompleted, StatusFailed, StatusCanceled,
 		id, StatusRunning, StatusPaused,
+		StatusCompleted, StatusFailed, StatusCanceled,
 		id, StatusRunning, StatusPaused,
 		id,
 		id,
