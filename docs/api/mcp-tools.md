@@ -265,6 +265,11 @@ start_file_download
 ```
 
 Postgres actions include schema/table inspection and bounded read-only queries.
+Binary query cells (including `bytea`) use PostgreSQL-style `\x` followed by
+lowercase hex, not UTF-8 decoding. Empty binary values are `\x`; SQL NULL remains
+JSON `null`. Ordinary text is unchanged. Binary output shares the query's cell
+and total-byte limits: a cut cell has a `...[truncated]` suffix and the result
+reports `truncated: true`. Do not decode a truncated cell as complete binary data.
 Postgres managed database users are created from the local UI through credential
 provisioning, which uses an admin profile to create a scoped role with a random
 password and stores the resulting profile in the encrypted local vault.

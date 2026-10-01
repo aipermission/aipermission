@@ -25,6 +25,7 @@ func TestPostgresRealService(t *testing.T) {
 		"max_rows": 5,
 	})
 	assertResultContains(t, result, "postgres-conformance")
+	assertPostgresBinaryResults(t, connector, runtime)
 	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
 	assertImplicitCastResolutionRejected(t, connector, runtime)
 	assertRestoreProcessBoundary(t, connector, runtime)

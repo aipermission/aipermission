@@ -111,3 +111,20 @@ it("keeps circular object cells bounded when rendering and exporting rows", asyn
   expect(downloadBlob).toHaveBeenCalledWith(expect.any(Blob), "bounded.csv");
   expect(await exportedCSV()).toBe("data\n[object Object]");
 });
+
+it("keeps binary hex cells unchanged in rendering, clipboard, and downloads", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const value = { columns: ["binary", "empty", "missing"], rows: [{ binary: "\\xff0041", empty: "\\x", missing: null }] };
+  render(<SQLOutputBlock title="Rows" value={value} theme="dark" filenamePrefix="binary" />);
+
+  expect(screen.getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["\\xff0041", "\\x", "NULL"]);
+  await user.click(screen.getByTitle("Copy rows as TSV"));
+  expect(clipboard).toHaveBeenCalledWith("binary\tempty\tmissing\n\\xff0041\t\\x\tNULL");
+  await user.click(screen.getByTitle("Copy result JSON"));
+  expect(clipboard).toHaveBeenCalledWith(JSON.stringify(value, null, 2));
+  await user.click(screen.getByTitle("Download rows as CSV"));
+  expect(await exportedCSV()).toBe("binary,empty,missing\n\\xff0041,\\x,NULL");
+  await user.click(screen.getByTitle("Download result JSON"));
+  expect(downloadJSON).toHaveBeenCalledWith(value, "binary.json");
+});

@@ -2,6 +2,7 @@ package postgresconnector
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -69,7 +70,15 @@ func queryRows(ctx context.Context, tx pgx.Tx, sql string, rowLimit int, args ..
 func normalizePostgresValue(value any) any {
 	switch typed := value.(type) {
 	case []byte:
-		return string(typed)
+		if typed == nil {
+			return nil
+		}
+		// Keep normalization bounded, but leave enough bytes for the builder to
+		// detect and report truncation instead of returning a silently cut value.
+		if len(typed) > maxCellBytes/2 {
+			typed = typed[:maxCellBytes/2]
+		}
+		return `\x` + hex.EncodeToString(typed)
 	case time.Time:
 		return typed.UTC().Format(time.RFC3339Nano)
 	default:

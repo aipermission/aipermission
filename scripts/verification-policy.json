@@ -457,6 +457,7 @@
   "connector_conformance_tests": [
     "TestClickHouseRealService",
     "TestPostgresRealService",
+    "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",
     "TestRabbitMQRealService",
     "TestValkeyRealService",
