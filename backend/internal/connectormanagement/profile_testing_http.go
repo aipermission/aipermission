@@ -121,7 +121,7 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 		httptransport.WriteJSON(w, http.StatusOK, ConnectionTestResponse{
 			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 			Status:     string(connectors.TestUnknownError),
-			Message:    scope.Runtime.redactCredentialText(r.Context(), err.Error(), boundary),
+			Message:    scope.Runtime.RedactCredentialText(r.Context(), err.Error(), boundary),
 			DurationMS: time.Since(start).Milliseconds(),
 		})
 		return
@@ -134,7 +134,7 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 	httptransport.WriteJSON(w, http.StatusOK, ConnectionTestResponse{
 		TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,
 		OK: result.Status == connectors.TestOK, Status: string(result.Status),
-		Message: scope.Runtime.redactCredentialText(r.Context(), result.Message, boundary),
+		Message: scope.Runtime.RedactCredentialText(r.Context(), result.Message, boundary),
 		Details: details, DurationMS: time.Since(start).Milliseconds(),
 	})
 }
@@ -148,7 +148,7 @@ func (h *ProfileTestingHTTPHandler) resolve(w http.ResponseWriter) (ProfileTesti
 	if !ok {
 		return ProfileTestingScope{}, false
 	}
-	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.AcquireDelivery == nil || scope.Admission == nil || scope.SpecialTest == nil || scope.RedactDetails == nil {
+	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.Valid() || scope.AcquireDelivery == nil || scope.Admission == nil || scope.SpecialTest == nil || scope.RedactDetails == nil {
 		httptransport.WriteInternalError(w)
 		return ProfileTestingScope{}, false
 	}

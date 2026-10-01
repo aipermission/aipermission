@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -120,7 +121,7 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		r.Context(), scope.Runtime.RuntimeContext(target, adminProfile, secrets, boundary), request.Input,
 	)
 	if err != nil {
-		writeProvisionError(w, err, scope.Runtime.redactCredentialText(r.Context(), err.Error(), boundary))
+		writeProvisionError(w, err, scope.Runtime.RedactCredentialText(r.Context(), err.Error(), boundary))
 		return
 	}
 	boundary.AddStructured(provisioned.Secret)
@@ -224,7 +225,7 @@ func (h *ProvisioningHTTPHandler) failProvisioned(
 		return
 	}
 	boundary := actionresult.CombinedCredentialBoundary(secrets, provisioned.Secret)
-	writeProvisionFailureCause(w, cause, scope.Runtime.redactCredentialText(ctx, cause.Error(), boundary))
+	writeProvisionFailureCause(w, cause, scope.Runtime.RedactCredentialText(ctx, cause.Error(), boundary))
 }
 
 func compensateProvisioned(
@@ -272,13 +273,7 @@ func compensateProvisioned(
 }
 
 func RequireCompletedCredentialCleanup(result connectors.ActionResult, err error) error {
-	if err != nil {
-		return err
-	}
-	if result.Status != connectors.ResultCompleted {
-		return fmt.Errorf("credential cleanup returned status %q", result.Status)
-	}
-	return nil
+	return connectorcredentials.RequireCompletedCleanup(result, err)
 }
 
 func provisioningProfileLabelExists(ctx context.Context, store *connectortargets.Store, targetID int64, label string) (bool, error) {
@@ -354,7 +349,7 @@ func (h *ProvisioningHTTPHandler) resolve(w http.ResponseWriter) (ProvisioningSc
 	if !ok {
 		return ProvisioningScope{}, false
 	}
-	valid := scope.Database != nil && scope.Registry != nil && scope.Runtime.valid() && scope.AcquireExclusive != nil && scope.EncryptSecret != nil &&
+	valid := scope.Database != nil && scope.Registry != nil && scope.Runtime.Valid() && scope.AcquireExclusive != nil && scope.EncryptSecret != nil &&
 		scope.WithTransaction != nil && scope.EnsureRuntimeSurfaces != nil && scope.AuditRequired != nil
 	if !valid {
 		httptransport.WriteInternalError(w)

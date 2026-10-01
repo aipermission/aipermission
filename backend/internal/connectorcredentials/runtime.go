@@ -15,13 +15,19 @@ import (
 // record decryption, database, or Vault ports to the connector implementation.
 func Context(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary actionresult.CredentialBoundary, capabilities connectors.RuntimeCapabilityResolver) connectors.RuntimeContext {
 	return connectors.RuntimeContext{
-		Target: connectors.TargetView{
-			ID: target.ID, Ref: connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID),
-			ProjectID: target.ProjectID, ConnectorKind: target.ConnectorKind, Name: target.Name,
-			Config: CloneMetadata(target.Config), UpdatedAt: target.UpdatedAt,
-		},
+		Target:  TargetView(target, profile.ID),
 		Profile: connectortargets.CredentialProfileView(profile),
 		Secrets: Secrets(secrets, boundary), Events: EventSink{}, Capabilities: capabilities,
+	}
+}
+
+// TargetView supplies the same public authority snapshot to execution and
+// resource-only evidence readers without granting either secret access.
+func TargetView(target connectortargets.Target, profileID int64) connectors.TargetView {
+	return connectors.TargetView{
+		ID: target.ID, Ref: connectors.FormatTargetRef(target.ConnectorKind, target.ID, profileID),
+		ProjectID: target.ProjectID, ConnectorKind: target.ConnectorKind, Name: target.Name,
+		Config: CloneMetadata(target.Config), UpdatedAt: target.UpdatedAt,
 	}
 }
 
