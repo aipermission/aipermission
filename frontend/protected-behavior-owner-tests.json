@@ -19,6 +19,13 @@
     "src/connectors/templates/_shared/network-transport-fields.tsx": [
       "src/connectors/templates/_shared/network-transport-fields.component.test.tsx"
     ],
+    "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-form.tsx": [
+      "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-form.component.test.tsx",
+      "src/connectors/templates/postgres/role-lifecycle/role-decision-consent.component.test.tsx"
+    ],
+    "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-contract.ts": [
+      "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-contract.component.test.ts"
+    ],
     "src/connectors/templates/ssh/cleanup-contracts.ts": ["src/connectors/templates/ssh/cleanup-contracts.component.test.ts"],
     "src/connectors/templates/ssh/cleanup-dialog.tsx": ["src/connectors/templates/ssh/cleanup-dialog.component.test.tsx"],
     "src/connectors/templates/ssh/cleanup-history.tsx": ["src/connectors/templates/ssh/cleanup-dialog.component.test.tsx"],

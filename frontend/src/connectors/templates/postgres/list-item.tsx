@@ -1,4 +1,4 @@
-import { Archive, UserPlus } from "lucide-react";
+import { Archive, History, UserPlus } from "lucide-react";
 import { Button } from "../../../components/ui/button";
 import type { PostgresOperation } from "./operation-types";
 
@@ -38,6 +38,16 @@ export function PostgresConnectorRowActionsTemplate({
         }
       >
         <Archive className="h-4 w-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        className="h-9 w-9 px-0"
+        title="Inspect managed role evidence"
+        disabled={!Number.isSafeInteger(target.id) || Number(target.id) < 1}
+        onClick={() => onOperation({ open: true, connector_kind: "postgres", type: "role-history", target, state: "idle", error: null })}
+      >
+        <History className="h-4 w-4" />
       </Button>
     </>
   );

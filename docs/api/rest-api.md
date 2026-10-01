@@ -546,6 +546,19 @@ Interrupted cleanup remains unresolved; neither absent roles nor a lost commit
 acknowledgement authorize replay. Markerless profiles still require explicit
 adoption or manual external-cleanup evidence, not this operation.
 
+The connector's local role-history dialog offers presence decisions only for
+bound provisioning or cleanup intents, and remote cleanup only for provisioned
+entries. Cleanup also requires typing the exact role name. Both require the
+recorded admin profile and an explicit acknowledgement of continuous
+original-cluster history; changing the
+selected profile or displayed role evidence invalidates that acknowledgement.
+Refresh, pagination and dismissal are disabled while the decision and its
+evidence reload are pending. Every response, including an uncertain or malformed
+response, is followed by a fresh history read, never an automatic mutation retry.
+If that read fails, the previous entry is discarded and no further decision is
+offered until history can be loaded again. A workspace change invalidates the
+dialog and permits dismissal without applying a late response.
+
 Failed verification returns `409` with `role_reconciliation_required`. If the
 required terminal audit cannot be confirmed, the code is
 `role_reconciliation_audit_outcome_unknown`; a local decision may already have

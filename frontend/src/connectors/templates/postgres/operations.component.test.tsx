@@ -6,11 +6,13 @@ import { apiDownload, apiPost } from "../../../lib/api";
 import { BackupRestoreDialog } from "./backup-restore-dialog";
 import { PostgresConnectorOperationsTemplate } from "./operations";
 import { ProvisionUserDialog } from "./provision-user-dialog";
+import { roleHistoryPageFixture } from "../../../test/postgres/role-history-fixtures.test";
 
 vi.mock("../../../lib/api", () => ({
   apiDownload: vi.fn(),
   apiPost: vi.fn(),
   apiPostForm: vi.fn(),
+  currentWorkspaceBinding: vi.fn(() => "role-history-fixture"),
 }));
 
 beforeEach(() => {
@@ -25,6 +27,24 @@ beforeEach(() => {
 });
 
 describe("Postgres operation dialogs", () => {
+  it("opens public role evidence without a credential or remote action", async () => {
+    vi.mocked(apiPost).mockResolvedValue(roleHistoryPageFixture());
+    const onChange = vi.fn();
+    render(<PostgresConnectorOperationsTemplate value={{ ...operation("role-history"), profile: undefined }} onChange={onChange} />);
+    expect(await screen.findByRole("dialog", { name: "Main DB role history" })).toBeInTheDocument();
+    expect(await screen.findByText("My Role")).toBeInTheDocument();
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(apiPost).toHaveBeenCalledWith("/api/connector-targets/1/operations/role-lifecycle-status", {}, expect.any(Object));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Close dialog" }));
+    expect(onChange).toHaveBeenCalledWith({ open: false, connector_kind: "", type: "", state: "idle", error: null });
+  });
+
+  it.each([0, -1, undefined, Number.MAX_SAFE_INTEGER + 1])("does not open role evidence for invalid target %s", (id) => {
+    render(<PostgresConnectorOperationsTemplate value={{ ...operation("role-history"), target: { id } }} onChange={vi.fn()} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
   it("routes connector operations to the matching dialog", () => {
     const onChange = vi.fn();
     const { rerender } = render(<PostgresConnectorOperationsTemplate value={operation("provision-user")} onChange={onChange} />);
