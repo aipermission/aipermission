@@ -880,6 +880,15 @@ responses after a mutation preserve unknown-outcome classification. Owner
 tests cover schema-to-prepared-JSON-to-HTTP dispatch; the required isolated
 service fixture proves padded names do not route to their unpadded siblings.
 
+Queue lists require valid server pagination. Binding lists request pagination
+but also accept the JSON array returned by Management API versions that ignore
+those parameters. This fallback is binding-only, never refetches the same array
+as additional pages, and keeps the one-MiB response limit. Queue-filtered scans
+inspect at most 10,000 bindings; unfiltered scans use their smaller requested
+page budget. `truncated` and `scan_limit_reached` distinguish a bounded preview
+from complete discovery. An array appearing after a paginated first response
+is rejected rather than combined with an incompatible snapshot.
+
 ## Built-In Example: Mail
 
 Mail is a normal structured connector. Its target owns IMAP/SMTP endpoints,
