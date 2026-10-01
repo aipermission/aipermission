@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -127,7 +128,8 @@ func executeDeleteBucketLifecycle(ctx context.Context, client *s3Client) (connec
 func (client *s3Client) GetBucketLifecycle(ctx context.Context) (s3LifecycleConfiguration, []byte, bool, error) {
 	data, _, err := client.Do(ctx, http.MethodGet, "", url.Values{"lifecycle": []string{""}}, nil, maxLifecycleResponse)
 	if err != nil {
-		if isNotFoundError(err) || strings.Contains(strings.ToLower(err.Error()), "nosuchlifecycleconfiguration") {
+		var statusErr *s3StatusError
+		if errors.As(err, &statusErr) && statusErr.status == http.StatusNotFound && statusErr.code == "NoSuchLifecycleConfiguration" {
 			return s3LifecycleConfiguration{}, nil, false, nil
 		}
 		return s3LifecycleConfiguration{}, nil, false, err
