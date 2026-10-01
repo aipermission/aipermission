@@ -1,6 +1,7 @@
 package httptransport
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,8 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+
+	"github.com/aipermission/aipermission/backend/internal/jsonidentity"
 )
 
 const DefaultJSONBodyBytes int64 = 1 << 20
@@ -78,7 +81,14 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any, maxBytes
 		return fmt.Errorf("content type must be application/json")
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
-	decoder := json.NewDecoder(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	if err := jsonidentity.Validate(body); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
 	if err := decoder.Decode(target); err != nil {
