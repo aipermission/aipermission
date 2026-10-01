@@ -5,6 +5,16 @@ credential result boundaries. Protocol-specific ownership verification and
 remote cleanup remain in the connector. `RuntimePorts` is composed by core;
 it is not passed to connector implementations.
 
+`profilesecrets.ProfileSecretCodec` owns profile secret map encoding and decoding for both
+credential management and connector runtime resolution. It fixes the record
+domain/field to credential profiles and preserves workspace/profile-bound AAD;
+it does not accept caller-selected record classes or expose its Vault handle.
+Decoding failure returns no partially decoded secret map. Resource journals
+retain their separately bound record class. This is core composition only,
+not a capability available to connector adapters.
+The codec lives in the `profilesecrets` child package, keeping crypto/Vault
+dependencies out of the public snapshot/accessor package used by action execution.
+
 ## Completed Cleanup Evidence
 
 A connector may implement `ProvisionedCredentialCleanupEvidence` when it keeps

@@ -4,9 +4,9 @@ import (
 	"context"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials/profilesecrets"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -19,6 +19,7 @@ type CredentialStorage struct {
 }
 
 func RuntimeCredentialPreparation(storage CredentialStorage, provider CredentialCanonicalizerProvider) CredentialPreparationPorts {
+	codec := profilesecrets.NewProfileSecretCodec(storage.Vault, storage.WorkspaceID)
 	return CredentialPreparationPorts{
 		Canonicalize: func(ctx context.Context, connectorKind, credentialKind string, public map[string]any) (map[string]any, error) {
 			if provider != nil {
@@ -28,14 +29,8 @@ func RuntimeCredentialPreparation(storage CredentialStorage, provider Credential
 			}
 			return connectorcredentials.CloneMetadata(public), nil
 		},
-		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
-			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(storage.Vault, storage.WorkspaceID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
-			return secret, err
-		},
-		Encrypt: func(_ context.Context, profileID int64, secret map[string]any) (string, error) {
-			return recordcrypto.EncryptJSON(storage.Vault, storage.WorkspaceID, recordcrypto.ConnectorCredentialProfile, profileID, secret)
-		},
+		Decrypt: codec.Decrypt,
+		Encrypt: codec.Encrypt,
 	}
 }
 
@@ -44,12 +39,9 @@ type ResultRedactor func(context.Context, connectors.ActionResult, CredentialBou
 type TextRedactor func(context.Context, string) string
 
 func RuntimeCredentialPorts(storage CredentialStorage, capabilities RuntimeCapabilities, redactResult ResultRedactor, redactText TextRedactor) CredentialRuntimePorts {
+	codec := profilesecrets.NewProfileSecretCodec(storage.Vault, storage.WorkspaceID)
 	return CredentialRuntimePorts{
-		DecryptSecret: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
-			secret := map[string]any{}
-			err := recordcrypto.DecryptJSON(storage.Vault, storage.WorkspaceID, recordcrypto.ConnectorCredentialProfile, profileID, encrypted, &secret)
-			return secret, err
-		},
+		DecryptSecret: codec.Decrypt,
 		RuntimeContext: func(target connectortargets.Target, profile connectortargets.CredentialProfile, secrets map[string]any, boundary CredentialBoundary) connectors.RuntimeContext {
 			var resolved connectors.RuntimeCapabilityResolver
 			if capabilities != nil {

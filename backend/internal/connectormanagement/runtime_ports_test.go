@@ -127,3 +127,25 @@ func TestRuntimeCredentialPortsWireCryptoCanonicalizationAndRedaction(t *testing
 		t.Fatalf("redacted text=%q calls=%d", got, redactCalls)
 	}
 }
+
+func TestRuntimeCredentialCryptoPortsRejectMismatchedProfileWithoutSecret(t *testing.T) {
+	secretVault, err := vault.New("CredentialPortsBindingFixture123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	storage := CredentialStorage{Vault: secretVault, WorkspaceID: "binding-workspace"}
+	preparation := RuntimeCredentialPreparation(storage, nil)
+	encrypted, err := preparation.Encrypt(t.Context(), 7, map[string]any{"password": "fixture-value"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := RuntimeCredentialPorts(storage, nil, nil, nil)
+	for _, decrypt := range []func(context.Context, int64, string) (map[string]any, error){preparation.Decrypt, ports.DecryptSecret} {
+		if got, err := decrypt(t.Context(), 8, encrypted); err == nil || got != nil {
+			t.Fatalf("wrong profile returned a secret: %#v %v", got, err)
+		}
+		if got, err := decrypt(t.Context(), 7, encrypted); err != nil || got["password"] != "fixture-value" {
+			t.Fatalf("valid profile no longer decrypts: %#v %v", got, err)
+		}
+	}
+}
