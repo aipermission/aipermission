@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
@@ -73,7 +74,7 @@ func TestConnectionHTTPRedactsCredentialsBeforeOptionalMasking(t *testing.T) {
 
 func TestProvisionFailureRedactsCredentialsBeforeBasicMasking(t *testing.T) {
 	boundary := actionresult.NewCredentialBoundary(map[string]any{"password": compositionSecret})
-	got := safeProvisionError(boundary, errors.New("password="+compositionSecret))
+	got := connectorcredentials.RedactErrorForAudit(errors.New("password="+compositionSecret), boundary)
 	if got != "password="+actionresult.CredentialRedactionMarker {
 		t.Fatalf("provisioning failure = %q", got)
 	}

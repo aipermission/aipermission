@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -16,7 +15,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
-	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
 )
 
 const (
@@ -135,7 +133,7 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	provisioned.Result = redactedResult
-	labelExists, err := provisioningProfileLabelExists(r.Context(), store, target.ID, provisioned.Label)
+	labelExists, err := store.HasCredentialProfileLabel(r.Context(), target.ID, provisioned.Label)
 	if err != nil {
 		h.failProvisioned(r.Context(), w, scope, provisioner, target, adminProfile, secrets, provisioned, "profile_label_lookup", err, provisionFailureTarget)
 		return
@@ -151,43 +149,12 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	var profile connectortargets.CredentialProfile
-	err = scope.WithTransaction(r.Context(), func(tx *sql.Tx, appendAudit AuditAppender) error {
-		if tx == nil || appendAudit == nil {
-			return errProvisioningRuntimeUnavailable
-		}
-		txStore := connectortargets.NewTxStore(tx)
-		var createErr error
-		profile, createErr = txStore.CreateCredentialProfile(r.Context(), connectortargets.CreateCredentialProfileInput{
-			TargetID: target.ID, ConnectorKind: target.ConnectorKind,
-			Kind: provisioned.Kind, Label: provisioned.Label, Public: provisioned.Public,
-			RiskLabel: provisioned.RiskLabel,
-		})
-		if createErr != nil {
-			return createErr
-		}
-		encrypted, encryptErr := scope.EncryptSecret(r.Context(), profile.ID, serializedSecret)
-		if encryptErr != nil {
-			return fmt.Errorf("encrypt provisioned credential profile: %w", encryptErr)
-		}
-		if err := txStore.SetCredentialProfileEncryptedSecret(r.Context(), target.ID, profile.ID, encrypted); err != nil {
-			return err
-		}
-		profile.EncryptedSecretJSON = encrypted
-		if err := scope.EnsureRuntimeSurfaces(r.Context(), txStore, target, profile); err != nil {
-			return err
-		}
-		return appendAudit(tx, "user", nil, 0, "connector.profile.provisioned", map[string]any{
-			"target_id": target.ID, "profile_id": profile.ID,
-			"admin_profile_id": adminProfile.ID, "connector_kind": target.ConnectorKind,
-			"kind": profile.Kind, "label": profile.Label,
-		})
-	})
+	publication, err := persistProvisionedProfile(r.Context(), scope, target, adminProfile, provisioned, serializedSecret)
 	if err != nil {
-		h.failProvisioned(r.Context(), w, scope, provisioner, target, adminProfile, secrets, provisioned, "profile_persistence", err, provisionFailureTarget)
+		h.failProfilePublication(r.Context(), w, scope, provisioner, target, adminProfile, secrets, provisioned, publication, err)
 		return
 	}
-	httptransport.WriteJSON(w, http.StatusCreated, ProvisionResponse{Profile: ProfileToSummary(profile), Result: provisioned.Result})
+	httptransport.WriteJSON(w, http.StatusCreated, ProvisionResponse{Profile: ProfileToSummary(publication.profile), Result: provisioned.Result})
 }
 
 func (h *ProvisioningHTTPHandler) failProvisioned(
@@ -265,8 +232,8 @@ func compensateProvisioned(
 	auditErr := scope.AuditRequired(auditCtx, action, map[string]any{
 		"target_id": target.ID, "admin_profile_id": adminProfile.ID,
 		"connector_kind": target.ConnectorKind, "kind": provisioned.Kind, "label": provisioned.Label,
-		"failure_stage": stage, "failure": safeProvisionError(boundary, cause),
-		"cleanup_status": cleanupStatus, "cleanup_error": safeProvisionError(boundary, cleanupErr),
+		"failure_stage": stage, "failure": connectorcredentials.RedactErrorForAudit(cause, boundary),
+		"cleanup_status": cleanupStatus, "cleanup_error": connectorcredentials.RedactErrorForAudit(cleanupErr, boundary),
 	})
 	auditCancel()
 	return provisionCompensationOutcome{cleanupErr: cleanupErr, auditErr: auditErr}
@@ -274,19 +241,6 @@ func compensateProvisioned(
 
 func RequireCompletedCredentialCleanup(result connectors.ActionResult, err error) error {
 	return connectorcredentials.RequireCompletedCleanup(result, err)
-}
-
-func provisioningProfileLabelExists(ctx context.Context, store *connectortargets.Store, targetID int64, label string) (bool, error) {
-	profiles, err := store.ListCredentialProfiles(ctx, targetID)
-	if err != nil {
-		return false, fmt.Errorf("list connector credential profiles: %w", err)
-	}
-	for _, profile := range profiles {
-		if strings.EqualFold(strings.TrimSpace(profile.Label), strings.TrimSpace(label)) {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func validateProvisionedCredentialProfile(connector connectors.Connector, profile connectors.ProvisionedCredentialProfile) error {
@@ -301,13 +255,6 @@ func validateProvisionedCredentialProfile(connector connectors.Connector, profil
 		return connectortargets.ValidationError(err.Error())
 	}
 	return nil
-}
-
-func safeProvisionError(boundary actionresult.CredentialBoundary, err error) string {
-	if err == nil {
-		return ""
-	}
-	return actionresult.RedactCredentialText(err.Error(), boundary.Redact, securitypolicy.RedactBasic)
 }
 
 func writeProvisionError(w http.ResponseWriter, err error, safeMessage string) {
