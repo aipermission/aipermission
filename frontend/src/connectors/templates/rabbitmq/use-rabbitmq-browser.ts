@@ -183,13 +183,13 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     setDetailMode("publish");
     setState({ state: "idle", error: "", message: "" });
     setPublish((current) =>
-      !current.routingKey.trim() && activeQueue ? { ...current, customRoutingKey: false, routingKey: activeQueue } : current,
+      current.routingKey === "" && activeQueue ? { ...current, customRoutingKey: false, routingKey: activeQueue } : current,
     );
   }
 
   function applyVhost() {
     if (publishOwnerRef.current || unresolvedPublish) return;
-    const nextVhost = vhostDraft.trim() || "/";
+    const nextVhost = vhostDraft || "/";
     if (nextVhost === vhost) {
       void refreshQueues();
       return;
@@ -206,7 +206,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
 
   async function publishMessage() {
     if (!activeSession.active || connectorActionBusy(state) || publishOwnership.locked) return;
-    const routingKey = publish.routingKey.trim();
+    const routingKey = publish.routingKey;
     if (!routingKey || !publish.payload) {
       setState({ state: "error", error: "Routing key and payload are required.", message: "" });
       return;
@@ -222,7 +222,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
           actionName: "publish_message",
           input: {
             vhost,
-            exchange: publish.exchange.trim() || "amq.default",
+            exchange: publish.exchange || "amq.default",
             routing_key: routingKey,
             payload: publish.payload,
             payload_encoding: "string",

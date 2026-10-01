@@ -10,7 +10,17 @@ import (
 func TestRabbitMQRealService(t *testing.T) {
 	requireConformance(t)
 	connector := rabbitmqconnector.New()
-	runtime := connectors.RuntimeContext{
+	runtime := rabbitFixtureRuntime(t)
+
+	assertConnection(t, connector, runtime)
+	result := executeAction(t, connector, runtime, rabbitmqconnector.ActionOverview, nil)
+	assertResultContains(t, result, "rabbitmq_version")
+	executeAction(t, connector, runtime, rabbitmqconnector.ActionListVhosts, nil)
+}
+
+func rabbitFixtureRuntime(t *testing.T) connectors.RuntimeContext {
+	t.Helper()
+	return connectors.RuntimeContext{
 		Target: connectors.TargetView{
 			ID: 3, Ref: "rabbitmq:3:3", ConnectorKind: rabbitmqconnector.Kind, Name: "conformance-rabbitmq",
 			Config: map[string]any{
@@ -28,9 +38,4 @@ func TestRabbitMQRealService(t *testing.T) {
 		Secrets:      fixtureSecrets{"password": "conformance-only"},
 		Capabilities: fixtureCapabilities{},
 	}
-
-	assertConnection(t, connector, runtime)
-	result := executeAction(t, connector, runtime, rabbitmqconnector.ActionOverview, nil)
-	assertResultContains(t, result, "rabbitmq_version")
-	executeAction(t, connector, runtime, rabbitmqconnector.ActionListVhosts, nil)
 }

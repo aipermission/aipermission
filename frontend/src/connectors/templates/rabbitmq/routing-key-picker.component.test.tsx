@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { useLayoutEffect } from "react";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import { RoutingKeyPicker } from "./routing-key-picker";
+import { queueNameLabel } from "./helpers";
 
 afterEach(() => vi.useRealTimers());
 
@@ -68,6 +69,38 @@ it("keeps pointer and keyboard selection on the same routing option", () => {
   expect(onQueue).toHaveBeenCalledExactlyOnceWith("jobs.ready");
   expect(input).toHaveAttribute("aria-expanded", "false");
 });
+
+it.each(["jobs", " jobs ", " ", "  ", "\u00a0", "\t", '" jobs "', "\\u0020"])(
+  "selects the exact collision-safe identity %j with pointer and keyboard",
+  (name) => {
+    const onQueue = vi.fn();
+    render(
+      <RoutingKeyPicker
+        queues={["jobs", " jobs ", " ", "  ", "\u00a0", "\t", '" jobs "', "\\u0020", "jobs"].map((name) => ({ name }))}
+        value={name}
+        custom={false}
+        onQueue={onQueue}
+        onCustom={vi.fn()}
+        styles={connectorConsoleTheme("dark")}
+      />,
+    );
+    const input = screen.getByRole("combobox");
+    expect(input).toHaveValue(name);
+    fireEvent.focus(input);
+    expect(screen.getAllByRole("option")).toHaveLength(9);
+    const label = queueNameLabel(name);
+    const option = screen.getByRole("option", { name: `${label} Queue routing key via amq.default` });
+    fireEvent.mouseDown(option);
+    expect(onQueue).toHaveBeenLastCalledWith(name);
+    fireEvent.focus(input);
+    const index = screen.getAllByRole("option").findIndex((item) => item.textContent?.startsWith(label));
+    expect(index).toBeGreaterThan(0);
+    for (let step = 0; step < index; step += 1) fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onQueue).toHaveBeenNthCalledWith(2, name);
+    expect(input).toHaveAttribute("aria-expanded", "false");
+  },
+);
 
 it("does not choose a removed queue before the refreshed list clamps its active option", async () => {
   const onQueue = vi.fn();

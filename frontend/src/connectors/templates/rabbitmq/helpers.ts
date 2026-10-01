@@ -13,9 +13,13 @@ export function filterQueues(queues: RabbitQueue[], pattern: string) {
 }
 
 export function uniqueQueueNames(queues: readonly Pick<RabbitQueue, "name">[] | null | undefined) {
-  return Array.from(new Set((queues || []).map((queue) => String(queue.name || "").trim()).filter(Boolean))).sort((left, right) =>
-    left.localeCompare(right),
+  return Array.from(new Set((queues || []).map((queue) => queue.name).filter((name) => typeof name === "string" && name !== ""))).sort(
+    (left, right) => left.localeCompare(right),
   );
+}
+
+export function queueNameLabel(name: string) {
+  return JSON.stringify(name).replace(/\s/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 export function queueMetaText(queue: QueueCounters) {

@@ -100,4 +100,19 @@ describe("RabbitMQ credential lifecycle model", () => {
       risk_label: "read",
     });
   });
+
+  it.each([" tenant ", " \t ", ""])("retains exact vhosts in target forms and saved config, defaulting only empty: %j", async (vhost) => {
+    const expected = vhost || "/";
+    const target: RabbitMQTarget = { id: 3, name: "queue", connector_kind: "rabbitmq", config: { vhost } };
+    const form = { ...emptyForm(), vhost };
+    expect(formFromTarget({ target }).vhost).toBe(expected);
+    expect(syncForm({ form }).vhost).toBe(expected);
+    await save({ mode: "create", form });
+    expect(api.post).toHaveBeenCalledWith(
+      "/api/connector-targets/with-profile",
+      expect.objectContaining({
+        target: expect.objectContaining({ config: expect.objectContaining({ vhost: expected }) }),
+      }),
+    );
+  });
 });

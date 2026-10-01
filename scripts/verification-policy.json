@@ -460,6 +460,7 @@
     "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",
     "TestRabbitMQRealService",
+    "TestRabbitMQResourceIdentityRealService",
     "TestValkeyRealService",
     "TestValkeyBinaryKeyIdentityRealService",
     "TestS3RealService"

@@ -341,6 +341,66 @@ it("does not dispatch queue reads while a vhost is only being edited", async () 
   expect(runGuardedConnectorAction).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ vhost: "/tenant" }) }));
 });
 
+it.each([" tenant ", " \t ", ""])("applies the exact vhost draft and defaults only an empty value: %j", async (draft) => {
+  const { result } = renderBrowser();
+  await waitFor(() => expect(result.current.queues).toHaveLength(2));
+  act(() => result.current.setVhostDraft(draft));
+  mockedRunner.mockClear();
+  act(() => result.current.applyVhost());
+  const vhost = draft || "/";
+  expect(result.current.vhost).toBe(vhost);
+  expect(result.current.vhostDraft).toBe(draft);
+  await waitFor(() =>
+    expect(mockedRunner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionName: "list_queues",
+        input: expect.objectContaining({ vhost }),
+      }),
+    ),
+  );
+  await act(async () => result.current.selectQueue(" jobs "));
+  expect(mockedRunner).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actionName: "get_queue",
+      input: { vhost, queue: " jobs " },
+    }),
+  );
+  await waitFor(() => expect(result.current.publishLocked).toBe(false));
+  act(() => {
+    result.current.startPublish();
+    result.current.setPublish((current) => ({ ...current, payload: "Exact vhost" }));
+  });
+  await act(async () => result.current.publishMessage());
+  expect(mockedRunner).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actionName: "publish_message",
+      input: expect.objectContaining({ vhost, exchange: "amq.default", routing_key: " jobs " }),
+    }),
+  );
+});
+
+it.each([" tenant ", " ", "", undefined])("retains configured vhost identity on browser initialization: %j", async (configured) => {
+  const { result } = renderHook(() =>
+    useRabbitMQBrowser({
+      target: { ref: "rabbitmq:1:1", config: { vhost: configured } },
+      approvals: { state: "ready", data: [] },
+      session: { active: true, startedAt: "now" },
+      onRefreshActivity: vi.fn(),
+    }),
+  );
+  const vhost = configured || "/";
+  expect(result.current.vhost).toBe(vhost);
+  expect(result.current.vhostDraft).toBe(vhost);
+  await waitFor(() =>
+    expect(mockedRunner).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionName: "list_queues",
+        input: expect.objectContaining({ vhost }),
+      }),
+    ),
+  );
+});
+
 it("keeps publish ownership when the vhost draft changes", async () => {
   let resolvePublish: ActionResolver = () => {};
   mockedRunner.mockImplementation((options) => {

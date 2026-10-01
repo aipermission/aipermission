@@ -16,6 +16,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/boundedtext"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/jsonidentity"
 )
 
 type rabbitClient struct {
@@ -26,6 +27,9 @@ type rabbitClient struct {
 }
 
 func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*rabbitClient, error) {
+	if err := validateRabbitIdentities(runtime.Target.Config); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 	transport, _ := runtime.Capability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
 	if transport == nil {
 		return nil, ErrMissingTransport
@@ -118,6 +122,9 @@ func (client *rabbitClient) do(ctx context.Context, method string, path string, 
 	}
 	if len(data) == 0 {
 		return true, false, fmt.Errorf("rabbitmq response body is empty")
+	}
+	if err := jsonidentity.Validate(data); err != nil {
+		return true, false, fmt.Errorf("decode rabbitmq response: %w", err)
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		return true, false, fmt.Errorf("decode rabbitmq response: %w", err)
@@ -255,7 +262,7 @@ func rabbitVHost(target connectors.TargetView) string {
 }
 
 func normalizeVHost(input map[string]any, key string, fallback string) string {
-	value := strings.TrimSpace(stringValue(input, key))
+	value := stringValue(input, key)
 	if value == "" {
 		value = fallback
 	}

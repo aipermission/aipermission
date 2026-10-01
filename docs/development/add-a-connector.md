@@ -824,6 +824,16 @@ path as Redis:
 It should not add RabbitMQ-specific permission tables, approval tables, history
 pages, audit routes, MCP tool families, or global UI pages.
 
+Vhost, queue, exchange and routing-key fields use `PreserveWhitespace` and a
+connector-owned identity validator at preparation and execution. Discovery and
+selection retain exact strings; picker labels may quote names but must not
+become the submitted value. Optional empty defaults are distinct from
+whitespace-only identities. The bounded Management API response decoder uses
+the shared lossless JSON validator before typed decoding, and malformed
+responses after a mutation preserve unknown-outcome classification. Owner
+tests cover schema-to-prepared-JSON-to-HTTP dispatch; the required isolated
+service fixture proves padded names do not route to their unpadded siblings.
+
 ## Built-In Example: Mail
 
 Mail is a normal structured connector. Its target owns IMAP/SMTP endpoints,
