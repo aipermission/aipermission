@@ -23,6 +23,14 @@ func TestDockerExecShellCommandUsesValidatedExecutable(t *testing.T) {
 	}
 }
 
+func TestDockerExecShellCommandPreservesIdentityProbeAndShell(t *testing.T) {
+	got := dockerExecShellCommand("'docker'", "api-1.2")
+	want := "__aip_docker_version=$('docker' version --format '{{.Server.Version}}' 2>/dev/null) && test -n \"$__aip_docker_version\" || { printf 'Docker identity probe failed.\\n' >&2; exit 127; }; 'docker' exec -it -- 'api-1.2' sh -lc 'if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh'"
+	if got != want {
+		t.Fatalf("command=%q, want %q", got, want)
+	}
+}
+
 func TestDockerExecShellCommandRejectsUnsafeExecutableBeforeConstruction(t *testing.T) {
 	for _, unsafe := range []string{"docker --debug", "docker; id", "$(id)", "eval", "true", "podman-docker"} {
 		if _, err := dockerconnector.DockerCommand(connectors.TargetView{Config: map[string]any{"docker_command": unsafe}}); err == nil {

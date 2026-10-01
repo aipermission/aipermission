@@ -217,6 +217,14 @@ interfaces. Extending the adapter surface should mean extending
 `gatewayconnectorapi`
 once and updating every affected adapter and exact-method-set test.
 
+Reuse `connectors.StringMapValue` for optional map text (trim only where the
+caller needs it) and `connectors.QuoteShellArgument` for a single POSIX shell
+argument. The latter does not validate executable identities, object names,
+scope, or protocol restrictions. Keep those checks and protocol command
+construction in the owning connector. `connectors.InteractiveShellProbe`
+provides the common Bash-login-with-sh-fallback payload; it owns no runtime
+state, permissions, credentials, or transport selection.
+
 Target operations hold workspace delivery admission across the fresh target
 snapshot, adapter dispatch, response projection and writing. Operations that
 change persistent connector-owned state must implement the optional
