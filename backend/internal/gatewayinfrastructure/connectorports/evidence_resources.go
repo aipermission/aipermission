@@ -3,33 +3,33 @@ package connectorports
 import (
 	"context"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type evidenceResourceRuntime struct {
-	resources connectorapi.ScopedResourceRuntime
+	resources resourcecontract.ScopedResourceRuntime
 }
 type evidenceResourceReader struct {
-	reader connectorapi.CredentialResourceReader
+	reader resourcecontract.CredentialResourceReader
 }
 
 // evidenceResources narrows actual runtime method sets, preventing an adapter
 // from recovering mutation/secret authority by type-asserting a read interface.
-func evidenceResources(resources connectorapi.ScopedResourceRuntime) connectorapi.EvidenceResourceRuntime {
-	if connectorapi.IsNilDependency(resources) {
+func evidenceResources(resources resourcecontract.ScopedResourceRuntime) resourcecontract.EvidenceResourceRuntime {
+	if resourcecontract.IsNilDependency(resources) {
 		return nil
 	}
 	return evidenceResourceRuntime{resources: resources}
 }
 
-func (runtime evidenceResourceRuntime) CredentialResources(kind string) connectorapi.CredentialResourceReader {
+func (runtime evidenceResourceRuntime) CredentialResources(kind string) resourcecontract.CredentialResourceReader {
 	store := runtime.resources.CredentialResources(kind)
-	if connectorapi.IsNilDependency(store) {
+	if resourcecontract.IsNilDependency(store) {
 		return nil
 	}
 	return evidenceResourceReader{reader: store}
 }
 
-func (reader evidenceResourceReader) Get(ctx context.Context, id int64) (connectorapi.CredentialResource, error) {
+func (reader evidenceResourceReader) Get(ctx context.Context, id int64) (resourcecontract.CredentialResource, error) {
 	return reader.reader.Get(ctx, id)
 }

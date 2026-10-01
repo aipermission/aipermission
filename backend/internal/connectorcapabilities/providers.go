@@ -4,11 +4,12 @@ import (
 	"errors"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type ActionPortsFactory func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime)
 
-func ForRuntime(base Set, adapter connectorapi.Adapter, resources connectorapi.ScopedResourceRuntime, actionPorts ActionPortsFactory) (Set, error) {
+func ForRuntime(base Set, adapter connectorapi.Adapter, resources resourcecontract.ScopedResourceRuntime, actionPorts ActionPortsFactory) (Set, error) {
 	capabilities, err := ForResources(base, adapter, resources)
 	if err != nil {
 		return nil, err
@@ -31,9 +32,9 @@ func ForRuntime(base Set, adapter connectorapi.Adapter, resources connectorapi.S
 
 // ForResources cannot construct action/session ports, even for an adapter that
 // implements both provider contracts. Callers separately supply protected ports.
-func ForResources(base Set, adapter connectorapi.Adapter, resources connectorapi.ScopedResourceRuntime) (Set, error) {
+func ForResources(base Set, adapter connectorapi.Adapter, resources resourcecontract.ScopedResourceRuntime) (Set, error) {
 	if provider, ok := adapter.(connectorapi.ScopedResourceCapabilityProvider); ok {
-		if connectorapi.IsNilDependency(resources) {
+		if resourcecontract.IsNilDependency(resources) {
 			return nil, errors.New("scoped connector resource runtime is unavailable")
 		}
 		return Merge(base, provider.ScopedResourceCapabilities(resources))

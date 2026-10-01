@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestOpenLiveConsoleOmitsMissingOrNilContainer(t *testing.T) {
@@ -133,7 +134,7 @@ func (fakeLiveConsoleRuntime) ListCredentialProfiles(context.Context, int64) ([]
 	return nil, errors.New("not implemented")
 }
 
-func (fakeLiveConsoleRuntime) CredentialResources(string) connectorapi.CredentialResourceStore {
+func (fakeLiveConsoleRuntime) CredentialResources(string) resourcecontract.CredentialResourceStore {
 	return nil
 }
 

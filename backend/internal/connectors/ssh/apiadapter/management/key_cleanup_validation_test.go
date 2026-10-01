@@ -7,7 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/keycleanup"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestKeyCleanupInvalidPublicSnapshotNeverPersistsOrReadsPrivateMaterial(t *testing.T) {
@@ -21,7 +21,7 @@ func TestKeyCleanupInvalidPublicSnapshotNeverPersistsOrReadsPrivateMaterial(t *t
 			case "missing_key":
 				fixture.runtime.profiles[0].Public["ssh_key_id"] = int64(999)
 			case "invalid_key":
-				_, err := fixture.runtime.keys.Update(t.Context(), fixture.key.ID, connectorapi.UpdateCredentialResourceInput{Name: fixture.key.Name, PublicData: "not an SSH public key"})
+				_, err := fixture.runtime.keys.Update(t.Context(), fixture.key.ID, resourcecontract.UpdateCredentialResourceInput{Name: fixture.key.Name, PublicData: "not an SSH public key"})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -59,7 +59,7 @@ func TestKeyCleanupInvalidPrivateMaterialRetainsIntentWithoutAuthentication(t *t
 				}
 				private = key.PrivateKey
 			}
-			alias, err := fixture.runtime.keys.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+			alias, err := fixture.runtime.keys.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 				Name: "mismatched-resource", ResourceType: "ed25519", PublicData: fixture.key.PublicKey, Fingerprint: fixture.key.Fingerprint,
 				Secret: map[string]string{"private_key": private},
 			})

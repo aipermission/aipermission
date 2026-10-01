@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
@@ -51,7 +52,7 @@ func newEvidenceApplicationFixture(t *testing.T, name string) evidenceApplicatio
 	return evidenceApplicationFixture{component, handle, application, provider}
 }
 
-func (fixture evidenceApplicationFixture) reader(t *testing.T, kind string) connectorapi.CredentialResourceReader {
+func (fixture evidenceApplicationFixture) reader(t *testing.T, kind string) resourcecontract.CredentialResourceReader {
 	t.Helper()
 	if result, err := fixture.application.CleanupEvidenceCapabilities(fixture.handle, kind); err != nil || result == nil || result.RuntimeCapability("journal") == nil {
 		t.Fatalf("evidence entry point failed: %#v %v", result, err)
@@ -60,7 +61,7 @@ func (fixture evidenceApplicationFixture) reader(t *testing.T, kind string) conn
 		t.Fatal("evidence entry point invoked mutable or action providers")
 	}
 	reader := fixture.provider.evidenceCapabilityProvider.seen.CredentialResources("journal")
-	if _, mutable := reader.(connectorapi.CredentialResourceStore); mutable {
+	if _, mutable := reader.(resourcecontract.CredentialResourceStore); mutable {
 		t.Fatal("evidence exposed mutable store")
 	}
 	return reader
@@ -69,11 +70,11 @@ func (fixture evidenceApplicationFixture) reader(t *testing.T, kind string) conn
 func TestEvidenceApplicationBindsWorkspaceConnectorAndRetirement(t *testing.T) {
 	first := newEvidenceApplicationFixture(t, "first-workspace")
 	second := newEvidenceApplicationFixture(t, "second-workspace")
-	rows := make([]connectorapi.CredentialResource, 0, 2)
-	readers := make([]connectorapi.CredentialResourceReader, 0, 2)
+	rows := make([]resourcecontract.CredentialResource, 0, 2)
+	readers := make([]resourcecontract.CredentialResourceReader, 0, 2)
 	for index, fixture := range []evidenceApplicationFixture{first, second} {
 		store := fixture.application.DataRuntime(fixture.handle, "first").CredentialResources("journal")
-		row, err := store.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+		row, err := store.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 			Name: []string{"first-entry", "second-entry"}[index], ResourceType: "domain.v1", PublicData: `{"status":"confirmed"}`, Secret: struct{}{},
 		})
 		if err != nil {
@@ -81,7 +82,7 @@ func TestEvidenceApplicationBindsWorkspaceConnectorAndRetirement(t *testing.T) {
 		}
 		rows = append(rows, row)
 		readers = append(readers, fixture.reader(t, "first"))
-		if _, err := fixture.reader(t, "second").Get(t.Context(), row.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if _, err := fixture.reader(t, "second").Get(t.Context(), row.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("evidence read another connector's resource: %v", err)
 		}
 	}

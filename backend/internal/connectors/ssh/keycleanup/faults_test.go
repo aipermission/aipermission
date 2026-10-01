@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestJournalCreateFailuresNeverPermitDispatch(t *testing.T) {
@@ -59,7 +59,7 @@ func TestJournalRejectsMismatchedPersistenceReadback(t *testing.T) {
 	store := newMemoryStore()
 	journal := New(store)
 	identity := testIdentity(t)
-	store.readback = func(row connectorapi.CredentialResource) connectorapi.CredentialResource {
+	store.readback = func(row resourcecontract.CredentialResource) resourcecontract.CredentialResource {
 		row.PublicData = strings.Replace(row.PublicData, `"status":"intent"`, `"status":"confirmed"`, 1)
 		return row
 	}
@@ -71,7 +71,7 @@ func TestJournalRejectsMismatchedPersistenceReadback(t *testing.T) {
 	if err != nil || len(entries) != 1 || entries[0].Record.Status != Intent {
 		t.Fatalf("persisted fence was not retained: %#v, %v", entries, err)
 	}
-	store.readback = func(row connectorapi.CredentialResource) connectorapi.CredentialResource {
+	store.readback = func(row resourcecontract.CredentialResource) resourcecontract.CredentialResource {
 		row.ID++
 		return row
 	}
@@ -106,32 +106,32 @@ func TestJournalReadErrorsAndUnavailableStoreFailClosed(t *testing.T) {
 }
 
 func TestJournalMalformedOrDuplicatedRecordsFailClosed(t *testing.T) {
-	mutations := map[string]func(*connectorapi.CredentialResource){
-		"json":     func(r *connectorapi.CredentialResource) { r.PublicData = "{" },
-		"trailing": func(r *connectorapi.CredentialResource) { r.PublicData += " {}" },
-		"unknown field": func(r *connectorapi.CredentialResource) {
+	mutations := map[string]func(*resourcecontract.CredentialResource){
+		"json":     func(r *resourcecontract.CredentialResource) { r.PublicData = "{" },
+		"trailing": func(r *resourcecontract.CredentialResource) { r.PublicData += " {}" },
+		"unknown field": func(r *resourcecontract.CredentialResource) {
 			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":2,"unknown":true`, 1)
 		},
-		"duplicate field": func(r *connectorapi.CredentialResource) {
+		"duplicate field": func(r *resourcecontract.CredentialResource) {
 			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":2,"version":2`, 1)
 		},
-		"version": func(r *connectorapi.CredentialResource) {
+		"version": func(r *resourcecontract.CredentialResource) {
 			r.PublicData = strings.Replace(r.PublicData, `"version":2`, `"version":1`, 1)
 		},
-		"status": func(r *connectorapi.CredentialResource) {
+		"status": func(r *resourcecontract.CredentialResource) {
 			r.PublicData = strings.Replace(r.PublicData, `"status":"intent"`, `"status":"success"`, 1)
 		},
-		"generation": func(r *connectorapi.CredentialResource) {
+		"generation": func(r *resourcecontract.CredentialResource) {
 			var record Record
 			_ = json.Unmarshal([]byte(r.PublicData), &record)
 			record.Generation = "bad"
 			data, _ := json.Marshal(record)
 			r.PublicData = string(data)
 		},
-		"name":        func(r *connectorapi.CredentialResource) { r.Name += "other" },
-		"fingerprint": func(r *connectorapi.CredentialResource) { r.Fingerprint = "other" },
-		"kind":        func(r *connectorapi.CredentialResource) { r.ResourceType = "other" },
-		"id":          func(r *connectorapi.CredentialResource) { r.ID = 0 },
+		"name":        func(r *resourcecontract.CredentialResource) { r.Name += "other" },
+		"fingerprint": func(r *resourcecontract.CredentialResource) { r.Fingerprint = "other" },
+		"kind":        func(r *resourcecontract.CredentialResource) { r.ResourceType = "other" },
+		"id":          func(r *resourcecontract.CredentialResource) { r.ID = 0 },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {

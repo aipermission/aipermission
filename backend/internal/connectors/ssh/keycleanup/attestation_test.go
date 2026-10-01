@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestJournalAttestationRetainsAllHistoricalAliasFences(t *testing.T) {
@@ -128,7 +128,7 @@ func TestJournalRejectsCanonicalButInvalidAttestationData(t *testing.T) {
 	}
 	store := newMemoryStore()
 	intent := beginTest(t, New(store), identity)
-	store.readback = func(row connectorapi.CredentialResource) connectorapi.CredentialResource {
+	store.readback = func(row resourcecontract.CredentialResource) resourcecontract.CredentialResource {
 		var record Record
 		_ = json.Unmarshal([]byte(row.PublicData), &record)
 		record.Attestations[0].Reason = "Different evidence"

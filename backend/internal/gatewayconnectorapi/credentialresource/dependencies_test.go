@@ -1,4 +1,4 @@
-package gatewayconnectorapi
+package credentialresource
 
 import "testing"
 

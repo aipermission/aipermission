@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type Set map[string]connectors.RuntimeCapability
@@ -24,7 +24,7 @@ func Merge(base Set, additions map[string]connectors.RuntimeCapability) (Set, er
 		if !connectors.ValidIdentifier(name) {
 			return nil, fmt.Errorf("invalid runtime capability name %q", name)
 		}
-		if connectorapi.IsNilDependency(capability) {
+		if resourcecontract.IsNilDependency(capability) {
 			return nil, fmt.Errorf("runtime capability %q is nil", name)
 		}
 		if declared := capability.ConnectorRuntimeCapability(); declared != name {

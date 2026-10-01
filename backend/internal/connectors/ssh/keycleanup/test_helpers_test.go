@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func testDigest(t *testing.T, value string) string {
@@ -40,8 +40,8 @@ func testIdentity(t *testing.T) Identity {
 }
 
 type memoryStore struct {
-	connectorapi.CredentialResourceStore
-	rows        map[int64]connectorapi.CredentialResource
+	resourcecontract.CredentialResourceStore
+	rows        map[int64]resourcecontract.CredentialResource
 	nextID      int64
 	listErr     error
 	getErr      error
@@ -49,20 +49,20 @@ type memoryStore struct {
 	updateErr   error
 	createAfter bool
 	updateAfter bool
-	readback    func(connectorapi.CredentialResource) connectorapi.CredentialResource
+	readback    func(resourcecontract.CredentialResource) resourcecontract.CredentialResource
 	secretReads int
 	listOrder   []int64
 }
 
 func newMemoryStore() *memoryStore {
-	return &memoryStore{rows: map[int64]connectorapi.CredentialResource{}, nextID: 1}
+	return &memoryStore{rows: map[int64]resourcecontract.CredentialResource{}, nextID: 1}
 }
 
-func (store *memoryStore) List(context.Context) ([]connectorapi.CredentialResource, error) {
+func (store *memoryStore) List(context.Context) ([]resourcecontract.CredentialResource, error) {
 	if store.listErr != nil {
 		return nil, store.listErr
 	}
-	rows := []connectorapi.CredentialResource{}
+	rows := []resourcecontract.CredentialResource{}
 	if len(store.listOrder) > 0 {
 		for _, id := range store.listOrder {
 			rows = append(rows, store.rows[id])
@@ -75,13 +75,13 @@ func (store *memoryStore) List(context.Context) ([]connectorapi.CredentialResour
 	return rows, nil
 }
 
-func (store *memoryStore) Get(_ context.Context, id int64) (connectorapi.CredentialResource, error) {
+func (store *memoryStore) Get(_ context.Context, id int64) (resourcecontract.CredentialResource, error) {
 	if store.getErr != nil {
-		return connectorapi.CredentialResource{}, store.getErr
+		return resourcecontract.CredentialResource{}, store.getErr
 	}
 	row, found := store.rows[id]
 	if !found {
-		return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNotFound
 	}
 	return row, nil
 }
@@ -91,20 +91,20 @@ func (store *memoryStore) GetSecret(context.Context, int64, any) error {
 	return errors.New("unexpected journal secret read")
 }
 
-func (store *memoryStore) Create(_ context.Context, input connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (store *memoryStore) Create(_ context.Context, input resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if store.createErr != nil && !store.createAfter {
-		return connectorapi.CredentialResource{}, store.createErr
+		return resourcecontract.CredentialResource{}, store.createErr
 	}
 	for _, row := range store.rows {
 		if row.Name == input.Name {
-			return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNameExists
+			return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNameExists
 		}
 	}
-	row := connectorapi.CredentialResource{ID: store.nextID, Name: input.Name, ResourceType: input.ResourceType, PublicData: input.PublicData, Fingerprint: input.Fingerprint}
+	row := resourcecontract.CredentialResource{ID: store.nextID, Name: input.Name, ResourceType: input.ResourceType, PublicData: input.PublicData, Fingerprint: input.Fingerprint}
 	store.nextID++
 	store.rows[row.ID] = row
 	if store.createErr != nil {
-		return connectorapi.CredentialResource{}, store.createErr
+		return resourcecontract.CredentialResource{}, store.createErr
 	}
 	if store.readback != nil {
 		row = store.readback(row)
@@ -112,18 +112,18 @@ func (store *memoryStore) Create(_ context.Context, input connectorapi.CreateCre
 	return row, nil
 }
 
-func (store *memoryStore) Update(_ context.Context, id int64, input connectorapi.UpdateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (store *memoryStore) Update(_ context.Context, id int64, input resourcecontract.UpdateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if store.updateErr != nil && !store.updateAfter {
-		return connectorapi.CredentialResource{}, store.updateErr
+		return resourcecontract.CredentialResource{}, store.updateErr
 	}
 	row, found := store.rows[id]
 	if !found {
-		return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNotFound
 	}
 	row.Name, row.PublicData = input.Name, input.PublicData
 	store.rows[id] = row
 	if store.updateErr != nil {
-		return connectorapi.CredentialResource{}, store.updateErr
+		return resourcecontract.CredentialResource{}, store.updateErr
 	}
 	if store.readback != nil {
 		row = store.readback(row)
@@ -156,7 +156,7 @@ func seedTestEntry(t *testing.T, store *memoryStore, record Record) Entry {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resource, err := store.Create(context.Background(), connectorapi.CreateCredentialResourceInput{
+	resource, err := store.Create(context.Background(), resourcecontract.CreateCredentialResourceInput{
 		Name: resourceName(digest), ResourceType: recordType, PublicData: string(encoded), Fingerprint: digest,
 	})
 	if err != nil {

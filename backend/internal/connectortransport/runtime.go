@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type ScopeRuntime interface {
@@ -65,7 +66,7 @@ func DataRuntime(runtime Runtime, kind string) connectorapi.ConnectorDataRuntime
 	return Scope(runtime, kind).DataRuntime()
 }
 
-func ScopedResourceRuntime(runtime Runtime, kind string) connectorapi.ScopedResourceRuntime {
+func ScopedResourceRuntime(runtime Runtime, kind string) resourcecontract.ScopedResourceRuntime {
 	return Scope(runtime, kind).ScopedResourceRuntime()
 }
 

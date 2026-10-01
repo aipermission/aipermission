@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 var errTransferCredentialResourcesReadOnly = errors.New("file transfer credential resources are read-only")
@@ -20,18 +20,18 @@ type credentialResourceKey struct {
 
 type credentialResourceBindings struct {
 	mu       sync.Mutex
-	records  map[credentialResourceKey]connectorapi.CredentialResource
+	records  map[credentialResourceKey]resourcecontract.CredentialResource
 	boundary actionresult.CredentialBoundary
 }
 
 func newCredentialResourceBindings(boundary actionresult.CredentialBoundary) *credentialResourceBindings {
 	return &credentialResourceBindings{
-		records:  make(map[credentialResourceKey]connectorapi.CredentialResource),
+		records:  make(map[credentialResourceKey]resourcecontract.CredentialResource),
 		boundary: boundary,
 	}
 }
 
-func (b *credentialResourceBindings) bind(kind string, record connectorapi.CredentialResource) error {
+func (b *credentialResourceBindings) bind(kind string, record resourcecontract.CredentialResource) error {
 	if b == nil {
 		return errTransferExecutionStale
 	}
@@ -60,12 +60,12 @@ func (b *credentialResourceBindings) addSecret(destination any) {
 }
 
 type boundCredentialResourceStore struct {
-	delegate connectorapi.CredentialResourceStore
+	delegate resourcecontract.CredentialResourceStore
 	kind     string
 	bindings *credentialResourceBindings
 }
 
-func (s boundCredentialResourceStore) List(ctx context.Context) ([]connectorapi.CredentialResource, error) {
+func (s boundCredentialResourceStore) List(ctx context.Context) ([]resourcecontract.CredentialResource, error) {
 	records, err := s.delegate.List(ctx)
 	if err != nil {
 		return nil, err
@@ -78,13 +78,13 @@ func (s boundCredentialResourceStore) List(ctx context.Context) ([]connectorapi.
 	return records, nil
 }
 
-func (s boundCredentialResourceStore) Get(ctx context.Context, id int64) (connectorapi.CredentialResource, error) {
+func (s boundCredentialResourceStore) Get(ctx context.Context, id int64) (resourcecontract.CredentialResource, error) {
 	record, err := s.delegate.Get(ctx, id)
 	if err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	if err := s.bindings.bind(s.kind, record); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	return record, nil
 }
@@ -102,12 +102,12 @@ func (s boundCredentialResourceStore) GetSecret(ctx context.Context, id int64, d
 	return err
 }
 
-func (boundCredentialResourceStore) Create(context.Context, connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
-	return connectorapi.CredentialResource{}, errTransferCredentialResourcesReadOnly
+func (boundCredentialResourceStore) Create(context.Context, resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
+	return resourcecontract.CredentialResource{}, errTransferCredentialResourcesReadOnly
 }
 
-func (boundCredentialResourceStore) Update(context.Context, int64, connectorapi.UpdateCredentialResourceInput) (connectorapi.CredentialResource, error) {
-	return connectorapi.CredentialResource{}, errTransferCredentialResourcesReadOnly
+func (boundCredentialResourceStore) Update(context.Context, int64, resourcecontract.UpdateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
+	return resourcecontract.CredentialResource{}, errTransferCredentialResourcesReadOnly
 }
 
 func (boundCredentialResourceStore) Delete(context.Context, int64) error {
@@ -118,4 +118,4 @@ func (s boundCredentialResourceStore) CountProfileReferences(ctx context.Context
 	return s.delegate.CountProfileReferences(ctx, publicField, numericValue)
 }
 
-var _ connectorapi.CredentialResourceStore = boundCredentialResourceStore{}
+var _ resourcecontract.CredentialResourceStore = boundCredentialResourceStore{}

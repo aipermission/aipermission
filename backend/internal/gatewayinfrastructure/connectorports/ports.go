@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 var ErrRuntimeUnavailable = errors.New("connector runtime is unavailable")
@@ -104,7 +105,7 @@ func DataRuntime(workspace Workspace, kind string) connectorapi.ConnectorDataRun
 	return connectortransport.DataRuntime(workspace.runtime, kind)
 }
 
-func ScopedResourceRuntime(workspace Workspace, kind string) connectorapi.ScopedResourceRuntime {
+func ScopedResourceRuntime(workspace Workspace, kind string) resourcecontract.ScopedResourceRuntime {
 	return connectortransport.ScopedResourceRuntime(workspace.runtime, kind)
 }
 

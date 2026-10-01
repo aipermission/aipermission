@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/keycleanup"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
 
@@ -74,7 +74,7 @@ func TestKeyCleanupPreservesConfiguredHostnameSpellingForTrustVerification(t *te
 func TestKeyCleanupGroupsDuplicatePublicMaterialDespiteKeyIDsAndComments(t *testing.T) {
 	fixture := newCleanupFixture(t)
 	server := startCleanupSSHServer(t, fixture, "operator")
-	alias, err := fixture.runtime.keys.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+	alias, err := fixture.runtime.keys.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 		Name: "alias", ResourceType: "ed25519", PublicData: fixture.key.PublicKey + " alternative-comment",
 		Fingerprint: fixture.key.Fingerprint, Secret: struct{}{},
 	})
@@ -101,7 +101,7 @@ func TestKeyCleanupMalformedJournalAndMissingTrustRejectBeforePrivateKeyDelivery
 			var server *cleanupSSHServer
 			if cause == "malformed" {
 				server = startCleanupSSHServer(t, fixture, "operator")
-				_, err := fixture.runtime.journal.Create(t.Context(), connectorapi.CreateCredentialResourceInput{Name: "invalid-evidence", ResourceType: "key_revocation.v2", PublicData: "{}", Secret: struct{}{}})
+				_, err := fixture.runtime.journal.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{Name: "invalid-evidence", ResourceType: "key_revocation.v2", PublicData: "{}", Secret: struct{}{}})
 				if err != nil {
 					t.Fatal(err)
 				}

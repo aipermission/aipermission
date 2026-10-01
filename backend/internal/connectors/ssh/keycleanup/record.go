@@ -10,7 +10,7 @@ import (
 	"io"
 	"strings"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 const ResourceKind = "key_revocation"
@@ -119,7 +119,7 @@ func (record Record) overlaps(identity Identity) bool {
 	return false
 }
 
-func parseResource(resource connectorapi.CredentialResource) (Entry, error) {
+func parseResource(resource resourcecontract.CredentialResource) (Entry, error) {
 	var record Record
 	decoder := json.NewDecoder(bytes.NewBufferString(resource.PublicData))
 	decoder.DisallowUnknownFields()

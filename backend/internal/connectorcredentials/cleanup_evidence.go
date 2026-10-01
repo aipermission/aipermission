@@ -8,7 +8,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 // ReadCompletedCleanupEvidence runs only under the caller's exclusive lifecycle
@@ -32,7 +32,7 @@ func (ports RuntimePorts) ReadCompletedCleanupEvidence(ctx context.Context, capa
 	if err := ctx.Err(); err != nil {
 		return nil, true, err
 	}
-	if connectorapi.IsNilDependency(capabilities) {
+	if resourcecontract.IsNilDependency(capabilities) {
 		return nil, true, errors.New("connector cleanup evidence runtime is unavailable")
 	}
 	result, err := reader.ReadCompletedCredentialCleanup(ctx, connectors.CleanupEvidenceContext{

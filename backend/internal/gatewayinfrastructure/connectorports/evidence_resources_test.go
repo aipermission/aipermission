@@ -6,39 +6,39 @@ import (
 	"reflect"
 	"testing"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type evidenceTestResources struct {
-	store connectorapi.CredentialResourceStore
+	store resourcecontract.CredentialResourceStore
 	kind  string
 }
 
-func (resources *evidenceTestResources) CredentialResources(kind string) connectorapi.CredentialResourceStore {
+func (resources *evidenceTestResources) CredentialResources(kind string) resourcecontract.CredentialResourceStore {
 	resources.kind = kind
 	return resources.store
 }
 
 type evidenceTestStore struct {
-	connectorapi.CredentialResourceStore
-	read func(context.Context, int64) (connectorapi.CredentialResource, error)
+	resourcecontract.CredentialResourceStore
+	read func(context.Context, int64) (resourcecontract.CredentialResource, error)
 }
 
-func (store *evidenceTestStore) Get(ctx context.Context, id int64) (connectorapi.CredentialResource, error) {
+func (store *evidenceTestStore) Get(ctx context.Context, id int64) (resourcecontract.CredentialResource, error) {
 	return store.read(ctx, id)
 }
 
 func TestEvidenceResourcesExposeOnlyGetAndPreserveScopeAndErrors(t *testing.T) {
 	readFailure := errors.New("fixture read failed")
-	row := connectorapi.CredentialResource{ID: 8, ResourceType: "domain.v1", PublicData: `{"status":"confirmed"}`}
-	resources := &evidenceTestResources{store: &evidenceTestStore{read: func(ctx context.Context, id int64) (connectorapi.CredentialResource, error) {
+	row := resourcecontract.CredentialResource{ID: 8, ResourceType: "domain.v1", PublicData: `{"status":"confirmed"}`}
+	resources := &evidenceTestResources{store: &evidenceTestStore{read: func(ctx context.Context, id int64) (resourcecontract.CredentialResource, error) {
 		if ctx != t.Context() {
 			t.Fatal("reader replaced caller context")
 		}
 		if id == row.ID {
 			return row, nil
 		}
-		return connectorapi.CredentialResource{}, readFailure
+		return resourcecontract.CredentialResource{}, readFailure
 	}}}
 	runtime := evidenceResources(resources)
 	reader := runtime.CredentialResources("domain_journal")
@@ -54,10 +54,10 @@ func TestEvidenceResourcesExposeOnlyGetAndPreserveScopeAndErrors(t *testing.T) {
 			t.Fatalf("evidence authority grew: %v", typeOf)
 		}
 	}
-	if _, mutable := reader.(connectorapi.CredentialResourceStore); mutable {
+	if _, mutable := reader.(resourcecontract.CredentialResourceStore); mutable {
 		t.Fatal("reader recovered write/secret authority by type assertion")
 	}
-	if _, mutable := any(runtime).(connectorapi.ScopedResourceRuntime); mutable {
+	if _, mutable := any(runtime).(resourcecontract.ScopedResourceRuntime); mutable {
 		t.Fatal("evidence runtime recovered mutable resource authority")
 	}
 	if got, err := reader.Get(t.Context(), row.ID); err != nil || got != row {
@@ -69,12 +69,12 @@ func TestEvidenceResourcesExposeOnlyGetAndPreserveScopeAndErrors(t *testing.T) {
 }
 
 func TestEvidenceResourcesRejectUnavailableBackingStores(t *testing.T) {
-	for _, resources := range []connectorapi.ScopedResourceRuntime{nil, (*evidenceTestResources)(nil)} {
+	for _, resources := range []resourcecontract.ScopedResourceRuntime{nil, (*evidenceTestResources)(nil)} {
 		if got := evidenceResources(resources); got != nil {
 			t.Fatal("nil or typed-nil resource runtime accepted")
 		}
 	}
-	for _, store := range []connectorapi.CredentialResourceStore{nil, (*evidenceTestStore)(nil)} {
+	for _, store := range []resourcecontract.CredentialResourceStore{nil, (*evidenceTestStore)(nil)} {
 		if got := evidenceResources(&evidenceTestResources{store: store}).CredentialResources("domain_journal"); got != nil {
 			t.Fatal("nil or typed-nil backing store accepted")
 		}

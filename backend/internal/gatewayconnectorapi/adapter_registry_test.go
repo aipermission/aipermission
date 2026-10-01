@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type testRouteAdapter []RouteDefinition
@@ -221,8 +222,8 @@ func TestConnectorCapabilityPortsStayLeastPrivilege(t *testing.T) {
 		value   any
 		methods []string
 	}{
-		{name: "credential resource store", value: (*CredentialResourceStore)(nil), methods: []string{"CountProfileReferences", "Create", "Delete", "Get", "GetSecret", "List", "Update"}},
-		{name: "scoped resource runtime", value: (*ScopedResourceRuntime)(nil), methods: []string{"CredentialResources"}},
+		{name: "credential resource store", value: (*resourcecontract.CredentialResourceStore)(nil), methods: []string{"CountProfileReferences", "Create", "Delete", "Get", "GetSecret", "List", "Update"}},
+		{name: "scoped resource runtime", value: (*resourcecontract.ScopedResourceRuntime)(nil), methods: []string{"CredentialResources"}},
 		{name: "scoped resource capability provider", value: (*ScopedResourceCapabilityProvider)(nil), methods: []string{"ScopedResourceCapabilities"}},
 		{name: "connector data runtime", value: (*ConnectorDataRuntime)(nil), methods: []string{"CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
 		{name: "live session runtime", value: (*LiveSessionRuntime)(nil), methods: []string{"ConnectorConsoleSessions", "CredentialResources", "EnsureRuntimeSurface", "ListCredentialProfiles", "ListRuntimeSurfacesForProfile", "ResolveConnectorActionTarget", "TargetProfileByRuntimeID"}},
@@ -265,10 +266,10 @@ func TestConnectorCapabilityPortsStayLeastPrivilege(t *testing.T) {
 
 func TestConnectorRuntimePortsDoNotReturnRawGatewayState(t *testing.T) {
 	ports := []any{
-		(*ScopedResourceRuntime)(nil),
+		(*resourcecontract.ScopedResourceRuntime)(nil),
 		(*ConnectorDataRuntime)(nil), (*LiveSessionRuntime)(nil), (*LiveConsoleRuntime)(nil),
 		(*ActionRuntime)(nil), (*TransferRuntime)(nil), (*TargetLifecycleRuntime)(nil),
-		(*CredentialResourceRuntime)(nil), (*CredentialResourceStore)(nil),
+		(*CredentialResourceRuntime)(nil), (*resourcecontract.CredentialResourceStore)(nil),
 	}
 	for _, port := range ports {
 		portType := reflect.TypeOf(port).Elem()

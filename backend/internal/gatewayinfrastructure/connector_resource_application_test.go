@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
 
@@ -39,7 +40,7 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 		owner: component.ConnectorPortsOwner(), adapters: adapters,
 		ports: connectorports.NewPorts(connectorports.PortsDependencies{LiveConsole: connectorports.LiveConsoleDependencies{AdapterFor: adapters.For}}),
 	}
-	stores := []connectorapi.CredentialResourceStore{}
+	stores := []resourcecontract.CredentialResourceStore{}
 	for _, approved := range []bool{false, true} {
 		before := provider.calls
 		var capabilities connectors.RuntimeCapabilityResolver
@@ -53,9 +54,9 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 		}
 		stores = append(stores, provider.seen.CredentialResources("domain_journal"))
 	}
-	rows := []connectorapi.CredentialResource{}
+	rows := []resourcecontract.CredentialResource{}
 	for index, store := range stores {
-		row, err := store.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+		row, err := store.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 			Name:         []string{"normal-entry", "approved-entry"}[index],
 			ResourceType: "domain.v1", PublicData: `{"status":"intent"}`, Secret: struct{}{},
 		})
@@ -72,7 +73,7 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 		if _, err := expected.Get(t.Context(), row.ID); err != nil {
 			t.Fatalf("entry point bound resources outside the requested connector: %v", err)
 		}
-		if _, err := provider.seen.CredentialResources("domain_journal").Get(t.Context(), row.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if _, err := provider.seen.CredentialResources("domain_journal").Get(t.Context(), row.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("second connector read another entry point's resource: %v", err)
 		}
 	}

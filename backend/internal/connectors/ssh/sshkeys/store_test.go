@@ -18,7 +18,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 	"golang.org/x/crypto/ssh"
 )
@@ -63,7 +63,7 @@ func TestSSHKeyStoreUsesConnectorScopedEncryptedResourcePort(t *testing.T) {
 	if _, err := store.GetPrivateKey(ctx, created.ID); err != nil {
 		t.Fatalf("read scoped private key: %v", err)
 	}
-	if _, err := resources.Scope("other", "private_key").Get(ctx, created.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if _, err := resources.Scope("other", "private_key").Get(ctx, created.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		t.Fatalf("cross-connector resource read error = %v", err)
 	}
 	updated, err := store.Update(ctx, created.ID, UpdateRequest{Name: "renamed"})
