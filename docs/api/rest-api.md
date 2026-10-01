@@ -821,6 +821,18 @@ commit together, including late observations after cancellation. Cleanup skips
 active owners; after a restart, retained download staging is reconciled before
 deletion. This does not turn a canceled or failed transfer back into a success.
 
+`GET /api/file-transfer-batches` returns a paginated batch list with `items`,
+`total`, `limit`, `offset`, and `next_offset` when more batches remain. It accepts
+`direction`, `status`, connector transfer `runtime_id`, and `q` filters; `q`
+matches archive names or target names. The default limit is 50 and the maximum
+is 100. Batches are ordered by creation time descending, then id descending.
+Each returned batch includes its per-file items ordered by queue index, then
+id ascending (the batch's `items` field is omitted if it has no files); only
+batches on the requested page have their items loaded.
+An empty page returns `items: []` while retaining the matching total. Storage
+uses three SQL queries for a nonempty page (count, batches, and page items),
+or two for an empty page, independent of the number of returned batches.
+
 `GET /api/file-transfer-batches/{id}` returns the batch record, aggregate
 progress, speed/ETA, and ordered per-file items. `POST
 /api/file-transfer-batches/{id}/pause` pauses the active queue while the current

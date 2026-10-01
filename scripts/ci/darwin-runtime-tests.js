@@ -9,6 +9,7 @@ const suite = createNativeRuntimeSuite({
   nodePlatform: "darwin",
   policyPlatform: "darwin",
   requiredTestsKey: "darwinRuntimeTests",
+  buildTags: ["sqlite_trace"],
   resolveEnvironment: () => {
     const prefix = execFileSync("brew", ["--prefix", "openssl@3"], {
       encoding: "utf8",

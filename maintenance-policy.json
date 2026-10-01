@@ -209,6 +209,14 @@
     {
       "package": "github.com/aipermission/aipermission/backend/internal/databasecatalog",
       "name": "TestDarwinMoveFileFailuresAreReported"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/filetransfer",
+      "name": "TestListBatchesConstantQueryCount"
+    },
+    {
+      "package": "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer",
+      "name": "TestListFileTransferBatchesConstantQueryCount"
     }
   ],
   "sourceOverrides": {},

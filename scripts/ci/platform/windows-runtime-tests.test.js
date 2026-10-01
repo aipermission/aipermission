@@ -92,10 +92,12 @@ test("Windows coverage parser rejects malformed profiles", () => {
 });
 
 test("macOS evidence uses its own test and source inventories", () => {
-  assert.ok(darwinRuntime.requiredTests.length > 0);
-  assert.ok(
-    darwinRuntime.requiredTests.every((entry) => entry.name.includes("Darwin")),
-  );
+  assert.deepEqual(darwinRuntime.requiredTests.map((entry) => entry.name), [
+    "TestMoveFileNoReplaceDarwinContract",
+    "TestDarwinMoveFileFailuresAreReported",
+    "TestListBatchesConstantQueryCount",
+    "TestListFileTransferBatchesConstantQueryCount",
+  ]);
   const lines = ["mode: atomic"];
   for (const [sourcePath, evidence] of Object.entries(
     darwinRuntime.requiredCoverage,
@@ -112,4 +114,60 @@ test("macOS evidence uses its own test and source inventories", () => {
     ),
     [],
   );
+});
+
+test("native query-count fixtures compile and execute with SQL tracing", () => {
+  assert.deepEqual(darwinRuntime.compileArguments, [
+    "test",
+    "-tags",
+    "sqlite_trace",
+    "-count=1",
+    "-run",
+    "^$",
+    "./...",
+  ]);
+  const args = darwinRuntime.runtimeArguments("native-coverage.out");
+  assert.deepEqual(args.slice(0, 7), [
+    "test",
+    "-tags",
+    "sqlite_trace",
+    "-count=1",
+    "-json",
+    "-covermode=atomic",
+    "-coverprofile=native-coverage.out",
+  ]);
+  for (const owner of [
+    "./internal/filetransfer",
+    "./internal/gatewayoperations/transfer",
+  ]) {
+    assert.ok(args.includes(owner), `missing native owner ${owner}`);
+  }
+  const pattern = new RegExp(args[args.indexOf("-run") + 1]);
+  for (const entry of darwinRuntime.requiredTests) {
+    assert.ok(pattern.test(entry.name), `missing native fixture ${entry.name}`);
+  }
+  assert.ok(!pattern.test("TestListBatchesConstantQueryCountLookalike"));
+});
+
+test("native query-count evidence rejects omitted, skipped, and duplicate fixtures", () => {
+  const required = darwinRuntime.requiredTests;
+  const passing = required.map((entry) => event(entry, "pass"));
+  assert.deepEqual(darwinRuntime.verifyRequiredTestEvents(passing), []);
+  for (const entry of required.filter((entry) =>
+    entry.name.endsWith("QueryCount"),
+  )) {
+    const retained = passing.filter((line) => JSON.parse(line).Test !== entry.name);
+    for (const replacement of [
+      [],
+      [event(entry, "skip")],
+      [event(entry, "fail")],
+      [event(entry, "pass"), event(entry, "pass")],
+      [event(entry, "pass", `${entry.package}/lookalike`)],
+    ]) {
+      assert.deepEqual(
+        darwinRuntime.verifyRequiredTestEvents([...retained, ...replacement]),
+        [`${entry.package}:${entry.name}`],
+      );
+    }
+  }
 });
