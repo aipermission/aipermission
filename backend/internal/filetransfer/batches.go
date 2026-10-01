@@ -74,7 +74,44 @@ func (s *Store) ListBatches(ctx context.Context, filter BatchListFilter) ([]Batc
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("iterate file transfer batches: %w", err)
 	}
+	// Release the parent cursor before loading children on the single-connection store.
+	if err := rows.Close(); err != nil {
+		return nil, 0, fmt.Errorf("close file transfer batches: %w", err)
+	}
+	if err := s.loadBatchPageItems(ctx, items); err != nil {
+		return nil, 0, err
+	}
 	return items, total, nil
+}
+
+func (s *Store) loadBatchPageItems(ctx context.Context, batches []BatchRecord) error {
+	if len(batches) == 0 {
+		return nil
+	}
+	args := make([]any, len(batches))
+	indexes := make(map[int64]int, len(batches))
+	for index, batch := range batches {
+		args[index] = batch.ID
+		indexes[batch.ID] = index
+	}
+	rows, err := s.db.QueryContext(ctx, transferSelect+
+		` WHERE ft.batch_id IN (`+placeholders(len(batches))+`) ORDER BY ft.batch_id ASC, ft.queue_index ASC, ft.id ASC`, args...)
+	if err != nil {
+		return fmt.Errorf("list file transfer batch items for page: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		item, err := scanTransfer(rows)
+		if err != nil {
+			return fmt.Errorf("scan file transfer batch item for page: %w", err)
+		}
+		index := indexes[item.BatchID]
+		batches[index].Items = append(batches[index].Items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate file transfer batch items for page: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) CreateBatch(ctx context.Context, request CreateBatchRequest) (BatchRecord, error) {

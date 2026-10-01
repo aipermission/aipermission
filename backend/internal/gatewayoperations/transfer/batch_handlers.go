@@ -49,14 +49,6 @@ func (s FileTransferHTTPHandlers) ListFileTransferBatches(w http.ResponseWriter,
 		writeInternalError(w)
 		return
 	}
-	for index := range items {
-		batchItems, err := runtime.Storage().ListBatchItems(r.Context(), items[index].ID)
-		if err != nil {
-			writeInternalError(w)
-			return
-		}
-		items[index].Items = batchItems
-	}
 	writeJSON(w, http.StatusOK, makePageResponse(items, total, page))
 }
 

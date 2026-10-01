@@ -4,18 +4,26 @@ const os = require("node:os");
 const path = require("node:path");
 const policy = require("../../maintenance-policy.json");
 
-const compileArguments = ["test", "-count=1", "-run", "^$", "./..."];
-
 function createNativeRuntimeSuite({
   cgoEnabled,
   label,
   nodePlatform,
   policyPlatform,
   requiredTestsKey,
+  buildTags = [],
   resolveEnvironment = () => ({}),
 }) {
   const requiredTests = policy[requiredTestsKey];
   const requiredCoverage = policy.backendCoveragePlatformFiles;
+  const tagArguments = buildTags.length ? ["-tags", buildTags.join(",")] : [];
+  const compileArguments = [
+    "test",
+    ...tagArguments,
+    "-count=1",
+    "-run",
+    "^$",
+    "./...",
+  ];
 
   function assertNativePlatform(platform = process.platform) {
     if (platform !== nodePlatform) {
@@ -84,6 +92,28 @@ function createNativeRuntimeSuite({
     return verifyNativeTestEvents(lines, required);
   }
 
+  function runtimeArguments(profilePath) {
+    const pattern = `^(${requiredTests.map((entry) => entry.name).join("|")})$`;
+    const packages = [
+      ...new Set(
+        requiredTests.map(
+          (entry) => `./${entry.package.split("/backend/")[1]}`,
+        ),
+      ),
+    ];
+    return [
+      "test",
+      ...tagArguments,
+      "-count=1",
+      "-json",
+      "-covermode=atomic",
+      `-coverprofile=${profilePath}`,
+      ...packages,
+      "-run",
+      pattern,
+    ];
+  }
+
   function run() {
     assertNativePlatform();
     const nativeEnvironment = resolveEnvironment();
@@ -102,40 +132,19 @@ function createNativeRuntimeSuite({
       throw new Error(`${label} test graph did not compile and start cleanly`);
     }
 
-    const pattern = `^(${requiredTests.map((entry) => entry.name).join("|")})$`;
-    const packages = [
-      ...new Set(
-        requiredTests.map(
-          (entry) => `./${entry.package.split("/backend/")[1]}`,
-        ),
-      ),
-    ];
     const directory = fs.mkdtempSync(
       path.join(os.tmpdir(), `aipermission-${policyPlatform}-`),
     );
     const profilePath = path.join(directory, "coverage.out");
     try {
-      const result = spawnSync(
-        "go",
-        [
-          "test",
-          "-count=1",
-          "-json",
-          "-covermode=atomic",
-          `-coverprofile=${profilePath}`,
-          ...packages,
-          "-run",
-          pattern,
-        ],
-        {
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            ...nativeEnvironment,
-            CGO_ENABLED: cgoEnabled,
-          },
+      const result = spawnSync("go", runtimeArguments(profilePath), {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          ...nativeEnvironment,
+          CGO_ENABLED: cgoEnabled,
         },
-      );
+      });
       if (result.error) throw result.error;
       const testFailures = verifyRequiredTestEvents(
         result.stdout.split(/\r?\n/),
@@ -170,6 +179,7 @@ function createNativeRuntimeSuite({
     requiredCoverage,
     requiredTests,
     run,
+    runtimeArguments,
     verifyPlatformCoverage,
     verifyRequiredTestEvents,
   };

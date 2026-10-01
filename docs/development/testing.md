@@ -132,7 +132,11 @@ Linux coverage inventory and floors are complemented by native
 tests rather than merely cross-compiling their binaries, first compiling and
 starting the complete `_test.go` graph with an empty test selection and then
 requiring package-bound pass events for every named behavior test. Each mapped
-platform source is checked against its own native coverage floor. The Linux job
+platform source is checked against its own native coverage floor. The macOS
+runtime inventory also requires the encrypted transfer store and HTTP batch-list
+query-count fixtures. Its runner enables `sqlite_trace` for compilation and
+execution and requires both named fixtures to pass exactly once; an omitted or
+skipped query-count test fails the gate. The Linux job
 also cross-builds the complete Windows and macOS source graphs. Active host,
 Windows, and macOS source inventories are merged. The tagged `cmd/e2e` browser harness is also
 inventoried explicitly and excluded only while it belongs exclusively to the
