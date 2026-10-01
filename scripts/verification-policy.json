@@ -470,6 +470,10 @@
       "package": "./internal/jsonidentity",
       "name": "FuzzValidateAcceptsEncoderOutputWithoutPanicking"
     },
+    {
+      "package": "./internal/connectors/postgres/rolejournal",
+      "name": "FuzzRoleRecordCanonicalRoundTrip"
+    },
     { "package": "./internal/actions", "name": "FuzzApprovalContextHash" },
     { "package": "./internal/securitypolicy", "name": "FuzzBasicRedaction" },
     { "package": "./internal/sessionenv", "name": "FuzzCompleteValueRedaction" },

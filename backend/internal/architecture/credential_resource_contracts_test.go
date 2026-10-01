@@ -16,8 +16,10 @@ func TestCredentialResourceContractsRemainPure(t *testing.T) {
 }
 
 func TestPostgresCoreDoesNotImportGatewayAdapterContracts(t *testing.T) {
-	pkg := modulePath + "/internal/connectors/postgres"
-	if packageDependencies(t, pkg)[modulePath+"/internal/gatewayconnectorapi"] {
-		t.Errorf("%s must consume pure resource contracts without the gateway adapter API", pkg)
+	for _, suffix := range []string{"", "/rolejournal"} {
+		pkg := modulePath + "/internal/connectors/postgres" + suffix
+		if packageDependencies(t, pkg)[modulePath+"/internal/gatewayconnectorapi"] {
+			t.Errorf("%s must consume pure resource contracts without the gateway adapter API", pkg)
+		}
 	}
 }
