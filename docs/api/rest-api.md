@@ -1354,6 +1354,13 @@ newly attached client receives an update through its snapshot or live stream,
 never both. Reconnecting starts a fresh snapshot; these messages are not an
 exactly-once replay protocol across connections.
 
+On spontaneous transport completion, shutdown drains admitted manual history
+work before final capture and stale manual-row cleanup. Exact-value redaction
+remains available during that cleanup. A late insert that already observes a
+prompt completes in its admitted operation rather than losing completion to a
+closed work-admission gate. Manual canonical/projection updates are transactional;
+this cleanup does not cancel unrelated automated command requests.
+
 Attach WebSocket messages from the server include:
 
 ```json

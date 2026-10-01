@@ -15,6 +15,13 @@ Responsibilities:
 - keep raw transcript parsing separate from cleaned display output
 - redact transcript text before persistence through the injected redactor
 
+Shutdown closes work admission, waits for admitted manual history operations,
+and performs the final capture and stale manual-row cleanup before destroying
+the session's exact-value redactor. A prompt recognized during a delayed insert
+is completed inside that already-admitted operation, not submitted as new work
+after shutdown. Canonical command and history projection updates share a
+transaction; automated rows are outside manual cleanup.
+
 Non-responsibilities:
 
 - HTTP auth, CSRF, and route registration
