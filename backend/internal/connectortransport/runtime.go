@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/actions"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -47,26 +48,9 @@ func NewCapabilities(dependencies Dependencies, approvedDependencies []actions.R
 	}
 }
 
-type secretAccessor struct {
-	values   map[string]any
-	boundary actions.CredentialBoundary
-}
-
-func (accessor secretAccessor) GetSecret(_ context.Context, name string) (string, error) {
-	value, ok := accessor.values[name]
-	if !ok || value == nil {
-		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
-	}
-	text := fmt.Sprint(value)
-	accessor.boundary.Add(text)
-	return text, nil
-}
-
-func (accessor secretAccessor) RegisterSensitiveValue(value string) { accessor.boundary.Add(value) }
-
 func Scope(runtime Runtime, kind string) *connectorruntime.Scope {
 	return ScopeWithSecretAccessor(runtime, kind, func(secrets map[string]any) connectors.SecretAccessor {
-		return secretAccessor{values: secrets, boundary: actions.NewCredentialBoundary(secrets)}
+		return connectorcredentials.Secrets(secrets, actions.NewCredentialBoundary(secrets))
 	})
 }
 
