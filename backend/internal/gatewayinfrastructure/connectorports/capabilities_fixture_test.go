@@ -5,6 +5,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type factoryCapability string
@@ -18,12 +19,12 @@ func (*factoryNilCapability) ConnectorRuntimeCapability() string { panic("typed 
 type factoryProvider struct {
 	resourceCalls, actionCalls, evidenceCalls    int
 	resourceValues, actionValues, evidenceValues map[string]connectors.RuntimeCapability
-	resources                                    connectorapi.ScopedResourceRuntime
-	evidence                                     connectorapi.EvidenceResourceRuntime
+	resources                                    resourcecontract.ScopedResourceRuntime
+	evidence                                     resourcecontract.EvidenceResourceRuntime
 	gateways                                     []connectorapi.RuntimeActionGateway
 }
 
-func (provider *factoryProvider) ScopedResourceCapabilities(runtime connectorapi.ScopedResourceRuntime) map[string]connectors.RuntimeCapability {
+func (provider *factoryProvider) ScopedResourceCapabilities(runtime resourcecontract.ScopedResourceRuntime) map[string]connectors.RuntimeCapability {
 	provider.resourceCalls++
 	provider.resources = runtime
 	return provider.resourceValues
@@ -41,7 +42,7 @@ func (*factoryProvider) FinishRunning(context.Context, connectorapi.ActionFinish
 }
 func (*factoryProvider) RunningHint(connectorapi.ActionRequest) string { return "" }
 
-func (provider *factoryProvider) EvidenceCapabilities(runtime connectorapi.EvidenceResourceRuntime) map[string]connectors.RuntimeCapability {
+func (provider *factoryProvider) EvidenceCapabilities(runtime resourcecontract.EvidenceResourceRuntime) map[string]connectors.RuntimeCapability {
 	provider.evidenceCalls++
 	provider.evidence = runtime
 	return provider.evidenceValues

@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestDockerExecShellCommandUsesValidatedExecutable(t *testing.T) {
@@ -104,7 +105,7 @@ func (fakeLiveConsoleRuntime) ListRuntimeSurfacesForProfile(context.Context, int
 func (fakeLiveConsoleRuntime) ListCredentialProfiles(context.Context, int64) ([]connectors.CredentialProfileView, error) {
 	return nil, errors.New("not implemented")
 }
-func (fakeLiveConsoleRuntime) CredentialResources(string) connectorapi.CredentialResourceStore {
+func (fakeLiveConsoleRuntime) CredentialResources(string) resourcecontract.CredentialResourceStore {
 	return nil
 }
 

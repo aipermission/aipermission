@@ -7,16 +7,16 @@ import (
 	"fmt"
 	"reflect"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 // Callers must hold workspace lifecycle exclusion from snapshot through dispatch
 // and confirmation. Resource-store updates alone do not provide a cross-step CAS.
 type Journal struct {
-	store connectorapi.CredentialResourceStore
+	store resourcecontract.CredentialResourceStore
 }
 
-func New(store connectorapi.CredentialResourceStore) *Journal { return &Journal{store: store} }
+func New(store resourcecontract.CredentialResourceStore) *Journal { return &Journal{store: store} }
 
 func (journal *Journal) List(ctx context.Context) ([]Entry, error) {
 	if journal == nil || journal.store == nil {
@@ -72,7 +72,7 @@ func (journal *Journal) Begin(ctx context.Context, identity Identity) (entry Ent
 	if err != nil {
 		return Entry{}, false, err
 	}
-	resource, err := journal.store.Create(ctx, connectorapi.CreateCredentialResourceInput{
+	resource, err := journal.store.Create(ctx, resourcecontract.CreateCredentialResourceInput{
 		Name: resourceName(digest), ResourceType: recordType, PublicData: string(encoded), Fingerprint: digest, Secret: struct{}{},
 	})
 	if err != nil {

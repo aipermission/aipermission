@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -49,10 +49,10 @@ type testSSHPrivateKey struct {
 }
 
 type testSSHKeyResourceStore struct {
-	resources connectorapi.CredentialResourceStore
+	resources resourcecontract.CredentialResourceStore
 }
 
-func newTestSSHKeyStore(resources connectorapi.CredentialResourceStore) *testSSHKeyResourceStore {
+func newTestSSHKeyStore(resources resourcecontract.CredentialResourceStore) *testSSHKeyResourceStore {
 	return &testSSHKeyResourceStore{resources: resources}
 }
 
@@ -71,7 +71,7 @@ func (store *testSSHKeyResourceStore) Create(ctx context.Context, request testSS
 		return testSSHKey{}, err
 	}
 	publicText := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPublic))) + " " + comment
-	record, err := store.resources.Create(ctx, connectorapi.CreateCredentialResourceInput{
+	record, err := store.resources.Create(ctx, resourcecontract.CreateCredentialResourceInput{
 		Name: request.Name, ResourceType: testSSHKeyTypeED25519,
 		PublicData: publicText, Fingerprint: ssh.FingerprintSHA256(sshPublic),
 		Secret: testSSHPrivateKey{PrivateKey: string(pem.EncodeToMemory(privateBlock))},
@@ -90,7 +90,7 @@ func (store *testSSHKeyResourceStore) GetPrivateKey(ctx context.Context, id int6
 	return secret, err
 }
 
-func testSSHKeyFromResource(record connectorapi.CredentialResource) testSSHKey {
+func testSSHKeyFromResource(record resourcecontract.CredentialResource) testSSHKey {
 	return testSSHKey{
 		ID: record.ID, Name: record.Name, KeyType: record.ResourceType,
 		PublicKey: record.PublicData, Fingerprint: record.Fingerprint,

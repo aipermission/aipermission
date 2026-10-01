@@ -6,15 +6,16 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type evidenceCapabilityProvider struct {
 	provided map[string]connectors.RuntimeCapability
-	seen     connectorapi.EvidenceResourceRuntime
+	seen     resourcecontract.EvidenceResourceRuntime
 	calls    int
 }
 
-func (provider *evidenceCapabilityProvider) EvidenceCapabilities(runtime connectorapi.EvidenceResourceRuntime) map[string]connectors.RuntimeCapability {
+func (provider *evidenceCapabilityProvider) EvidenceCapabilities(runtime resourcecontract.EvidenceResourceRuntime) map[string]connectors.RuntimeCapability {
 	provider.calls++
 	provider.seen = runtime
 	return provider.provided
@@ -28,7 +29,7 @@ type allCapabilityProviders struct {
 
 type evidenceContractRuntime struct{}
 
-func (evidenceContractRuntime) CredentialResources(string) connectorapi.CredentialResourceReader {
+func (evidenceContractRuntime) CredentialResources(string) resourcecontract.CredentialResourceReader {
 	return nil
 }
 

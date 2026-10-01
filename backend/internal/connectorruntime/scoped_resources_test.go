@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -31,30 +31,30 @@ func TestScopedResourceRuntimeKeepsConnectorAndResourceClassBoundaries(t *testin
 	first := NewScope("first", Dependencies{Resources: scopes}).ScopedResourceRuntime()
 	second := NewScope("second", Dependencies{Resources: scopes}).ScopedResourceRuntime()
 	journal := first.CredentialResources("domain_journal")
-	row, err := journal.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+	row, err := journal.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 		Name: "owned-record", ResourceType: "domain.v1", PublicData: `{"status":"intent"}`,
 		Fingerprint: "fixture-identity", Secret: map[string]any{"proof": "fixture-proof-only"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, foreign := range []connectorapi.CredentialResourceStore{
+	for _, foreign := range []resourcecontract.CredentialResourceStore{
 		second.CredentialResources("domain_journal"), first.CredentialResources("another_class"),
 	} {
 		if rows, err := foreign.List(t.Context()); err != nil || len(rows) != 0 {
 			t.Fatalf("foreign scope listed owned journal: %#v err=%v", rows, err)
 		}
-		if _, err := foreign.Get(t.Context(), row.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if _, err := foreign.Get(t.Context(), row.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("foreign scope read journal: %v", err)
 		}
 		var secret map[string]any
-		if err := foreign.GetSecret(t.Context(), row.ID, &secret); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) || len(secret) != 0 {
+		if err := foreign.GetSecret(t.Context(), row.ID, &secret); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) || len(secret) != 0 {
 			t.Fatalf("foreign scope decrypted journal: %#v err=%v", secret, err)
 		}
-		if _, err := foreign.Update(t.Context(), row.ID, connectorapi.UpdateCredentialResourceInput{Name: row.Name, PublicData: `{}`}); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if _, err := foreign.Update(t.Context(), row.ID, resourcecontract.UpdateCredentialResourceInput{Name: row.Name, PublicData: `{}`}); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("foreign scope mutated journal: %v", err)
 		}
-		if err := foreign.Delete(t.Context(), row.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if err := foreign.Delete(t.Context(), row.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("foreign scope deleted journal: %v", err)
 		}
 	}
@@ -68,14 +68,14 @@ func TestScopedResourceRuntimeRecoversPersistedStateAfterEncryptedReopen(t *test
 	path := filepath.Join(t.TempDir(), "reopen.aipdb")
 	database, scopes := openScopedResourceFixture(t, path)
 	journal := NewScope("fixture", Dependencies{Resources: scopes}).ScopedResourceRuntime().CredentialResources("domain_journal")
-	row, err := journal.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+	row, err := journal.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 		Name: "pending-operation", ResourceType: "domain.v1", PublicData: `{"status":"intent"}`,
 		Fingerprint: "fixture-identity", Secret: map[string]any{"proof": "fixture-proof-only"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	row, err = journal.Update(t.Context(), row.ID, connectorapi.UpdateCredentialResourceInput{
+	row, err = journal.Update(t.Context(), row.ID, resourcecontract.UpdateCredentialResourceInput{
 		Name: row.Name, PublicData: `{"status":"confirmed"}`,
 	})
 	if err != nil {

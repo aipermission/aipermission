@@ -10,11 +10,11 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
-func openPersistedJournal(t *testing.T, path string) (*sql.DB, connectorapi.CredentialResourceStore) {
+func openPersistedJournal(t *testing.T, path string) (*sql.DB, resourcecontract.CredentialResourceStore) {
 	t.Helper()
 	database, err := dbpkg.OpenEncrypted(path, "test-journal-password")
 	if err != nil {
@@ -76,14 +76,14 @@ func TestJournalPersistsPartialCleanupAcrossEncryptedDatabaseReopen(t *testing.T
 }
 
 type lostCreateResponse struct {
-	connectorapi.CredentialResourceStore
+	resourcecontract.CredentialResourceStore
 }
 
-func (store lostCreateResponse) Create(ctx context.Context, input connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (store lostCreateResponse) Create(ctx context.Context, input resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if _, err := store.CredentialResourceStore.Create(ctx, input); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
-	return connectorapi.CredentialResource{}, errors.New("lost create response after durable commit")
+	return resourcecontract.CredentialResource{}, errors.New("lost create response after durable commit")
 }
 
 func TestJournalReopenRetainsIntentAfterLostStorageResponse(t *testing.T) {
@@ -125,11 +125,11 @@ func TestJournalUsesScopedPublicEvidenceWithoutReadingCredentialSecrets(t *testi
 	if err != nil {
 		t.Fatalf("confirmation should not decrypt secret payloads: %v", err)
 	}
-	for _, scope := range []connectorapi.CredentialResourceStore{resources.Scope("other", ResourceKind), resources.Scope("ssh", "private_key")} {
-		if _, err := scope.Get(ctx, entry.ResourceID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	for _, scope := range []resourcecontract.CredentialResourceStore{resources.Scope("other", ResourceKind), resources.Scope("ssh", "private_key")} {
+		if _, err := scope.Get(ctx, entry.ResourceID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			t.Fatalf("cross-scope journal read = %v", err)
 		}
-		foreign, err := scope.Create(ctx, connectorapi.CreateCredentialResourceInput{Name: "foreign-corrupt", ResourceType: "foreign", PublicData: "{", Secret: struct{}{}})
+		foreign, err := scope.Create(ctx, resourcecontract.CreateCredentialResourceInput{Name: "foreign-corrupt", ResourceType: "foreign", PublicData: "{", Secret: struct{}{}})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
 )
 
@@ -147,7 +148,7 @@ func (r boundTransferRuntime) ListCredentialProfiles(ctx context.Context, target
 	return nil, errTransferExecutionStale
 }
 
-func (r boundTransferRuntime) CredentialResources(resourceKind string) connectorapi.CredentialResourceStore {
+func (r boundTransferRuntime) CredentialResources(resourceKind string) resourcecontract.CredentialResourceStore {
 	delegate := r.delegate.CredentialResources(resourceKind)
 	if delegate == nil || r.resources == nil {
 		return nil

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -65,10 +65,10 @@ type PrivateKey struct {
 }
 
 type Store struct {
-	resources connectorapi.CredentialResourceStore
+	resources resourcecontract.CredentialResourceStore
 }
 
-func NewResourceStore(resources connectorapi.CredentialResourceStore) *Store {
+func NewResourceStore(resources resourcecontract.CredentialResourceStore) *Store {
 	return &Store{resources: resources}
 }
 
@@ -86,7 +86,7 @@ func (s *Store) List(ctx context.Context) ([]SSHKey, error) {
 
 func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
 	record, err := s.resources.Get(ctx, id)
-	if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		return SSHKey{}, ErrNotFound
 	}
 	if err != nil {
@@ -97,7 +97,7 @@ func (s *Store) Get(ctx context.Context, id int64) (SSHKey, error) {
 
 func (s *Store) GetPrivateKey(ctx context.Context, id int64) (PrivateKey, error) {
 	record, err := s.resources.Get(ctx, id)
-	if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		return PrivateKey{}, ErrNotFound
 	}
 	if err != nil {
@@ -105,7 +105,7 @@ func (s *Store) GetPrivateKey(ctx context.Context, id int64) (PrivateKey, error)
 	}
 	var secret privateKeySecret
 	if err := s.resources.GetSecret(ctx, id, &secret); err != nil {
-		if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+		if errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 			return PrivateKey{}, ErrNotFound
 		}
 		return PrivateKey{}, err
@@ -159,11 +159,11 @@ func (s *Store) Import(ctx context.Context, request ImportRequest) (SSHKey, erro
 }
 
 func (s *Store) persistPrivateKey(ctx context.Context, name, keyType, privateKey, publicKey, fingerprint, operation string) (SSHKey, error) {
-	record, err := s.resources.Create(ctx, connectorapi.CreateCredentialResourceInput{
+	record, err := s.resources.Create(ctx, resourcecontract.CreateCredentialResourceInput{
 		Name: name, ResourceType: keyType, PublicData: publicKey, Fingerprint: fingerprint,
 		Secret: privateKeySecret{PrivateKey: privateKey},
 	})
-	if errors.Is(err, connectorapi.ErrCredentialResourceNameExists) {
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNameExists) {
 		return SSHKey{}, ValidationError("ssh key name already exists")
 	}
 	if err != nil {
@@ -193,11 +193,11 @@ func (s *Store) Update(ctx context.Context, id int64, request UpdateRequest) (SS
 		return SSHKey{}, err
 	}
 
-	record, err := s.resources.Update(ctx, id, connectorapi.UpdateCredentialResourceInput{Name: request.Name, PublicData: publicKey})
-	if errors.Is(err, connectorapi.ErrCredentialResourceNameExists) {
+	record, err := s.resources.Update(ctx, id, resourcecontract.UpdateCredentialResourceInput{Name: request.Name, PublicData: publicKey})
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNameExists) {
 		return SSHKey{}, ValidationError("ssh key name already exists")
 	}
-	if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		return SSHKey{}, ErrNotFound
 	}
 	if err != nil {
@@ -235,7 +235,7 @@ func (s *Store) Delete(ctx context.Context, id int64) error {
 		return ValidationError("ssh key is used by one or more SSH connector profiles")
 	}
 	err = s.resources.Delete(ctx, id)
-	if errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		return ErrNotFound
 	}
 	if err != nil {
@@ -248,7 +248,7 @@ func (s *Store) connectorProfileUsageCount(ctx context.Context, id int64) (int, 
 	return s.resources.CountProfileReferences(ctx, "ssh_key_id", id)
 }
 
-func sshKeyFromResource(record connectorapi.CredentialResource) SSHKey {
+func sshKeyFromResource(record resourcecontract.CredentialResource) SSHKey {
 	return SSHKey{
 		ID: record.ID, Name: record.Name, KeyType: record.ResourceType,
 		PublicKey: record.PublicData, Fingerprint: record.Fingerprint,

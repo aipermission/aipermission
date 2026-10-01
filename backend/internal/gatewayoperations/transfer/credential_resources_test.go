@@ -6,20 +6,20 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type mutableCredentialResourceStore struct {
-	record      connectorapi.CredentialResource
+	record      resourcecontract.CredentialResource
 	secret      map[string]any
 	afterSecret func()
 }
 
-func (s *mutableCredentialResourceStore) List(context.Context) ([]connectorapi.CredentialResource, error) {
-	return []connectorapi.CredentialResource{s.record}, nil
+func (s *mutableCredentialResourceStore) List(context.Context) ([]resourcecontract.CredentialResource, error) {
+	return []resourcecontract.CredentialResource{s.record}, nil
 }
 
-func (s *mutableCredentialResourceStore) Get(context.Context, int64) (connectorapi.CredentialResource, error) {
+func (s *mutableCredentialResourceStore) Get(context.Context, int64) (resourcecontract.CredentialResource, error) {
 	return s.record, nil
 }
 
@@ -35,11 +35,11 @@ func (s *mutableCredentialResourceStore) GetSecret(_ context.Context, _ int64, d
 	return nil
 }
 
-func (s *mutableCredentialResourceStore) Create(context.Context, connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (s *mutableCredentialResourceStore) Create(context.Context, resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	return s.record, nil
 }
 
-func (s *mutableCredentialResourceStore) Update(context.Context, int64, connectorapi.UpdateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (s *mutableCredentialResourceStore) Update(context.Context, int64, resourcecontract.UpdateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	return s.record, nil
 }
 
@@ -52,7 +52,7 @@ func (*mutableCredentialResourceStore) CountProfileReferences(context.Context, s
 func TestBoundCredentialResourceStoreRedactsAndRejectsMutation(t *testing.T) {
 	boundary := actionresult.NewCredentialBoundary(nil)
 	delegate := &mutableCredentialResourceStore{
-		record: connectorapi.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
+		record: resourcecontract.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
 		secret: map[string]any{"private_key": "secret-private-key"},
 	}
 	store := boundCredentialResourceStore{
@@ -68,10 +68,10 @@ func TestBoundCredentialResourceStoreRedactsAndRejectsMutation(t *testing.T) {
 	if got := boundary.Redact("prefix secret-private-key suffix"); got == "prefix secret-private-key suffix" {
 		t.Fatal("decrypted credential resource was not added to the redaction boundary")
 	}
-	if _, err := store.Create(t.Context(), connectorapi.CreateCredentialResourceInput{}); !errors.Is(err, errTransferCredentialResourcesReadOnly) {
+	if _, err := store.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{}); !errors.Is(err, errTransferCredentialResourcesReadOnly) {
 		t.Fatalf("create error = %v", err)
 	}
-	if _, err := store.Update(t.Context(), 7, connectorapi.UpdateCredentialResourceInput{}); !errors.Is(err, errTransferCredentialResourcesReadOnly) {
+	if _, err := store.Update(t.Context(), 7, resourcecontract.UpdateCredentialResourceInput{}); !errors.Is(err, errTransferCredentialResourcesReadOnly) {
 		t.Fatalf("update error = %v", err)
 	}
 	if err := store.Delete(t.Context(), 7); !errors.Is(err, errTransferCredentialResourcesReadOnly) {
@@ -81,7 +81,7 @@ func TestBoundCredentialResourceStoreRedactsAndRejectsMutation(t *testing.T) {
 
 func TestBoundCredentialResourceStoreRejectsRevisionDrift(t *testing.T) {
 	delegate := &mutableCredentialResourceStore{
-		record: connectorapi.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
+		record: resourcecontract.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
 	}
 	store := boundCredentialResourceStore{
 		delegate: delegate,
@@ -100,7 +100,7 @@ func TestBoundCredentialResourceStoreRejectsRevisionDrift(t *testing.T) {
 func TestBoundCredentialResourceStoreRejectsDriftDuringDecryptAndStillRedacts(t *testing.T) {
 	boundary := actionresult.NewCredentialBoundary(nil)
 	delegate := &mutableCredentialResourceStore{
-		record: connectorapi.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
+		record: resourcecontract.CredentialResource{ID: 7, Name: "key", UpdatedAt: "one"},
 		secret: map[string]any{"private_key": "decrypted-private-key"},
 	}
 	delegate.afterSecret = func() { delegate.record.UpdatedAt = "two" }

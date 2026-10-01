@@ -15,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -25,7 +26,7 @@ var (
 type SecretAccessorFactory func(map[string]any) connectors.SecretAccessor
 
 type ResourceScopes interface {
-	Scope(connectorKind, resourceKind string) connectorapi.CredentialResourceStore
+	Scope(connectorKind, resourceKind string) resourcecontract.CredentialResourceStore
 }
 
 type Dependencies struct {
@@ -164,7 +165,7 @@ func (s *Scope) listProfiles(ctx context.Context, targetID int64) ([]connectors.
 	return result, nil
 }
 
-func (s *Scope) resourcesFor(resourceKind string) connectorapi.CredentialResourceStore {
+func (s *Scope) resourcesFor(resourceKind string) resourcecontract.CredentialResourceStore {
 	if s == nil || s.resources == nil || s.kind == "" || strings.TrimSpace(resourceKind) == "" {
 		return nil
 	}
@@ -217,7 +218,7 @@ func (s *Scope) DataRuntime() connectorapi.ConnectorDataRuntime {
 	return dataRuntime{scope: s}
 }
 
-func (s *Scope) ScopedResourceRuntime() connectorapi.ScopedResourceRuntime {
+func (s *Scope) ScopedResourceRuntime() resourcecontract.ScopedResourceRuntime {
 	return resourceRuntime{scope: s}
 }
 
@@ -251,7 +252,7 @@ func (s *Scope) RequireTargetRuntimeID(ctx context.Context, targetID int64, runt
 
 type resourceRuntime struct{ scope *Scope }
 
-func (r resourceRuntime) CredentialResources(resourceKind string) connectorapi.CredentialResourceStore {
+func (r resourceRuntime) CredentialResources(resourceKind string) resourcecontract.CredentialResourceStore {
 	return r.scope.resourcesFor(resourceKind)
 }
 
@@ -280,7 +281,7 @@ func (r dataRuntime) ListCredentialProfiles(ctx context.Context, targetID int64)
 	return r.scope.listProfiles(ctx, targetID)
 }
 
-func (r dataRuntime) CredentialResources(resourceKind string) connectorapi.CredentialResourceStore {
+func (r dataRuntime) CredentialResources(resourceKind string) resourcecontract.CredentialResourceStore {
 	return resourceRuntime{scope: r.scope}.CredentialResources(resourceKind)
 }
 

@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"strings"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func (journal *Journal) Confirm(ctx context.Context, expected Entry) (Entry, error) {
@@ -78,7 +78,7 @@ func (journal *Journal) transition(ctx context.Context, expected Entry, mutate f
 	if err != nil {
 		return Entry{}, err
 	}
-	resource, err = journal.store.Update(ctx, current.ResourceID, connectorapi.UpdateCredentialResourceInput{
+	resource, err = journal.store.Update(ctx, current.ResourceID, resourcecontract.UpdateCredentialResourceInput{
 		Name: resource.Name, PublicData: string(encoded),
 	})
 	if err != nil {

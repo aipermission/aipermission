@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestCleanupReconciliationSnapshotFailureIsSanitizedAndReadOnly(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCleanupReconciliationSnapshotFailureIsSanitizedAndReadOnly(t *testing.T
 			if failure == "profiles" {
 				fixture.runtime.profilesErr = errors.New(canary)
 			} else {
-				if _, err := fixture.runtime.journal.Update(t.Context(), original.ResourceID, connectorapi.UpdateCredentialResourceInput{Name: "Malformed fixture evidence", PublicData: "{}"}); err != nil {
+				if _, err := fixture.runtime.journal.Update(t.Context(), original.ResourceID, resourcecontract.UpdateCredentialResourceInput{Name: "Malformed fixture evidence", PublicData: "{}"}); err != nil {
 					t.Fatal(err)
 				}
 			}

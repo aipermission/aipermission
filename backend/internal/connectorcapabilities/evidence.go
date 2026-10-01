@@ -6,13 +6,14 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 // Evidence composes only reviewed read-only capabilities. Ordinary resource and
 // action providers must not be invoked by a completed-cleanup evidence check.
-func Evidence(adapter connectorapi.Adapter, resources connectorapi.EvidenceResourceRuntime) (Set, error) {
+func Evidence(adapter connectorapi.Adapter, resources resourcecontract.EvidenceResourceRuntime) (Set, error) {
 	provider, ok := adapter.(connectorapi.EvidenceCapabilityProvider)
-	if !ok || connectorapi.IsNilDependency(provider) || connectorapi.IsNilDependency(resources) {
+	if !ok || resourcecontract.IsNilDependency(provider) || resourcecontract.IsNilDependency(resources) {
 		return nil, errors.New("connector cleanup evidence runtime is unavailable")
 	}
 	capabilities, err := Merge(nil, provider.EvidenceCapabilities(resources))

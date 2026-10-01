@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 func TestCapabilitiesPreserveExplicitTransportModeWithEmptyDependencies(t *testing.T) {
@@ -100,7 +101,7 @@ func TestCapabilitiesEvidenceNeverConstructsNormalAuthority(t *testing.T) {
 	if reflect.TypeOf(provider.evidence).NumMethod() != 1 {
 		t.Fatal("evidence runtime exposes more than its read-only resource method")
 	}
-	if _, mutable := any(provider.evidence).(connectorapi.ScopedResourceRuntime); mutable {
+	if _, mutable := any(provider.evidence).(resourcecontract.ScopedResourceRuntime); mutable {
 		t.Fatal("evidence adapter can recover mutable resource runtime")
 	}
 	for _, name := range []string{connectors.NetworkTransportCapabilityName, connectors.CommandTransportCapabilityName, connectors.SessionEnvironmentCapabilityName} {

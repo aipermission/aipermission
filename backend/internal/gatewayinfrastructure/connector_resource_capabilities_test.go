@@ -8,15 +8,16 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type scopedCapabilityProvider struct {
 	provided map[string]connectors.RuntimeCapability
-	seen     connectorapi.ScopedResourceRuntime
+	seen     resourcecontract.ScopedResourceRuntime
 	calls    int
 }
 
-func (provider *scopedCapabilityProvider) ScopedResourceCapabilities(runtime connectorapi.ScopedResourceRuntime) map[string]connectors.RuntimeCapability {
+func (provider *scopedCapabilityProvider) ScopedResourceCapabilities(runtime resourcecontract.ScopedResourceRuntime) map[string]connectors.RuntimeCapability {
 	provider.calls++
 	provider.seen = runtime
 	return provider.provided

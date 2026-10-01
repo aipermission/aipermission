@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
@@ -25,7 +25,7 @@ func NewStore(db *sql.DB, secretVault *vault.Vault, workspaceID string) *Store {
 	return &Store{db: db, vault: secretVault, workspaceID: strings.TrimSpace(workspaceID)}
 }
 
-func (s *Store) Scope(connectorKind, resourceKind string) connectorapi.CredentialResourceStore {
+func (s *Store) Scope(connectorKind, resourceKind string) resourcecontract.CredentialResourceStore {
 	return &scopedStore{store: s, connectorKind: strings.TrimSpace(connectorKind), resourceKind: strings.TrimSpace(resourceKind)}
 }
 
@@ -45,7 +45,7 @@ func (s *scopedStore) validate() error {
 	return nil
 }
 
-func (s *scopedStore) List(ctx context.Context) ([]connectorapi.CredentialResource, error) {
+func (s *scopedStore) List(ctx context.Context) ([]resourcecontract.CredentialResource, error) {
 	if err := s.validate(); err != nil {
 		return nil, err
 	}
@@ -54,9 +54,9 @@ func (s *scopedStore) List(ctx context.Context) ([]connectorapi.CredentialResour
 		return nil, err
 	}
 	defer rows.Close()
-	items := []connectorapi.CredentialResource{}
+	items := []resourcecontract.CredentialResource{}
 	for rows.Next() {
-		var item connectorapi.CredentialResource
+		var item resourcecontract.CredentialResource
 		if err := rows.Scan(&item.ID, &item.Name, &item.ResourceType, &item.PublicData, &item.Fingerprint, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
@@ -65,15 +65,15 @@ func (s *scopedStore) List(ctx context.Context) ([]connectorapi.CredentialResour
 	return items, rows.Err()
 }
 
-func (s *scopedStore) Get(ctx context.Context, id int64) (connectorapi.CredentialResource, error) {
+func (s *scopedStore) Get(ctx context.Context, id int64) (resourcecontract.CredentialResource, error) {
 	if err := s.validate(); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
-	var item connectorapi.CredentialResource
+	var item resourcecontract.CredentialResource
 	err := s.store.db.QueryRowContext(ctx, `SELECT id, name, resource_type, public_data, fingerprint, created_at, updated_at FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, s.connectorKind, s.resourceKind).
 		Scan(&item.ID, &item.Name, &item.ResourceType, &item.PublicData, &item.Fingerprint, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNotFound
 	}
 	return item, err
 }
@@ -88,7 +88,7 @@ func (s *scopedStore) GetSecret(ctx context.Context, id int64, destination any) 
 	var encrypted string
 	err := s.store.db.QueryRowContext(ctx, `SELECT encrypted_secret FROM connector_credential_resources WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, id, s.connectorKind, s.resourceKind).Scan(&encrypted)
 	if errors.Is(err, sql.ErrNoRows) {
-		return connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.ErrCredentialResourceNotFound
 	}
 	if err != nil {
 		return err
@@ -96,57 +96,57 @@ func (s *scopedStore) GetSecret(ctx context.Context, id int64, destination any) 
 	return recordcrypto.DecryptJSON(s.store.vault, s.store.workspaceID, recordcrypto.ConnectorCredentialResource, id, encrypted, destination)
 }
 
-func (s *scopedStore) Create(ctx context.Context, input connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (s *scopedStore) Create(ctx context.Context, input resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if err := s.validate(); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	tx, err := s.store.db.BeginTx(ctx, nil)
 	if err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	defer tx.Rollback()
 	result, err := tx.ExecContext(ctx, `INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`, s.connectorKind, s.resourceKind, input.Name, input.ResourceType, input.PublicData, input.Fingerprint, now, now)
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNameExists
+			return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNameExists
 		}
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	id, err := result.LastInsertId()
 	if err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	encrypted, err := recordcrypto.EncryptJSON(s.store.vault, s.store.workspaceID, recordcrypto.ConnectorCredentialResource, id, input.Secret)
 	if err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE connector_credential_resources SET encrypted_secret = ? WHERE id = ?`, encrypted, id); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	return s.Get(ctx, id)
 }
 
-func (s *scopedStore) Update(ctx context.Context, id int64, input connectorapi.UpdateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (s *scopedStore) Update(ctx context.Context, id int64, input resourcecontract.UpdateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if err := s.validate(); err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	result, err := s.store.db.ExecContext(ctx, `UPDATE connector_credential_resources SET name = ?, public_data = ?, updated_at = ? WHERE id = ? AND connector_kind = ? AND resource_kind = ?`, input.Name, input.PublicData, time.Now().UTC().Format(time.RFC3339), id, s.connectorKind, s.resourceKind)
 	if err != nil {
 		if isUniqueConstraintError(err) {
-			return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNameExists
+			return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNameExists
 		}
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
-		return connectorapi.CredentialResource{}, err
+		return resourcecontract.CredentialResource{}, err
 	}
 	if affected == 0 {
-		return connectorapi.CredentialResource{}, connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNotFound
 	}
 	return s.Get(ctx, id)
 }
@@ -164,7 +164,7 @@ func (s *scopedStore) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if affected == 0 {
-		return connectorapi.ErrCredentialResourceNotFound
+		return resourcecontract.ErrCredentialResourceNotFound
 	}
 	return nil
 }

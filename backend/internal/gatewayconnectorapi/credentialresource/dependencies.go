@@ -1,6 +1,14 @@
-package gatewayconnectorapi
+package credentialresource
 
-import "reflect"
+import (
+	"errors"
+	"reflect"
+)
+
+var (
+	ErrCredentialResourceNotFound   = errors.New("connector credential resource not found")
+	ErrCredentialResourceNameExists = errors.New("connector credential resource name already exists")
+)
 
 // IsNilDependency detects an absent optional interface port, including a typed
 // nil implementation. It does not invoke the port to discover availability.

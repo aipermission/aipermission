@@ -14,11 +14,12 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/sshkeys"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
 type cleanupResourceProbe struct {
-	connectorapi.CredentialResourceStore
+	resourcecontract.CredentialResourceStore
 	secretReads   int
 	refuseSecret  bool
 	createAfter   bool
@@ -38,21 +39,21 @@ func (store *cleanupResourceProbe) GetSecret(ctx context.Context, id int64, dest
 	return store.CredentialResourceStore.GetSecret(ctx, id, destination)
 }
 
-func (store *cleanupResourceProbe) Create(ctx context.Context, input connectorapi.CreateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (store *cleanupResourceProbe) Create(ctx context.Context, input resourcecontract.CreateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	row, err := store.CredentialResourceStore.Create(ctx, input)
 	if err == nil && store.createAfter {
-		return connectorapi.CredentialResource{}, errors.New("lost persisted intent response")
+		return resourcecontract.CredentialResource{}, errors.New("lost persisted intent response")
 	}
 	return row, err
 }
 
-func (store *cleanupResourceProbe) Update(ctx context.Context, id int64, input connectorapi.UpdateCredentialResourceInput) (connectorapi.CredentialResource, error) {
+func (store *cleanupResourceProbe) Update(ctx context.Context, id int64, input resourcecontract.UpdateCredentialResourceInput) (resourcecontract.CredentialResource, error) {
 	if store.confirmBefore {
-		return connectorapi.CredentialResource{}, errors.New("confirmation commit refused")
+		return resourcecontract.CredentialResource{}, errors.New("confirmation commit refused")
 	}
 	row, err := store.CredentialResourceStore.Update(ctx, id, input)
 	if err == nil && store.confirmAfter {
-		return connectorapi.CredentialResource{}, errors.New("lost confirmation response")
+		return resourcecontract.CredentialResource{}, errors.New("lost confirmation response")
 	}
 	return row, err
 }
@@ -65,7 +66,7 @@ type cleanupRuntime struct {
 	profilesErr error
 }
 
-func (runtime *cleanupRuntime) CredentialResources(kind string) connectorapi.CredentialResourceStore {
+func (runtime *cleanupRuntime) CredentialResources(kind string) resourcecontract.CredentialResourceStore {
 	if kind == "private_key" {
 		return runtime.keys
 	}

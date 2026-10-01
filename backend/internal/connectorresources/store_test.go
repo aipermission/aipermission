@@ -8,7 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
-	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -23,7 +23,7 @@ func TestScopedStoreOwnsEncryptedCredentialResourceLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	scope := NewStore(database, secretVault, "workspace-resources").Scope("ssh", "private_key")
-	created, err := scope.Create(t.Context(), connectorapi.CreateCredentialResourceInput{
+	created, err := scope.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
 		Name: "operator", ResourceType: "ed25519", PublicData: "ssh-ed25519 public", Fingerprint: "SHA256:fixture",
 		Secret: map[string]any{"private_key": "private-material"},
 	})
@@ -38,7 +38,7 @@ func TestScopedStoreOwnsEncryptedCredentialResourceLifecycle(t *testing.T) {
 	if err != nil || len(listed) != 1 || listed[0].ID != created.ID {
 		t.Fatalf("listed resources = %#v, err=%v", listed, err)
 	}
-	updated, err := scope.Update(t.Context(), created.ID, connectorapi.UpdateCredentialResourceInput{Name: "operator-renamed", PublicData: "updated-public"})
+	updated, err := scope.Update(t.Context(), created.ID, resourcecontract.UpdateCredentialResourceInput{Name: "operator-renamed", PublicData: "updated-public"})
 	if err != nil || updated.Name != "operator-renamed" || updated.PublicData != "updated-public" {
 		t.Fatalf("updated resource = %#v, err=%v", updated, err)
 	}
@@ -61,7 +61,7 @@ func TestScopedStoreOwnsEncryptedCredentialResourceLifecycle(t *testing.T) {
 	if err := scope.Delete(t.Context(), created.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := scope.Get(context.Background(), created.ID); !errors.Is(err, connectorapi.ErrCredentialResourceNotFound) {
+	if _, err := scope.Get(context.Background(), created.ID); !errors.Is(err, resourcecontract.ErrCredentialResourceNotFound) {
 		t.Fatalf("deleted resource error = %v", err)
 	}
 }

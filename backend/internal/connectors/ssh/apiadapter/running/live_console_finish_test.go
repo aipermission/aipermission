@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
 type failingActionRequestFinisher struct {
@@ -77,7 +78,7 @@ func (runningActionRuntime) ListCredentialProfiles(context.Context, int64) ([]co
 	panic("not used")
 }
 
-func (runningActionRuntime) CredentialResources(string) connectorapi.CredentialResourceStore {
+func (runningActionRuntime) CredentialResources(string) resourcecontract.CredentialResourceStore {
 	panic("not used")
 }
 

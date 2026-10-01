@@ -16,14 +16,13 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/console"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	transportcontract "github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 var (
-	ErrRemotePathNotFound           = errors.New("remote path not found")
-	ErrTransferLimit                = errors.New("file transfer limit exceeded")
-	ErrCredentialResourceNotFound   = errors.New("connector credential resource not found")
-	ErrCredentialResourceNameExists = errors.New("connector credential resource name already exists")
+	ErrRemotePathNotFound = errors.New("remote path not found")
+	ErrTransferLimit      = errors.New("file transfer limit exceeded")
 )
 
 // Adapter is a marker implemented by connector-owned gateway adapters.
@@ -32,53 +31,10 @@ var (
 // connectors can register one from their own connector package.
 type Adapter interface{}
 
-// CredentialResource describes one connector-owned encrypted resource without
-// exposing its secret payload.
-type CredentialResource struct {
-	ID           int64
-	Name         string
-	ResourceType string
-	PublicData   string
-	Fingerprint  string
-	CreatedAt    string
-	UpdatedAt    string
-}
-
-type CreateCredentialResourceInput struct {
-	Name         string
-	ResourceType string
-	PublicData   string
-	Fingerprint  string
-	Secret       any
-}
-
-type UpdateCredentialResourceInput struct {
-	Name       string
-	PublicData string
-}
-
-// CredentialResourceStore is scoped by core to one connector and resource
-// kind. It can never query arbitrary tables or decrypt another resource class.
-type CredentialResourceStore interface {
-	List(ctx context.Context) ([]CredentialResource, error)
-	Get(ctx context.Context, id int64) (CredentialResource, error)
-	GetSecret(ctx context.Context, id int64, destination any) error
-	Create(ctx context.Context, input CreateCredentialResourceInput) (CredentialResource, error)
-	Update(ctx context.Context, id int64, input UpdateCredentialResourceInput) (CredentialResource, error)
-	Delete(ctx context.Context, id int64) error
-	CountProfileReferences(ctx context.Context, publicField string, numericValue int64) (int, error)
-}
-
-// ScopedResourceRuntime exposes persistent resources for one core-bound
-// connector kind, without target resolution, console or principal authority.
-type ScopedResourceRuntime interface {
-	CredentialResources(resourceKind string) CredentialResourceStore
-}
-
 // ScopedResourceCapabilityProvider lets structured connectors supply durable
 // domain journals without implementing unrelated asynchronous console methods.
 type ScopedResourceCapabilityProvider interface {
-	ScopedResourceCapabilities(ScopedResourceRuntime) map[string]connectors.RuntimeCapability
+	ScopedResourceCapabilities(resourcecontract.ScopedResourceRuntime) map[string]connectors.RuntimeCapability
 }
 
 // ConnectorDataRuntime exposes only connector target/profile operations. The
@@ -89,7 +45,7 @@ type ConnectorDataRuntime interface {
 	ListRuntimeSurfacesForProfile(ctx context.Context, targetID int64, profileID int64, capabilityKind string) ([]RuntimeSurface, error)
 	TargetProfileByRuntimeID(ctx context.Context, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, RuntimeSurface, error)
 	ListCredentialProfiles(ctx context.Context, targetID int64) ([]connectors.CredentialProfileView, error)
-	CredentialResources(resourceKind string) CredentialResourceStore
+	CredentialResources(resourceKind string) resourcecontract.CredentialResourceStore
 }
 
 // LiveSessionRuntime exposes the generic persistent console manager.
@@ -326,7 +282,7 @@ func (r *Registry) Register(kind string, adapter Adapter) error {
 	if !connectors.ValidIdentifier(kind) {
 		return fmt.Errorf("invalid connector adapter kind %q", kind)
 	}
-	if IsNilDependency(adapter) {
+	if resourcecontract.IsNilDependency(adapter) {
 		return fmt.Errorf("connector adapter %q is nil", kind)
 	}
 	if r == nil {
@@ -397,7 +353,7 @@ func SnapshotCatalog(source Catalog) (Catalog, error) {
 			return nil, fmt.Errorf("connector adapter catalog contains invalid kind %q", rawKind)
 		}
 		adapter := source.For(kind)
-		if IsNilDependency(adapter) {
+		if resourcecontract.IsNilDependency(adapter) {
 			return nil, fmt.Errorf("connector adapter catalog kind %q is missing", kind)
 		}
 		if _, exists := adapters[kind]; exists {
