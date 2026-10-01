@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -172,11 +173,7 @@ func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandl
 	return application.owner.connectorWorkspace(handle, bindings)
 }
 
-type runtimeCapabilities map[string]connectors.RuntimeCapability
-
-func (capabilities runtimeCapabilities) RuntimeCapability(name string) connectors.RuntimeCapability {
-	return capabilities[name]
-}
+type runtimeCapabilities = connectorcapabilities.Set
 
 func (application *ConnectorRuntimeApplication) RuntimeCapabilities(handle *WorkspaceHandle, kind string) connectors.RuntimeCapabilityResolver {
 	return application.runtimeCapabilities(handle, kind, nil, false, nil)
@@ -216,29 +213,6 @@ func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *Work
 		return nil
 	}
 	return capabilities
-}
-
-func mergeRuntimeCapabilities(base runtimeCapabilities, additions map[string]connectors.RuntimeCapability) (runtimeCapabilities, error) {
-	merged := make(runtimeCapabilities, len(base)+len(additions))
-	for name, capability := range base {
-		merged[name] = capability
-	}
-	for name, capability := range additions {
-		if !connectors.ValidIdentifier(name) {
-			return nil, fmt.Errorf("invalid runtime capability name %q", name)
-		}
-		if capability == nil {
-			return nil, fmt.Errorf("runtime capability %q is nil", name)
-		}
-		if declared := capability.ConnectorRuntimeCapability(); declared != name {
-			return nil, fmt.Errorf("runtime capability %q declares name %q", name, declared)
-		}
-		if _, exists := merged[name]; exists {
-			return nil, fmt.Errorf("runtime capability %q collides with a protected capability", name)
-		}
-		merged[name] = capability
-	}
-	return merged, nil
 }
 
 func (application *ConnectorRuntimeApplication) RunningHint(request connectormgmt.ActionRequest) string {

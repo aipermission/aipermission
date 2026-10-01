@@ -3,6 +3,7 @@ package gatewayinfrastructure
 import (
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
@@ -45,7 +46,7 @@ func TestConnectorManagementApplicationRejectsIncompleteComposition(t *testing.T
 func TestMergeRuntimeCapabilitiesRejectsProtectedCapabilityCollision(t *testing.T) {
 	protected := testRuntimeCapability(connectors.NetworkTransportCapabilityName)
 	base := runtimeCapabilities{connectors.NetworkTransportCapabilityName: protected}
-	merged, err := mergeRuntimeCapabilities(base, map[string]connectors.RuntimeCapability{
+	merged, err := connectorcapabilities.Merge(base, map[string]connectors.RuntimeCapability{
 		connectors.NetworkTransportCapabilityName: protected,
 	})
 	if err == nil || merged != nil {
@@ -60,7 +61,7 @@ func TestMergeRuntimeCapabilitiesValidatesAndSnapshotsAdapterCapabilities(t *tes
 	provided := map[string]connectors.RuntimeCapability{
 		"session_environment": testRuntimeCapability("session_environment"),
 	}
-	merged, err := mergeRuntimeCapabilities(runtimeCapabilities{
+	merged, err := connectorcapabilities.Merge(runtimeCapabilities{
 		connectors.CommandTransportCapabilityName: testRuntimeCapability(connectors.CommandTransportCapabilityName),
 	}, provided)
 	if err != nil {
@@ -77,7 +78,7 @@ func TestMergeRuntimeCapabilitiesValidatesAndSnapshotsAdapterCapabilities(t *tes
 		"nil_value": nil,
 		"map_name":  testRuntimeCapability("declared_name"),
 	} {
-		if result, err := mergeRuntimeCapabilities(nil, map[string]connectors.RuntimeCapability{name: capability}); err == nil || result != nil {
+		if result, err := connectorcapabilities.Merge(nil, map[string]connectors.RuntimeCapability{name: capability}); err == nil || result != nil {
 			t.Fatalf("invalid capability %q was accepted", name)
 		}
 	}

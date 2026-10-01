@@ -152,3 +152,28 @@ func TestCapabilityCompositionRejectsUnavailablePorts(t *testing.T) {
 		}
 	}
 }
+
+func TestCredentialCompositionNeverExposesActionProviderAuthority(t *testing.T) {
+	resources := connectorruntime.NewScope("fixture", connectorruntime.Dependencies{}).ScopedResourceRuntime()
+	for _, combined := range []bool{false, true} {
+		action := &actionCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
+			"action_service": testRuntimeCapability("action_service"),
+		}}
+		resource := &scopedCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
+			"domain_journal": testRuntimeCapability("domain_journal"),
+		}}
+		var adapter connectorapi.Adapter = action
+		if combined {
+			adapter = combinedCapabilityProvider{resource, action}
+		}
+		result, err := composeScopedResourceCapabilities(runtimeCapabilities{
+			connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
+		}, adapter, resources)
+		if err != nil || result[connectors.NetworkTransportCapabilityName] == nil || result["action_service"] != nil || action.calls != 0 {
+			t.Fatalf("credential composition delivered action authority: combined=%v result=%#v err=%v actionCalls=%d", combined, result, err, action.calls)
+		}
+		if combined && (result["domain_journal"] == nil || resource.calls != 1 || resource.seen != resources) {
+			t.Fatal("credential composition lost its scoped journal")
+		}
+	}
+}
