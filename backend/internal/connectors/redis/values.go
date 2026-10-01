@@ -344,8 +344,8 @@ func normalizeKeys(value any) ([]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("keys must not contain an empty key")
 		}
-		if len(key) > maxRESPBulkBytes {
-			return nil, fmt.Errorf("redis key exceeds %d bytes", maxRESPBulkBytes)
+		if err := validateRedisKeyIdentity(key); err != nil {
+			return nil, err
 		}
 		if seen[key] {
 			continue
@@ -367,8 +367,8 @@ func exactRedisKey(values map[string]any, field string) (string, error) {
 	if !ok || key == "" {
 		return "", fmt.Errorf("%s is required", field)
 	}
-	if len(key) > maxRESPBulkBytes {
-		return "", fmt.Errorf("redis key exceeds %d bytes", maxRESPBulkBytes)
+	if err := validateRedisKeyIdentity(key); err != nil {
+		return "", err
 	}
 	return key, nil
 }

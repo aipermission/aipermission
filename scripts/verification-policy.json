@@ -461,6 +461,7 @@
     "TestPostgresMultipartFunctionQualificationRealService",
     "TestRabbitMQRealService",
     "TestValkeyRealService",
+    "TestValkeyBinaryKeyIdentityRealService",
     "TestS3RealService"
   ],
   "fuzz_targets": [

@@ -12,24 +12,7 @@ import (
 func TestValkeyRealService(t *testing.T) {
 	requireConformance(t)
 	connector := redisconnector.New()
-	runtime := connectors.RuntimeContext{
-		Target: connectors.TargetView{
-			ID: 2, Ref: "redis:2:2", ConnectorKind: redisconnector.Kind, Name: "conformance-valkey",
-			Config: map[string]any{
-				"server_family":   redisconnector.ServerFamilyValkey,
-				"connection_mode": "direct",
-				"host":            fixtureHost("AIPERMISSION_VALKEY_HOST", "127.0.0.1"),
-				"port":            fixturePort(t, "AIPERMISSION_VALKEY_PORT", 6379),
-				"database":        0,
-			},
-		},
-		Profile: connectors.CredentialProfileView{
-			ID: 2, TargetID: 2, ConnectorKind: redisconnector.Kind, Kind: "username_password", Label: "conformance",
-			Public: map[string]any{},
-		},
-		Secrets:      fixtureSecrets{"password": "conformance-only"},
-		Capabilities: fixtureCapabilities{},
-	}
+	runtime := valkeyFixtureRuntime(t)
 
 	assertConnection(t, connector, runtime)
 	const key = "aipermission:conformance"
@@ -73,5 +56,27 @@ func TestValkeyRealService(t *testing.T) {
 			t.Fatalf("scan lost %q", key)
 		}
 		executeAction(t, connector, runtime, redisconnector.ActionDeleteKeys, map[string]any{"keys": []any{key}})
+	}
+}
+
+func valkeyFixtureRuntime(t *testing.T) connectors.RuntimeContext {
+	t.Helper()
+	return connectors.RuntimeContext{
+		Target: connectors.TargetView{
+			ID: 2, Ref: "redis:2:2", ConnectorKind: redisconnector.Kind, Name: "conformance-valkey",
+			Config: map[string]any{
+				"server_family":   redisconnector.ServerFamilyValkey,
+				"connection_mode": "direct",
+				"host":            fixtureHost("AIPERMISSION_VALKEY_HOST", "127.0.0.1"),
+				"port":            fixturePort(t, "AIPERMISSION_VALKEY_PORT", 6379),
+				"database":        0,
+			},
+		},
+		Profile: connectors.CredentialProfileView{
+			ID: 2, TargetID: 2, ConnectorKind: redisconnector.Kind, Kind: "username_password", Label: "conformance",
+			Public: map[string]any{},
+		},
+		Secrets:      fixtureSecrets{"password": "conformance-only"},
+		Capabilities: fixtureCapabilities{},
 	}
 }

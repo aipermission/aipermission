@@ -794,6 +794,17 @@ connector kind and target refs remain `redis`. Do not add a duplicate `valkey`
 connector folder, catalog registration, generic route branch, permission
 table, or MCP wrapper merely to change the product identity.
 
+Redis key identities cross the JSON action boundary as exact UTF-8 strings.
+Whitespace, NUL bytes, valid Unicode, and literal U+FFFD are not normalized.
+Non-UTF-8 binary keys are deliberately unsupported: preparation and execution
+reject them before any key command, and `scan_keys` fails the whole response
+without partial keys or a misleading continuation if a returned key is invalid.
+Use a narrower `MATCH` pattern to exclude unsupported keys. Never substitute
+replacement characters, truncate identities, or silently skip a scan entry;
+those changes could make a later read, TTL update, write, or delete target a
+different key. The same connector-owned validator guards scan output and all
+key action inputs. Values are bounded previews, not key identities.
+
 ## Built-In Example: RabbitMQ
 
 The built-in RabbitMQ connector follows the same normal structured connector

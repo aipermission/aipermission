@@ -306,6 +306,15 @@ results fail explicitly; narrow MATCH rather than assuming a partial result
 is complete. The display preview may be shortened; use the structured keys.
 SCAN is not a snapshot and may repeat keys during concurrent changes.
 
+Key identities are exact UTF-8 strings: whitespace, NUL, valid Unicode and
+literal U+FFFD are preserved through discovery and later actions. Non-UTF-8
+binary key inputs are rejected before key commands. If SCAN returns such a
+key, the entire scan fails without partial keys or a continuation; narrow
+`pattern` to exclude unsupported keys. Do not replace or trim returned key
+names, and never interpret this validation failure as permission to mutate a
+similarly displayed UTF-8 key. Binary key encoding is not part of this action
+contract. Bounded value previews are a separate, non-identity surface.
+
 RabbitMQ actions include overview metadata, visible vhost listing, bounded
 queue listing, queue detail reads, binding listing, and bounded message peeking
 with `ack_requeue_true`, plus explicit `publish_message` writes. Message
