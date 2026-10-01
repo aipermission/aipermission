@@ -265,6 +265,11 @@ start_file_download
 ```
 
 Postgres actions include schema/table inspection and bounded read-only queries.
+`get_tables.schema` and `describe_table.schema`/`table` are exact catalog names,
+not SQL identifier expressions. Preserve case, whitespace, quotes and punctuation
+from metadata; do not trim them or add SQL quoting. An absent/empty optional
+schema lists across schemas; a whitespace-only schema selects that exact name.
+Invalid UTF-8 or NUL is rejected rather than converted into an empty filter.
 Binary query cells (including `bytea`) use PostgreSQL-style `\x` followed by
 lowercase hex, not UTF-8 decoding. Empty binary values are `\x`; SQL NULL remains
 JSON `null`. Ordinary text is unchanged. Binary output shares the query's cell

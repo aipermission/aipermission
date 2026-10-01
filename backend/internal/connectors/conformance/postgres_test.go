@@ -26,6 +26,7 @@ func TestPostgresRealService(t *testing.T) {
 	})
 	assertResultContains(t, result, "postgres-conformance")
 	assertPostgresBinaryResults(t, connector, runtime)
+	assertPostgresExactMetadata(t, connector, runtime)
 	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
 	assertImplicitCastResolutionRejected(t, connector, runtime)
 	assertRestoreProcessBoundary(t, connector, runtime)

@@ -71,3 +71,16 @@ it("bounds pending metadata requests and skips described or already requested ta
   expect(sqlReferenceIdentifiersMatch("USERS", true, "users", false)).toBe(false);
   expect(sqlReferenceIdentifiersMatch("USERS", false, "users", false, "exact")).toBe(false);
 });
+
+it("preserves whitespace and punctuation in catalog schema, table, and column identities", () => {
+  const schema = " schema ";
+  const table = ' table";\n ';
+  const column = ' column";\n ';
+  const rows = extractTableSuggestions({ rows: [{ table_schema: schema, table_name: table, column_name: column }] });
+  expect(rows).toEqual([{ schema, table, column, dataType: "", position: 0, type: "" }]);
+  const reference = { schema, table, schemaQuoted: true, tableQuoted: true };
+  expect(tableMatchesReference(rows[0], reference)).toBe(true);
+  expect(tableMatchesReference(rows[0], { ...reference, schema: "schema" })).toBe(false);
+  expect(tableMatchesReference(rows[0], { ...reference, table: 'table";' })).toBe(false);
+  expect(tableReferenceKey(reference)).not.toEqual(tableReferenceKey({ ...reference, schema: "schema" }));
+});

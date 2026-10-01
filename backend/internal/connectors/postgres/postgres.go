@@ -256,10 +256,11 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{
-					Name:        "schema",
-					Label:       "Schema",
-					Type:        connectors.FieldString,
-					Description: "Optional schema name.",
+					Name:               "schema",
+					Label:              "Schema",
+					Type:               connectors.FieldString,
+					PreserveWhitespace: true,
+					Description:        "Optional exact schema name; do not add SQL quoting.",
 				},
 				{
 					Name:        "include_system",
@@ -278,17 +279,19 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{
-					Name:        "schema",
-					Label:       "Schema",
-					Type:        connectors.FieldString,
-					Description: "Optional schema name.",
+					Name:               "schema",
+					Label:              "Schema",
+					Type:               connectors.FieldString,
+					PreserveWhitespace: true,
+					Description:        "Optional exact schema name; do not add SQL quoting.",
 				},
 				{
-					Name:        "table",
-					Label:       "Table",
-					Type:        connectors.FieldString,
-					Required:    true,
-					Description: "Table name.",
+					Name:               "table",
+					Label:              "Table",
+					Type:               connectors.FieldString,
+					Required:           true,
+					PreserveWhitespace: true,
+					Description:        "Exact table name; do not add SQL quoting.",
 				},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: 500},
@@ -346,7 +349,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.Payload = map[string]any{}
 		return base, nil
 	case ActionGetTables:
-		schema := cleanIdentifierInput(req.Input, "schema")
+		schema, err := metadataIdentifierInput(req.Input, "schema")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		includeSystem := boolInput(req.Input, "include_system")
 		base.Risk = connectors.RiskRead
 		base.Title = "List Postgres tables"
@@ -357,8 +363,14 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.ContextMaterial["include_system"] = includeSystem
 		return base, nil
 	case ActionDescribeTable:
-		schema := cleanIdentifierInput(req.Input, "schema")
-		table := cleanIdentifierInput(req.Input, "table")
+		schema, err := metadataIdentifierInput(req.Input, "schema")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
+		table, err := metadataIdentifierInput(req.Input, "table")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		if table == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("%s table is required", ActionDescribeTable)
 		}
@@ -434,17 +446,8 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 			ORDER BY nspname`,
 			200,
 		)
-	case ActionGetTables:
-		schema := payloadString(action.Payload, "schema")
-		includeSystem := payloadBool(action.Payload, "include_system")
-		output, err = getTables(ctx, tx, schema, includeSystem)
-	case ActionDescribeTable:
-		schema := payloadString(action.Payload, "schema")
-		table := payloadString(action.Payload, "table")
-		if table == "" {
-			return connectors.ActionResult{}, fmt.Errorf("%s table is required", ActionDescribeTable)
-		}
-		output, err = describeTable(ctx, tx, schema, table)
+	case ActionGetTables, ActionDescribeTable:
+		output, err = queryMetadata(ctx, tx, action)
 	case ActionQueryReadonly:
 		sql := payloadString(action.Payload, "sql")
 		if err := validateReadonlySQL(sql); err != nil {
@@ -673,15 +676,6 @@ func targetSummary(target connectors.TargetView, action string) string {
 		return action + " on Postgres target."
 	}
 	return action + " on " + target.Name + "."
-}
-
-func cleanIdentifierInput(input map[string]any, name string) string {
-	value := strings.TrimSpace(stringInput(input, name))
-	value = strings.Trim(value, "\"")
-	if strings.ContainsAny(value, ";\x00\n\r") {
-		return ""
-	}
-	return value
 }
 
 func cleanSimpleIdentifierInput(input map[string]any, name string) string {
