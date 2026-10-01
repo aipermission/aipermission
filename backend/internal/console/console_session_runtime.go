@@ -218,6 +218,8 @@ func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
 
 // addClientWithSnapshot returns with writeMu locked. The caller must send the
 // snapshot before unlocking it so later broadcasts cannot overtake it.
+// Output recipients are frozen with transcript appends to avoid replaying data
+// already included in this snapshot.
 func (s *managedConsoleSession) addClientWithSnapshot(ws *websocket.Conn) (*sync.Mutex, string, string, error) {
 	writeMu := &sync.Mutex{}
 	writeMu.Lock()
@@ -534,6 +536,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	}
 	manualCompletion := s.manualOutputCompletionLocked()
 	s.clearManualPauseIfPromptReturnedLocked()
+	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
 	if manualCompletion != nil {
 		s.runOwnedWork(func() { s.finishManualOutputCapture(manualCompletion) })
@@ -542,7 +545,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 		s.runOwnedWork(s.flushTranscript)
 	}
 	if displayData != "" {
-		s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
+		s.broadcastTo(clients, ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
 	}
 }
 
@@ -582,11 +585,12 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 			s.runOwnedWork(s.flushTranscript)
 		})
 	}
+	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
 	if flushSoon {
 		s.runOwnedWork(s.flushTranscript)
 	}
-	s.broadcast(ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
+	s.broadcastTo(clients, ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
 }
 
 func (s *managedConsoleSession) redactForPersistence(value string) string {
@@ -730,11 +734,12 @@ func logConsolePersistError(operation string, sessionID int64, err error) {
 
 func (s *managedConsoleSession) broadcast(message ptyServerMessage) {
 	s.mu.Lock()
-	clients := make(map[*websocket.Conn]*sync.Mutex, len(s.clients))
-	for ws, writeMu := range s.clients {
-		clients[ws] = writeMu
-	}
+	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
+	s.broadcastTo(clients, message)
+}
+
+func (s *managedConsoleSession) broadcastTo(clients map[*websocket.Conn]*sync.Mutex, message ptyServerMessage) {
 	for ws, writeMu := range clients {
 		if err := writePTYMessage(ws, writeMu, message); err != nil {
 			s.removeClient(ws)

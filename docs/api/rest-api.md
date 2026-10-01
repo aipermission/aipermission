@@ -1348,6 +1348,12 @@ CSRF checks.
 `POST /api/console/targets/{id}/restart` is a compatibility alias for the same
 runtime-surface recovery action.
 
+The initial snapshot is sent before live output for that connection. Output
+recipient membership is captured atomically with the transcript update: a
+newly attached client receives an update through its snapshot or live stream,
+never both. Reconnecting starts a fresh snapshot; these messages are not an
+exactly-once replay protocol across connections.
+
 Attach WebSocket messages from the server include:
 
 ```json
