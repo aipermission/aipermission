@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -52,7 +53,7 @@ func TestScopedCapabilitiesDoNotRequireActionRuntimeAuthority(t *testing.T) {
 		"domain_journal": testRuntimeCapability("domain_journal"),
 	}}
 	factoryCalls := 0
-	result, err := composeAdapterCapabilities(runtimeCapabilities{
+	result, err := connectorcapabilities.ForRuntime(runtimeCapabilities{
 		connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 	}, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 		factoryCalls++
@@ -80,7 +81,7 @@ func TestCapabilityCompositionPreservesActionAndCombinedProviders(t *testing.T) 
 			adapter = combinedCapabilityProvider{resource, action}
 		}
 		factoryCalls := 0
-		result, err := composeAdapterCapabilities(nil, adapter,
+		result, err := connectorcapabilities.ForRuntime(nil, adapter,
 			connectorruntime.NewScope("fixture", connectorruntime.Dependencies{}).ScopedResourceRuntime(),
 			func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 				factoryCalls++
@@ -94,7 +95,7 @@ func TestCapabilityCompositionPreservesActionAndCombinedProviders(t *testing.T) 
 		}
 	}
 	base := runtimeCapabilities{"existing": testRuntimeCapability("existing")}
-	if result, err := composeAdapterCapabilities(base, nil, nil, nil); err != nil || result["existing"] == nil {
+	if result, err := connectorcapabilities.ForRuntime(base, nil, nil, nil); err != nil || result["existing"] == nil {
 		t.Fatalf("non-provider connector changed: %#v err=%v", result, err)
 	}
 }
@@ -111,7 +112,7 @@ func TestCapabilityCompositionFailsClosedBeforeActionAuthorityOnInvalidResources
 			&actionCapabilityProvider{},
 		}
 		factoryCalls := 0
-		result, err := composeAdapterCapabilities(runtimeCapabilities{
+		result, err := connectorcapabilities.ForRuntime(runtimeCapabilities{
 			connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 		}, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 			factoryCalls++
@@ -125,7 +126,7 @@ func TestCapabilityCompositionFailsClosedBeforeActionAuthorityOnInvalidResources
 		&scopedCapabilityProvider{provided: map[string]connectors.RuntimeCapability{"same": testRuntimeCapability("same")}},
 		&actionCapabilityProvider{provided: map[string]connectors.RuntimeCapability{"same": testRuntimeCapability("same")}},
 	}
-	if result, err := composeAdapterCapabilities(nil, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
+	if result, err := connectorcapabilities.ForRuntime(nil, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 		return capabilityActionGateway{}, capabilityActionRuntime{}
 	}); err == nil || result != nil {
 		t.Fatalf("two providers silently replaced a capability: %#v err=%v", result, err)
@@ -134,11 +135,11 @@ func TestCapabilityCompositionFailsClosedBeforeActionAuthorityOnInvalidResources
 
 func TestCapabilityCompositionRejectsUnavailablePorts(t *testing.T) {
 	resource := &scopedCapabilityProvider{}
-	if result, err := composeAdapterCapabilities(nil, resource, nil, nil); err == nil || result != nil || resource.calls != 0 {
+	if result, err := connectorcapabilities.ForRuntime(nil, resource, nil, nil); err == nil || result != nil || resource.calls != 0 {
 		t.Fatalf("missing resources were delivered: %#v err=%v calls=%d", result, err, resource.calls)
 	}
 	action := &actionCapabilityProvider{}
-	for _, factory := range []runtimeActionPortsFactory{
+	for _, factory := range []connectorcapabilities.ActionPortsFactory{
 		nil,
 		func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 			return nil, capabilityActionRuntime{}
@@ -147,7 +148,7 @@ func TestCapabilityCompositionRejectsUnavailablePorts(t *testing.T) {
 			return capabilityActionGateway{}, nil
 		},
 	} {
-		if result, err := composeAdapterCapabilities(nil, action, nil, factory); err == nil || result != nil || action.calls != 0 {
+		if result, err := connectorcapabilities.ForRuntime(nil, action, nil, factory); err == nil || result != nil || action.calls != 0 {
 			t.Fatalf("missing action ports were delivered: %#v err=%v calls=%d", result, err, action.calls)
 		}
 	}
@@ -166,7 +167,7 @@ func TestCredentialCompositionNeverExposesActionProviderAuthority(t *testing.T) 
 		if combined {
 			adapter = combinedCapabilityProvider{resource, action}
 		}
-		result, err := composeScopedResourceCapabilities(runtimeCapabilities{
+		result, err := connectorcapabilities.ForResources(runtimeCapabilities{
 			connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 		}, adapter, resources)
 		if err != nil || result[connectors.NetworkTransportCapabilityName] == nil || result["action_service"] != nil || action.calls != 0 {
