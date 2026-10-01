@@ -22,6 +22,19 @@ is completed inside that already-admitted operation, not submitted as new work
 after shutdown. Canonical command and history projection updates share a
 transaction; automated rows are outside manual cleanup.
 
+Snapshot, live output, and error-response writes use the shared
+`internal/socketwrite` boundary, also used by the maintenance console. Each
+socket write has a two-second deadline after acquiring writer ownership. The
+snapshot fence still places the snapshot before subsequent live frames.
+Failed output writes evict that client; failed attach/error writes return so
+attach cleanup can unregister it. Failed keepalive writes close the socket to
+wake its reader, while normal keepalive shutdown does not close it.
+
+This is not a two-second end-to-end broadcast guarantee: waiting for a writer
+mutex and sequential delivery to multiple clients can add latency. Real TCP
+backpressure tests complement port-free HTTP/Gorilla pipe fixtures; neither is
+a replacement for native persistence and full-stack release checks.
+
 Non-responsibilities:
 
 - HTTP auth, CSRF, and route registration

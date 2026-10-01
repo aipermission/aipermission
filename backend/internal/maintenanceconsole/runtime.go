@@ -11,6 +11,7 @@ import (
 	"time"
 
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
+	"github.com/aipermission/aipermission/backend/internal/socketwrite"
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 )
@@ -21,7 +22,6 @@ const (
 	maintenanceConsoleDefaultCols        = 120
 	maintenanceConsoleDefaultRows        = 32
 	maintenanceConsolePingInterval       = 25 * time.Second
-	maintenanceConsoleWriteTimeout       = 2 * time.Second
 	maintenanceConsoleProcessGracePeriod = 750 * time.Millisecond
 )
 
@@ -585,10 +585,7 @@ func writeMaintenanceConsoleMessageLocked(ws *websocket.Conn, message maintenanc
 	if ws == nil {
 		return errors.New("maintenance console websocket is unavailable")
 	}
-	if err := ws.SetWriteDeadline(time.Now().Add(maintenanceConsoleWriteTimeout)); err != nil {
-		return err
-	}
-	return ws.WriteJSON(message)
+	return socketwrite.JSONLocked(ws, message)
 }
 
 func (s *Session) closeClients() {
@@ -602,25 +599,7 @@ func (s *Session) closeClients() {
 }
 
 func maintenanceConsoleKeepAlive(ws *websocket.Conn, writeMu *sync.Mutex, stop <-chan struct{}) {
-	ticker := time.NewTicker(maintenanceConsolePingInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if writeMu != nil {
-				writeMu.Lock()
-			}
-			err := ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(10*time.Second))
-			if writeMu != nil {
-				writeMu.Unlock()
-			}
-			if err != nil {
-				return
-			}
-		case <-stop:
-			return
-		}
-	}
+	socketwrite.KeepAlive(ws, writeMu, maintenanceConsolePingInterval, stop)
 }
 
 func tailStringByBytes(value string, maxBytes int) string {
