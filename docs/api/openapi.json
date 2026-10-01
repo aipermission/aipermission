@@ -499,6 +499,11 @@
           "label": {
             "type": "string"
           },
+          "max_input_bytes": {
+            "maximum": 25165824,
+            "minimum": 1,
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           },
@@ -557,7 +562,8 @@
           "description",
           "risk",
           "input_schema",
-          "retry_policy"
+          "retry_policy",
+          "max_input_bytes"
         ],
         "type": "object"
       },

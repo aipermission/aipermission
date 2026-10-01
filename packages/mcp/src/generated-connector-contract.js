@@ -25,3 +25,5 @@ export const connectorActionResponseRequiredFields = Object.freeze([
   "action_name",
   "retry_policy",
 ]);
+
+export const connectorActionMaximumInputBytes = 25165824;

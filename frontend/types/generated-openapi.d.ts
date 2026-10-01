@@ -2361,6 +2361,7 @@ export interface components {
                 [key: string]: unknown;
             };
             label: string;
+            max_input_bytes: number;
             name: string;
             output_hint?: {
                 [key: string]: unknown;
