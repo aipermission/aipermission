@@ -199,7 +199,7 @@ func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *Work
 		command := connectorports.CommandTransport(workspace, adapterFor, application.trust)
 		capabilities[command.ConnectorRuntimeCapability()] = command
 	}
-	capabilities, err := composeAdapterCapabilities(
+	capabilities, err := connectorcapabilities.ForRuntime(
 		capabilities, application.adapters.For(kind), connectorports.ScopedResourceRuntime(workspace, kind),
 		func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 			return application.ports.RuntimeActionPorts(workspace, kind)
