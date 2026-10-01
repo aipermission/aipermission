@@ -4,6 +4,12 @@ This document tracks the public-ish REST surface used by the web UI and MCP brid
 
 The web REST API is not a remote multi-user API. After database unlock, protected web REST endpoints require a local HttpOnly browser session cookie. Mutating requests send a double-submit CSRF header/cookie pair and `X-AIPermission-Workspace`, the workspace identity observed by that browser tab. Recovery, diagnostics, and file download GETs also require the workspace header so a workspace switch cannot return data from a different unlocked database. Browser WebSocket attach routes carry the same binding in the required `workspace` query parameter because the WebSocket API cannot set custom request headers. A valid session without the required matching workspace binding is rejected with `409 Conflict`; clients must refresh instead of replaying the operation against another workspace. Setup and recovery mutations that can run while locked require the header only after a workspace is unlocked. MCP endpoints do not use browser cookies or this workspace binding; they authenticate with API tokens.
 
+Browser requests that explicitly pin a workspace must send that exact binding
+and verify the response workspace header before accepting success or rejection.
+Missing or mismatched headers leave a dispatched mutation unconfirmed; they do
+not authorize a workspace switch, a definitive rejection, or blind replay.
+Unpinned database-switch requests retain their normal workspace discovery.
+
 Workspace-bound download, diagnostics, and browser attach routes do not support
 `HEAD`. Session and workspace validation run first: a stale or missing workspace
 binding receives `409 Conflict`; a matching authenticated request receives

@@ -57,7 +57,9 @@ export async function apiGet(path: string, options: APIOptions = {}): Promise<un
 }
 
 export async function apiPost(path: string, body: Record<string, unknown>, options: APIOptions = {}): Promise<unknown> {
-  const requestWorkspace = currentWorkspaceBinding();
+  const pinnedWorkspace = options.workspaceBinding !== undefined;
+  const requestWorkspace = options.workspaceBinding ?? currentWorkspaceBinding();
+  if (pinnedWorkspace && !requestWorkspace) throw new Error("Gateway POST workspace binding is required.");
   const prepared = await preparePostBody(path, body, requestWorkspace, options);
   let finalized = false;
   try {
@@ -68,9 +70,10 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
       signal: options.signal,
       credentials: "include",
     });
+    assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
     let data: unknown;
     try {
-      data = await readResponse(response, { captureWorkspace: path !== "/api/console/bulk-exec" });
+      data = await readResponse(response, { captureWorkspace: !pinnedWorkspace && path !== "/api/console/bulk-exec" });
     } catch (error) {
       finalized = await finalizePostError(prepared, error, response);
       throw error;
@@ -95,6 +98,11 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
   } finally {
     if (prepared.retry && !finalized) await releaseLocalActionRetryAttempt(prepared.retry);
   }
+}
+
+function assertPostWorkspace(response: Response, requestWorkspace: string, pinnedWorkspace: boolean) {
+  if (pinnedWorkspace && response.headers.get(workspaceHeaderName) !== requestWorkspace)
+    throw new Error("Gateway POST workspace binding mismatch.");
 }
 
 function assertPostAcknowledgement(path: string, response: Response, prepared: PreparedPost, data: unknown, requestWorkspace: string) {

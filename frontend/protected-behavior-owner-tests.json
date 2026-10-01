@@ -1,6 +1,7 @@
 {
   "version": 1,
   "owners": {
+    "src/lib/api.ts": ["src/lib/api/workspace-ownership.component.test.ts"],
     "src/components/file-transfer/file-transfer-actions.ts": ["src/components/file-transfer/file-transfer-actions.component.test.ts"],
     "src/components/file-transfer/file-transfer-confirm-dialogs.tsx": [
       "src/components/file-transfer/file-transfer-confirm-dialogs.component.test.tsx"

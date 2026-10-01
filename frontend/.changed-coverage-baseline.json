@@ -2290,10 +2290,10 @@
       "lines": 100
     },
     "src/lib/api.ts": {
-      "statements": 96.47,
-      "branches": 89.37,
+      "statements": 96.55,
+      "branches": 89.95,
       "functions": 100,
-      "lines": 97.86
+      "lines": 97.9
     },
     "src/lib/async-resource.ts": {
       "statements": 100,
