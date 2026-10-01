@@ -175,6 +175,10 @@ bounded key-browser actions such as `scan_keys`, `get_key`, `set_string`,
 connector kind and target-ref prefix; no separate Valkey MCP tool family is
 required. The current connector uses RESP2 against one configured endpoint and
 does not provide Cluster or Sentinel routing.
+Keys must be valid UTF-8; whitespace, NUL and literal U+FFFD remain exact.
+Non-UTF-8 key inputs reject before key commands, and scans encountering an
+unsupported binary key fail without partial results. Narrow the MATCH pattern
+instead of rewriting the key; see the [Redis action boundary](../../docs/api/mcp-tools.md).
 
 For RabbitMQ, call `get_connector_actions(target_ref)` to discover queue
 browser actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,

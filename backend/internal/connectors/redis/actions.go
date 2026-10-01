@@ -138,6 +138,9 @@ func executeScanKeys(client *redisClient, input map[string]any) (connectors.Acti
 		nextCursor = pageCursor
 		pages++
 		for _, key := range page {
+			if err := validateRedisKeyIdentity(key); err != nil {
+				return connectors.ActionResult{}, err
+			}
 			if _, exists := seen[key]; exists {
 				continue
 			}

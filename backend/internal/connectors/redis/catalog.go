@@ -122,7 +122,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		},
 		Warnings: []string{
 			"Redis and Valkey values may contain secrets. Redaction is best-effort; avoid intentionally reading secrets unless the operator approved that access.",
-			"Key identities are preserved as exact UTF-8 strings, including whitespace and NUL bytes; non-UTF-8 binary keys are not representable through the JSON action boundary.",
+			"Key identities are preserved as exact UTF-8 strings, including whitespace, NUL bytes, and literal U+FFFD. Non-UTF-8 binary key inputs are rejected before key commands; scan_keys fails without partial results if any returned key is not representable through JSON. Use a narrower MATCH pattern to exclude those keys.",
 			"scan_keys uses SCAN, not KEYS, and returns bounded batches.",
 			"scan_keys limit is a target count, not a hard cap: the last page is kept whole, up to 5095 keys. Continue with next_cursor until complete; an empty page need not be complete.",
 			"A scan stops after 100 pages and returns its continuation. Actions have a 10-second total deadline. SCAN is not a snapshot and may repeat keys while data changes.",
