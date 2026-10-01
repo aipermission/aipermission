@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -260,7 +259,7 @@ func provisionScopeInput(input map[string]any) (provisionScope, error) {
 			return provisionScope{AllSchemas: true}, nil
 		}
 		var decoded map[string]any
-		if err := json.Unmarshal([]byte(text), &decoded); err != nil {
+		if err := decodeProvisionScopeJSON(text, &decoded); err != nil {
 			return provisionScope{}, fmt.Errorf("scope must be a JSON object")
 		}
 		raw = decoded
@@ -278,36 +277,26 @@ func provisionScopeInput(input map[string]any) (provisionScope, error) {
 		if !ok {
 			return provisionScope{}, fmt.Errorf("scope schemas must be objects")
 		}
-		schema := provisionSchemaScope{
-			Schema:    cleanSimpleIdentifierValue(stringInput(schemaMap, "schema")),
-			AllTables: boolInput(schemaMap, "all_tables"),
+		name, err := provisionScopeIdentifier(schemaMap, "schema")
+		if err != nil {
+			return provisionScope{}, err
 		}
-		if schema.Schema == "" {
-			return provisionScope{}, fmt.Errorf("scope schema is required and must be a simple identifier")
-		}
+		schema := provisionSchemaScope{Schema: name, AllTables: boolInput(schemaMap, "all_tables")}
 		if !schema.AllTables {
 			for _, tableItem := range anySlice(schemaMap["tables"]) {
 				tableMap, ok := tableItem.(map[string]any)
 				if !ok {
 					return provisionScope{}, fmt.Errorf("scope tables must be objects")
 				}
-				table := provisionTableScope{
-					Table:      cleanSimpleIdentifierValue(stringInput(tableMap, "table")),
-					AllColumns: boolInput(tableMap, "all_columns"),
+				name, err := provisionScopeIdentifier(tableMap, "table")
+				if err != nil {
+					return provisionScope{}, err
 				}
-				if table.Table == "" {
-					return provisionScope{}, fmt.Errorf("scope table is required and must be a simple identifier")
-				}
+				table := provisionTableScope{Table: name, AllColumns: boolInput(tableMap, "all_columns")}
 				if !table.AllColumns {
-					for _, column := range stringSlice(tableMap["columns"]) {
-						clean := cleanSimpleIdentifierValue(column)
-						if clean == "" {
-							return provisionScope{}, fmt.Errorf("scope column is required and must be a simple identifier")
-						}
-						table.Columns = append(table.Columns, clean)
-					}
-					if len(table.Columns) == 0 {
-						return provisionScope{}, fmt.Errorf("selected table must grant all columns or at least one column")
+					table.Columns, err = provisionScopeColumns(tableMap["columns"])
+					if err != nil {
+						return provisionScope{}, err
 					}
 				}
 				schema.Tables = append(schema.Tables, table)
@@ -339,8 +328,7 @@ func provisionRoleStatements(target connectors.TargetView, roleName string, pass
 	}
 	if scope.AllSchemas {
 		grants = append(grants, map[string]any{"all_schemas": true, "all_tables": true, "privileges": privileges})
-		statements = append(statements, fmt.Sprintf(`
-DO $$
+		statements = append(statements, provisionDOBlock(fmt.Sprintf(`
 DECLARE schema_name text;
 BEGIN
 	FOR schema_name IN
@@ -351,7 +339,7 @@ BEGIN
 		EXECUTE format('GRANT %s ON ALL TABLES IN SCHEMA %%I TO %%I', schema_name, %s);
 	END LOOP;
 END
-$$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
+`, quoteLiteral(roleName), privileges, quoteLiteral(roleName))))
 		if preset == "read_write" {
 			statements = append(statements, provisionOwnedSequenceGrant(roleName, "ns.nspname NOT LIKE 'pg_%' AND ns.nspname <> 'information_schema'"))
 		}
@@ -393,8 +381,7 @@ $$`, quoteLiteral(roleName), privileges, quoteLiteral(roleName)))
 }
 
 func provisionOwnedSequenceGrant(roleName, tableFilter string) string {
-	return fmt.Sprintf(`
-DO $$
+	return provisionDOBlock(fmt.Sprintf(`
 DECLARE sequence_oid oid;
 BEGIN
 	FOR sequence_oid IN
@@ -414,7 +401,7 @@ BEGIN
 		EXECUTE format('GRANT USAGE ON SEQUENCE %%s TO %%I', sequence_oid::regclass, %s);
 	END LOOP;
 END
-$$`, tableFilter, quoteLiteral(roleName))
+`, tableFilter, quoteLiteral(roleName)))
 }
 
 func provisionRoleSummary(preset, database string, grants []map[string]any) map[string]any {

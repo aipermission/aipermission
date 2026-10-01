@@ -1,6 +1,6 @@
 import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { Checkbox } from "../../../components/ui/form";
-import { toggleColumn, toggleSchema, toggleTable, updateSchema, updateTable } from "./provisioning";
+import { scopeSelectionValue, toggleColumn, toggleSchema, toggleTable, updateSchema, updateTable } from "./provisioning";
 import type { MetadataSchema, MetadataTable, ProvisionForm, ScopeSelection, TableSelection } from "./provisioning-types";
 import type { ProvisionController } from "./use-postgres-provisioning";
 
@@ -29,7 +29,7 @@ function EmptyScopeState({ children }: { children: ReactNode }) {
 }
 
 function SchemaScopeRow({ schema, scope, onChange, preset }: SelectionProps & { schema: MetadataSchema }) {
-  const schemaState = scope.schemas[schema.name] || { selected: false, all_tables: true, tables: {} };
+  const schemaState = scopeSelectionValue(scope.schemas, schema.name) || { selected: false, all_tables: true, tables: {} };
   return (
     <div className="border-b border-stone-200 p-3 last:border-b-0">
       <label className="flex items-start gap-3 text-sm">
@@ -59,7 +59,7 @@ function SchemaScopeRow({ schema, scope, onChange, preset }: SelectionProps & { 
                   key={table.name}
                   schema={schema.name}
                   table={table}
-                  tableState={schemaState.tables[table.name]}
+                  tableState={scopeSelectionValue(schemaState.tables, table.name)}
                   onChange={onChange}
                   preset={preset}
                 />
@@ -113,7 +113,7 @@ function TableScopeRow({
               {table.columns.map((column) => (
                 <label className="flex items-center gap-2 rounded border border-stone-200 bg-white px-2 py-1 text-xs" key={column}>
                   <Checkbox
-                    checked={Boolean(current.columns?.[column])}
+                    checked={Boolean(scopeSelectionValue(current.columns, column))}
                     onChange={(event) => onChange((scope) => toggleColumn(scope, schema, table.name, column, event.target.checked))}
                   />
                   <span className="truncate">{column}</span>

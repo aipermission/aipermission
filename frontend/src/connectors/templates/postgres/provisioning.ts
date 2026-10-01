@@ -35,8 +35,8 @@ export function groupMetadataRows(rows: unknown): MetadataSchema[] {
   if (!Array.isArray(rows)) return [];
   for (const value of rows) {
     const row = normalizeConnectorOutput(value);
-    const schemaName = String(row.table_schema || "").trim();
-    const tableName = String(row.table_name || "").trim();
+    const schemaName = metadataName(row.table_schema);
+    const tableName = metadataName(row.table_name);
     const columns = metadataColumns(row);
     if (!schemaName || !tableName) continue;
     const tables = schemas.get(schemaName) || new Map<string, string[]>();
@@ -184,21 +184,27 @@ function appendScopedGrantPreview(lines: string[], schemas: ProvisionSchema[], r
 }
 
 function metadataColumns(row: Record<string, unknown>): string[] {
-  if (Array.isArray(row.columns)) return row.columns.map(cleanColumn).filter(Boolean);
+  if (Array.isArray(row.columns)) return row.columns.map(metadataName).filter(Boolean);
   if (typeof row.columns === "string" && row.columns.trim()) {
     try {
       const parsed: unknown = JSON.parse(row.columns);
-      if (Array.isArray(parsed)) return parsed.map(cleanColumn).filter(Boolean);
+      if (Array.isArray(parsed)) return parsed.map(metadataName).filter(Boolean);
     } catch {
-      return row.columns.split(",").map(cleanColumn).filter(Boolean);
+      return [];
     }
   }
-  const columnName = String(row.column_name || "").trim();
+  const columnName = metadataName(row.column_name);
   return columnName ? [columnName] : [];
 }
 
-function cleanColumn(value: unknown): string {
-  return String(value || "").trim();
+function metadataName(value: unknown): string {
+  return typeof value === "string" && !value.includes("\0") && /^(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[^\uD800-\uDFFF])*$/.test(value)
+    ? value
+    : "";
+}
+
+export function scopeSelectionValue<T>(values: Record<string, T> | undefined, name: string): T | undefined {
+  return values && Object.hasOwn(values, name) ? values[name] : undefined;
 }
 
 function uniqueStrings(items: string[]): string[] {
@@ -210,7 +216,7 @@ function updateScopeSchema(
   schemaName: string,
   updater: (_schema: SchemaSelection) => SchemaSelection,
 ): ScopeSelection {
-  const current = scope.schemas?.[schemaName] || { selected: false, all_tables: true, tables: {} };
+  const current = scopeSelectionValue(scope.schemas, schemaName) || { selected: false, all_tables: true, tables: {} };
   return { ...scope, schemas: { ...(scope.schemas || {}), [schemaName]: updater(current) } };
 }
 
@@ -221,7 +227,7 @@ function updateScopeTable(
   updater: (_table: TableSelection) => TableSelection,
 ): ScopeSelection {
   return updateScopeSchema(scope, schemaName, (schema) => {
-    const current = schema.tables?.[tableName] || { selected: false, all_columns: true, columns: {} };
+    const current = scopeSelectionValue(schema.tables, tableName) || { selected: false, all_columns: true, columns: {} };
     return { ...schema, tables: { ...(schema.tables || {}), [tableName]: updater(current) } };
   });
 }

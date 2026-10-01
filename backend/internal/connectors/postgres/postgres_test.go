@@ -394,9 +394,9 @@ func TestProvisionScopeInputSupportsNestedSelection(t *testing.T) {
 
 func TestProvisionScopeInputRejectsUnsafeSelection(t *testing.T) {
 	for _, input := range []map[string]any{
-		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "bad-name", "all_tables": true}}}},
-		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "orders;drop", "all_columns": true}}}}}},
-		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "orders", "columns": []any{"bad-name"}}}}}}},
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "bad\x00name", "all_tables": true}}}},
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "", "all_columns": true}}}}}},
+		{"scope": map[string]any{"schemas": []any{map[string]any{"schema": "public", "tables": []any{map[string]any{"table": "orders", "columns": []any{42}}}}}}},
 	} {
 		if _, err := provisionScopeInput(input); err == nil {
 			t.Fatalf("expected unsafe scope to be rejected: %#v", input)
@@ -428,7 +428,7 @@ func TestProvisionRoleStatementsBuildsScopedGrants(t *testing.T) {
 	}
 	joined := strings.Join(statements, "\n")
 	for _, want := range []string{
-		`CREATE ROLE "app_reader" LOGIN PASSWORD 'secret-value'`,
+		`CREATE ROLE "app_reader" LOGIN PASSWORD E'secret-value'`,
 		`GRANT CONNECT ON DATABASE "appdb" TO "app_reader"`,
 		`GRANT SELECT ON TABLE "public"."orders" TO "app_reader"`,
 		`GRANT SELECT ("id", "email") ON TABLE "public"."users" TO "app_reader"`,
@@ -470,14 +470,14 @@ func TestProvisionRoleStatementsGrantOnlyOwnedSequencesForWritableScopes(t *test
 		{
 			name:      "one schema",
 			scope:     provisionScope{Schemas: []provisionSchemaScope{{Schema: "public", AllTables: true}}},
-			wantScope: "ns.nspname = 'public'",
+			wantScope: "ns.nspname = E'public'",
 		},
 		{
 			name: "one table",
 			scope: provisionScope{Schemas: []provisionSchemaScope{{
 				Schema: "public", Tables: []provisionTableScope{{Table: "orders", AllColumns: true}},
 			}}},
-			wantScope: "ns.nspname = 'public' AND tbl.relname = 'orders'",
+			wantScope: "ns.nspname = E'public' AND tbl.relname = E'orders'",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
