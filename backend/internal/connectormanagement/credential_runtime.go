@@ -3,35 +3,21 @@ package connectormanagement
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
-type CredentialRuntimePorts struct {
-	DecryptSecret  func(context.Context, int64, string) (map[string]any, error)
-	RuntimeContext func(connectortargets.Target, connectortargets.CredentialProfile, map[string]any, CredentialBoundary) connectors.RuntimeContext
-	RedactResult   func(context.Context, connectors.ActionResult, CredentialBoundary) (connectors.ActionResult, error)
-	RedactText     func(context.Context, string) string
-}
-
-func (ports CredentialRuntimePorts) valid() bool {
-	return ports.DecryptSecret != nil && ports.RuntimeContext != nil && ports.RedactResult != nil && ports.RedactText != nil
-}
-
-func (ports CredentialRuntimePorts) redactCredentialText(ctx context.Context, value string, boundary CredentialBoundary) string {
-	return actionresult.RedactCredentialText(value, boundary.Redact, func(text string) string {
-		return ports.RedactText(ctx, text)
-	})
-}
+type CredentialRuntimePorts = connectorcredentials.RuntimePorts
 
 type ManagedCredentialCleanupScope struct {
-	Database *sql.DB
-	Registry connectors.Catalog
-	Runtime  CredentialRuntimePorts
+	Database             *sql.DB
+	Registry             connectors.Catalog
+	Runtime              CredentialRuntimePorts
+	EvidenceCapabilities func(string) (connectors.RuntimeCapabilityResolver, error)
 }
 
 func CleanupProvisionedCredentialProfileIfNeeded(
@@ -40,7 +26,7 @@ func CleanupProvisionedCredentialProfileIfNeeded(
 	target connectortargets.Target,
 	profile connectortargets.CredentialProfile,
 ) (ProfileCleanupOutcome, error) {
-	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() {
+	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.Valid() {
 		return ProfileCleanupOutcome{}, errProfileDeletionRuntimeUnavailable
 	}
 	connector, ok := scope.Registry.Get(target.ConnectorKind)
@@ -62,6 +48,9 @@ func CleanupProvisionedCredentialProfileIfNeeded(
 	if !ok {
 		return ProfileCleanupOutcome{}, connectortargets.ValidationError("connector does not support managed credential cleanup")
 	}
+	if outcome, handled, err := completedCredentialCleanupEvidence(ctx, scope, connector, target, profile); handled {
+		return outcome, err
+	}
 	adminProfile, err := connectortargets.NewStore(scope.Database).GetCredentialProfile(ctx, target.ID, adminProfileID)
 	if err != nil {
 		return ProfileCleanupOutcome{}, err
@@ -80,14 +69,7 @@ func CleanupProvisionedCredentialProfileIfNeeded(
 		scope.Runtime.RuntimeContext(target, adminProfile, adminSecrets, boundary),
 		connectortargets.CredentialProfileView(profile),
 	)
-	if err := RequireCompletedCredentialCleanup(result, err); err != nil {
-		return ProfileCleanupOutcome{}, errors.New(scope.Runtime.redactCredentialText(ctx, err.Error(), boundary))
-	}
-	redacted, err := scope.Runtime.RedactResult(ctx, result, boundary)
-	if err != nil {
-		return ProfileCleanupOutcome{}, fmt.Errorf("process credential cleanup result: %w", err)
-	}
-	return ProfileCleanupOutcome{Required: true, Status: string(redacted.Status), Output: redacted.Output}, nil
+	return completedCredentialCleanupOutcome(ctx, scope.Runtime, result, err, boundary)
 }
 
 func decryptCredentialSecrets(

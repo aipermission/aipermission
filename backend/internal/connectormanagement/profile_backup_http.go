@@ -63,7 +63,7 @@ func (h *ProfileBackupHTTPHandler) Download(w http.ResponseWriter, r *http.Reque
 	}
 	artifact, err := backupRestorer.Backup(r.Context(), resolved.runtime, connectors.BackupRequest{Format: "sql"})
 	if err != nil {
-		writeProvisionError(w, err, resolved.scope.Runtime.redactCredentialText(r.Context(), err.Error(), resolved.boundary))
+		writeProvisionError(w, err, resolved.scope.Runtime.RedactCredentialText(r.Context(), err.Error(), resolved.boundary))
 		return
 	}
 	if len(artifact.Data) == 0 {
@@ -166,7 +166,7 @@ func (h *ProfileBackupHTTPHandler) Restore(w http.ResponseWriter, r *http.Reques
 			resolved.writeRestoreFinalizationFailure(w, r, operation.ID)
 			return
 		}
-		writeRestoreExecutionError(w, operation.ID, status, errorCode, err, resolved.scope.Runtime.redactCredentialText(r.Context(), err.Error(), resolved.boundary))
+		writeRestoreExecutionError(w, operation.ID, status, errorCode, err, resolved.scope.Runtime.RedactCredentialText(r.Context(), err.Error(), resolved.boundary))
 		return
 	}
 	status, valid := profileRestoreResultStatus(result.Status)
@@ -303,7 +303,7 @@ func (h *ProfileBackupHTTPHandler) resolve(w http.ResponseWriter) (ProfileBackup
 	if !ok {
 		return ProfileBackupScope{}, false
 	}
-	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.valid() || scope.AcquireDelivery == nil || scope.AcquireExclusive == nil || scope.Admission == nil || scope.Observe == nil || scope.WithTransaction == nil {
+	if scope.Database == nil || scope.Registry == nil || !scope.Runtime.Valid() || scope.AcquireDelivery == nil || scope.AcquireExclusive == nil || scope.Admission == nil || scope.Observe == nil || scope.WithTransaction == nil {
 		httptransport.WriteInternalError(w)
 		return ProfileBackupScope{}, false
 	}
