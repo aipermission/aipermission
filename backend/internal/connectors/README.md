@@ -225,6 +225,13 @@ construction in the owning connector. `connectors.InteractiveShellProbe`
 provides the common Bash-login-with-sh-fallback payload; it owns no runtime
 state, permissions, credentials, or transport selection.
 
+Keep protocol unit tests in the connector package. Tests that assemble the
+gateway HTTP server and a concrete connector belong in `backend/integration/`,
+not in that connector's package: the assembly imports the built-in catalog and
+would otherwise introduce a test dependency cycle back into the connector.
+The normal `go test ./...` and race gates include these integration packages;
+moving a fixture must preserve all of its assertions and native dependencies.
+
 Target operations hold workspace delivery admission across the fresh target
 snapshot, adapter dispatch, response projection and writing. Operations that
 change persistent connector-owned state must implement the optional

@@ -1,4 +1,4 @@
-package postgresconnector_test
+package postgres_test
 
 import (
 	"fmt"

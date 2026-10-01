@@ -45,7 +45,7 @@ func TestConnectorManagementApplicationRejectsIncompleteComposition(t *testing.T
 
 func TestMergeRuntimeCapabilitiesRejectsProtectedCapabilityCollision(t *testing.T) {
 	protected := testRuntimeCapability(connectors.NetworkTransportCapabilityName)
-	base := runtimeCapabilities{connectors.NetworkTransportCapabilityName: protected}
+	base := connectorcapabilities.Set{connectors.NetworkTransportCapabilityName: protected}
 	merged, err := connectorcapabilities.Merge(base, map[string]connectors.RuntimeCapability{
 		connectors.NetworkTransportCapabilityName: protected,
 	})
@@ -61,7 +61,7 @@ func TestMergeRuntimeCapabilitiesValidatesAndSnapshotsAdapterCapabilities(t *tes
 	provided := map[string]connectors.RuntimeCapability{
 		"session_environment": testRuntimeCapability("session_environment"),
 	}
-	merged, err := connectorcapabilities.Merge(runtimeCapabilities{
+	merged, err := connectorcapabilities.Merge(connectorcapabilities.Set{
 		connectors.CommandTransportCapabilityName: testRuntimeCapability(connectors.CommandTransportCapabilityName),
 	}, provided)
 	if err != nil {

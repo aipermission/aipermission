@@ -173,8 +173,6 @@ func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandl
 	return application.owner.connectorWorkspace(handle, bindings)
 }
 
-type runtimeCapabilities = connectorcapabilities.Set
-
 func (application *ConnectorRuntimeApplication) RuntimeCapabilities(handle *WorkspaceHandle, kind string) connectors.RuntimeCapabilityResolver {
 	return application.runtimeCapabilities(handle, kind, nil, false, nil)
 }
@@ -184,7 +182,7 @@ func (application *ConnectorRuntimeApplication) ActionCapabilities(handle *Works
 }
 
 func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, approved bool, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
-	capabilities := runtimeCapabilities{}
+	capabilities := connectorcapabilities.Set{}
 	workspace, ok := application.workspace(handle, true, finish, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return nil
