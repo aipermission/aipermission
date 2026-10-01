@@ -12,6 +12,7 @@ import (
 
 	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -101,30 +102,27 @@ func (s *scopedStore) Create(ctx context.Context, input resourcecontract.CreateC
 		return resourcecontract.CredentialResource{}, err
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
-	tx, err := s.store.db.BeginTx(ctx, nil)
-	if err != nil {
-		return resourcecontract.CredentialResource{}, err
-	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, `INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`, s.connectorKind, s.resourceKind, input.Name, input.ResourceType, input.PublicData, input.Fingerprint, now, now)
-	if err != nil {
-		if isUniqueConstraintError(err) {
-			return resourcecontract.CredentialResource{}, resourcecontract.ErrCredentialResourceNameExists
+	var id int64
+	err := transactionstate.Run(ctx, s.store.db, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `INSERT INTO connector_credential_resources (connector_kind, resource_kind, name, resource_type, public_data, encrypted_secret, fingerprint, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?)`, s.connectorKind, s.resourceKind, input.Name, input.ResourceType, input.PublicData, input.Fingerprint, now, now)
+		if err != nil {
+			if isUniqueConstraintError(err) {
+				return resourcecontract.ErrCredentialResourceNameExists
+			}
+			return err
 		}
-		return resourcecontract.CredentialResource{}, err
-	}
-	id, err := result.LastInsertId()
+		id, err = result.LastInsertId()
+		if err != nil {
+			return err
+		}
+		encrypted, err := recordcrypto.EncryptJSON(s.store.vault, s.store.workspaceID, recordcrypto.ConnectorCredentialResource, id, input.Secret)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `UPDATE connector_credential_resources SET encrypted_secret = ? WHERE id = ?`, encrypted, id)
+		return err
+	})
 	if err != nil {
-		return resourcecontract.CredentialResource{}, err
-	}
-	encrypted, err := recordcrypto.EncryptJSON(s.store.vault, s.store.workspaceID, recordcrypto.ConnectorCredentialResource, id, input.Secret)
-	if err != nil {
-		return resourcecontract.CredentialResource{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `UPDATE connector_credential_resources SET encrypted_secret = ? WHERE id = ?`, encrypted, id); err != nil {
-		return resourcecontract.CredentialResource{}, err
-	}
-	if err := tx.Commit(); err != nil {
 		return resourcecontract.CredentialResource{}, err
 	}
 	return s.Get(ctx, id)
