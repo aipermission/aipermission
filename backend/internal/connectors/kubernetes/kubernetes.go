@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 
@@ -121,7 +122,9 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 		if err != nil {
 			return connectors.TestResult{Status: connectors.TestUnknownError, Message: err.Error()}, nil
 		}
-		command = client.baseCommand() + " get pods -n " + shellQuote(namespaces[0]) + " --limit=1 -o json"
+		// Raw GET returns one API page; kubectl's chunk size would follow all pages.
+		endpoint := "/api/v1/namespaces/" + url.PathEscape(namespaces[0]) + "/pods?limit=1"
+		command = client.baseCommand() + " get --raw " + shellQuote(endpoint)
 	}
 	result, err := client.run(ctx, command, 20)
 	if err != nil {

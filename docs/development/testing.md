@@ -8,6 +8,13 @@ install `build-essential libssl-dev`; the backend Docker build installs the
 same native dependency itself. CI uses the shared
 `.github/actions/setup-backend-native` action so all Go jobs stay aligned.
 
+Linux backend tests also require `kubectl` on `PATH`. The shared CI setup
+checks that dependency explicitly. Connector probe regressions execute the real
+CLI with an isolated HOME and kubeconfig, never the developer's cluster config.
+The grammar test uses `--help` without network access; separate HTTP fixtures
+verify one namespaced pod API page, including empty lists and permission errors.
+These protocol fixtures do not replace real-cluster or SSH transport tests.
+
 ## Quick Checks
 
 ```bash
