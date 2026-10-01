@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 type Appender func(*sql.Tx, string, *int64, int64, string, any) error
@@ -56,24 +58,16 @@ func (c *Coordinator) WriteRequired(ctx context.Context, actorType string, token
 
 func (c *Coordinator) WithTransaction(ctx context.Context, mutate func(*sql.Tx, Appender) error) error {
 	if c == nil || c.database == nil {
-		return fmt.Errorf("audit database is unavailable")
+		return transactionstate.NotCommitted(fmt.Errorf("audit database is unavailable"))
 	}
 	if mutate == nil {
-		return fmt.Errorf("audited mutation is unavailable")
+		return transactionstate.NotCommitted(fmt.Errorf("audited mutation is unavailable"))
 	}
 	// The redactor is captured before BeginTx by the composition layer so
 	// SQLCipher's single connection is never held while loading policy state.
 	appendAudit := c.appender(ctx)
-	tx, err := c.database.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin audited mutation: %w", err)
-	}
-	defer tx.Rollback()
-	if err := mutate(tx, appendAudit); err != nil {
+	if err := transactionstate.Run(ctx, c.database, func(tx *sql.Tx) error { return mutate(tx, appendAudit) }); err != nil {
 		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit audited mutation: %w", err)
 	}
 	c.Project(ctx)
 	return nil
