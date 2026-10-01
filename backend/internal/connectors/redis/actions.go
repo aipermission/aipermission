@@ -179,9 +179,19 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 	}
 	limit := normalizeInt(input, "limit", defaultValueLimit, 1, maxValueLimit)
 	maxBytes := normalizeInt(input, "max_bytes", defaultMaxValueBytes, 1, maxValueBytes)
+	position, err := collectionPreviewPosition(input)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	keyType, err := redisKeyType(client, key)
 	if err != nil {
 		return connectors.ActionResult{}, err
+	}
+	if keyType != "hash" && keyType != "set" && position.cursor != "0" {
+		return connectors.ActionResult{}, fmt.Errorf("scan cursor is only supported for hash/set previews")
+	}
+	if keyType != "hash" && keyType != "set" && keyType != "list" && keyType != "zset" && position.offset != 0 {
+		return connectors.ActionResult{}, fmt.Errorf("offset is only supported for collection previews")
 	}
 	ttlValue, err := client.Do("PTTL", key)
 	if err != nil {
@@ -206,44 +216,21 @@ func executeGetKey(client *redisClient, input map[string]any) (connectors.Action
 		text := truncateString(respString(value), maxBytes)
 		output["value"] = text
 		output["truncated"] = len(respString(value)) > maxBytes
-	case "hash":
-		fields, err := redisScanHash(client, key, limit)
+	case "hash", "list", "set", "zset":
+		preview, err := readCollectionPreview(client, keyType, key, limit, maxBytes, position)
 		if err != nil {
 			return connectors.ActionResult{}, err
 		}
-		output["value"] = limitStringMap(fields, limit, maxBytes)
-	case "list":
-		value, err := client.Do("LRANGE", key, "0", strconv.Itoa(limit-1))
-		if err != nil {
-			return connectors.ActionResult{}, err
+		preview.project(output, input)
+		encoded, err := json.Marshal(output)
+		if err != nil || len(encoded) > maxKeyPreviewEncodedBytes {
+			return connectors.ActionResult{}, fmt.Errorf("redis collection metadata exceeds the encoded result budget")
 		}
-		items, err := redisStringSlice(value, "LRANGE")
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		output["value"] = limitStrings(items, limit, maxBytes)
-	case "set":
-		items, err := redisScanCollection(client, "SSCAN", key, limit, maxBytes)
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		output["value"] = items
-	case "zset":
-		value, err := client.Do("ZRANGE", key, "0", strconv.Itoa(limit-1), "WITHSCORES")
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		items, err := redisStringSlice(value, "ZRANGE")
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		pairs, err := scorePairs(items, maxBytes)
-		if err != nil {
-			return connectors.ActionResult{}, err
-		}
-		output["value"] = pairs
 	default:
 		output["value"] = fmt.Sprintf("Preview for Redis type %q is not supported yet.", keyType)
+	}
+	if err := client.ctx.Err(); err != nil {
+		return connectors.ActionResult{}, err
 	}
 	return connectors.ActionResult{
 		Status:      connectors.ResultCompleted,

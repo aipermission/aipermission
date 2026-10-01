@@ -87,11 +87,15 @@ func TestHashPreviewStopsOnScanLimit(t *testing.T) {
 			return ""
 		}
 	})
-	_, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
+	result, err := Connector{}.ExecuteAction(context.Background(), runtime, connectors.PreparedAction{
 		ActionName: ActionGetKey,
 		Payload:    map[string]any{"key": "large", "limit": 1},
 	})
-	if err == nil || requests != maxScanPages {
+	if err != nil || requests != maxScanPages {
 		t.Fatalf("requests=%d error=%v", requests, err)
+	}
+	output := result.Output.(map[string]any)
+	if output["complete"] != false || output["scan_limit_reached"] != true || output["next_input"] == nil {
+		t.Fatalf("scan work limit lost continuation: %#v", output)
 	}
 }

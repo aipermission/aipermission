@@ -45,6 +45,9 @@ export function RedisValueWorkspace({ browser, styles }: ValueProps) {
         <ValueContent browser={browser} inputClass={styles.input} />
       </div>
       <footer className={`grid gap-2 border-t p-3 ${styles.border}`}>
+        {browser.keyResult?.truncated === true && browser.keyResult.type !== "string" ? (
+          <Notice tone="warn">Partial collection preview. Some values or entries are omitted.</Notice>
+        ) : null}
         {browser.keyResult && browser.keyResult.type !== "string" && browser.resultMode === "value" ? (
           <Notice tone="warn">
             This {browser.product} type is read-only in the MVP. TTL changes are still available from the toolbar.

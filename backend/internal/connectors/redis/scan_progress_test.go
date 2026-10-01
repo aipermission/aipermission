@@ -253,8 +253,12 @@ func TestCollectionScanEmptyPagesAreBounded(t *testing.T) {
 			return "-ERR unexpected\r\n"
 		}
 	})
-	_, err := (Connector{}).ExecuteAction(t.Context(), runtime, connectors.PreparedAction{ActionName: ActionGetKey, Payload: map[string]any{"key": "set"}})
-	if err == nil || !strings.Contains(err.Error(), "exceeded") || calls != maxScanPages {
+	result, err := (Connector{}).ExecuteAction(t.Context(), runtime, connectors.PreparedAction{ActionName: ActionGetKey, Payload: map[string]any{"key": "set"}})
+	if err != nil || calls != maxScanPages {
 		t.Fatalf("calls %d, error %v", calls, err)
+	}
+	output := result.Output.(map[string]any)
+	if output["complete"] != false || output["scan_limit_reached"] != true || output["next_input"].(map[string]any)["cursor"] != "7" {
+		t.Fatalf("scan work limit lost continuation: %#v", output)
 	}
 }
