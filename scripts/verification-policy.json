@@ -474,6 +474,8 @@
     "TestPostgresRoleCleanupDrainsPriorTablespaceOwnershipBeforeScopeCheck",
     "TestPostgresRoleReconciliationRetainsFenceThroughDurableReadback",
     "TestPostgresRoleReconciliationRejectsAnActiveCleanupTransaction",
+    "TestPostgresRoleOperatorReconciliationConfirmsDecisionBeforeTerminalAudit",
+    "TestPostgresRoleOperatorCleanupConfirmsRemoteOrphanBeforeTerminalAudit",
     "TestPostgresRoleProvisionLostCommitReplyRequiresExplicitReconciliationRealService",
     "TestPostgresRoleCleanupLostCommitReplyRetainsIntentWithoutReplayRealService",
     "TestRabbitMQRealService",
@@ -493,7 +495,10 @@
     },
     { "package": "./internal/actions", "name": "FuzzApprovalContextHash" },
     { "package": "./internal/securitypolicy", "name": "FuzzBasicRedaction" },
-    { "package": "./internal/sessionenv", "name": "FuzzCompleteValueRedaction" },
+    {
+      "package": "./internal/sessionenv",
+      "name": "FuzzCompleteValueRedaction"
+    },
     {
       "package": "./internal/boundedtext",
       "name": "FuzzTruncateUTF8IsValidAndBounded"

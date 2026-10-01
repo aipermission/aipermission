@@ -767,6 +767,28 @@ remote cleanup; errors or nonterminal results stop deletion. Test missing/change
 identity, uncertain records, cancellation during projection and retained readers
 after workspace retirement. Never infer completed cleanup from remote absence.
 
+When an authenticated local operator operation needs one saved credential,
+implement the optional `CredentialTargetOperationRunner` in the connector's
+adapter. `SupportsCredentialTargetOperation` must be stable and side-effect-free.
+This contract is independent of `TargetOperationRunner`: a connector does not
+need an ordinary data runtime or console adapter to implement it. Requests to
+the existing target operation route contain a canonical decimal string
+`profile_id` and an `input` object. Core holds exclusive lifecycle admission,
+loads the current target/profile, validates the credential kind and constructs
+the credential boundary. It composes transport and scoped-resource capabilities,
+not the action adapter's runtime capabilities. There is no database, Vault or
+profile-publication handle in this operation contract.
+
+The adapter owns input validation, external identity proof and its domain
+transitions. Core projects required and best-effort audit payloads, errors and
+responses through the same mutable boundary, including registered derived
+sensitive values. Keep required pre-dispatch audits attached to a bounded
+operation context; failed audit must prevent external admission. Detached
+terminal audit must have its own short deadline, and lost terminal evidence
+must never be reported as confirmed success. Test selected nondefault profiles,
+workspace retirement, late cancellation, corrupt/stale snapshots, disabled
+optional redaction and retained exclusion through audit/response completion.
+
 ## Built-In Example: Redis / Valkey
 
 The built-in Redis / Valkey connector adds only protocol/product-specific behavior:

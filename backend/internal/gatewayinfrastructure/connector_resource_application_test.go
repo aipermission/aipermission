@@ -17,9 +17,15 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 	provider := &scopedCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
 		"domain_journal": testRuntimeCapability("domain_journal"),
 	}}
+	actionProvider := &actionCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
+		"action_service": testRuntimeCapability("action_service"),
+	}}
+	evidenceProvider := &evidenceCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
+		"local_evidence": testRuntimeCapability("local_evidence"),
+	}}
 	adapters := connectorapi.NewRegistry()
 	for _, kind := range []string{"first", "second"} {
-		if err := adapters.Register(kind, provider); err != nil {
+		if err := adapters.Register(kind, allCapabilityProviders{provider, actionProvider, evidenceProvider}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -40,32 +46,58 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 		owner: component.ConnectorPortsOwner(), adapters: adapters,
 		ports: connectorports.NewPorts(connectorports.PortsDependencies{LiveConsole: connectorports.LiveConsoleDependencies{AdapterFor: adapters.For}}),
 	}
-	stores := []resourcecontract.CredentialResourceStore{}
-	for _, approved := range []bool{false, true} {
+	stores := []resourcecontract.CredentialResourceReader{}
+	for _, mode := range []string{"normal", "approved", "credential", "evidence"} {
 		before := provider.calls
+		beforeAction := actionProvider.calls
 		var capabilities connectors.RuntimeCapabilityResolver
-		if approved {
+		switch mode {
+		case "evidence":
+			capabilities, err = application.CleanupEvidenceCapabilities(handle, "first")
+			if err != nil || capabilities.RuntimeCapability("local_evidence") == nil || capabilities.RuntimeCapability("domain_journal") != nil ||
+				capabilities.RuntimeCapability("action_service") != nil || provider.calls != before || actionProvider.calls != beforeAction {
+				t.Fatalf("evidence runtime recovered mutable/action authority: %#v %v", capabilities, err)
+			}
+			reader := evidenceProvider.seen.CredentialResources("domain_journal")
+			if _, mutable := reader.(resourcecontract.CredentialResourceStore); mutable {
+				t.Fatal("actual workspace evidence reader recovered mutable/secret store")
+			}
+			stores = append(stores, reader)
+			continue
+		case "approved":
 			capabilities = application.ActionCapabilities(handle, "first", nil, nil)
-		} else {
+		case "credential":
+			capabilities = application.CredentialOperationCapabilities(handle, "first")
+		default:
 			capabilities = application.RuntimeCapabilities(handle, "first")
 		}
 		if capabilities == nil || capabilities.RuntimeCapability("domain_journal") == nil || provider.seen == nil || provider.calls != before+1 {
-			t.Fatalf("actual application dropped scoped provider: approved=%v", approved)
+			t.Fatalf("actual application dropped scoped provider: mode=%s", mode)
+		}
+		if mode == "credential" {
+			if actionProvider.calls != beforeAction || capabilities.RuntimeCapability("action_service") != nil {
+				t.Fatal("credential operation exposed action runtime authority")
+			}
+		} else if actionProvider.calls != beforeAction+1 || capabilities.RuntimeCapability("action_service") == nil {
+			t.Fatal("ordinary or approved runtime lost existing action capability composition")
 		}
 		stores = append(stores, provider.seen.CredentialResources("domain_journal"))
 	}
 	rows := []resourcecontract.CredentialResource{}
-	for index, store := range stores {
-		row, err := store.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
-			Name:         []string{"normal-entry", "approved-entry"}[index],
+	expected := application.DataRuntime(handle, "first").CredentialResources("domain_journal")
+	for index, reader := range stores {
+		row, err := expected.Create(t.Context(), resourcecontract.CreateCredentialResourceInput{
+			Name:         []string{"normal-entry", "approved-entry", "credential-entry", "evidence-entry"}[index],
 			ResourceType: "domain.v1", PublicData: `{"status":"intent"}`, Secret: struct{}{},
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
+		if got, err := reader.Get(t.Context(), row.ID); err != nil || got != row {
+			t.Fatalf("entry point bound outside actual connector resource scope: %#v %v", got, err)
+		}
 		rows = append(rows, row)
 	}
-	expected := application.DataRuntime(handle, "first").CredentialResources("domain_journal")
 	if application.RuntimeCapabilities(handle, "second") == nil {
 		t.Fatal("second connector capability failed to compose")
 	}
@@ -81,8 +113,12 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 		t.Fatal(err)
 	}
 	before := provider.calls
-	if application.RuntimeCapabilities(handle, "first") != nil || application.ActionCapabilities(handle, "first", nil, nil) != nil || provider.calls != before {
+	beforeEvidence := evidenceProvider.calls
+	if application.RuntimeCapabilities(handle, "first") != nil || application.ActionCapabilities(handle, "first", nil, nil) != nil || application.CredentialOperationCapabilities(handle, "first") != nil || provider.calls != before {
 		t.Fatal("retired workspace invoked a resource provider")
+	}
+	if result, err := application.CleanupEvidenceCapabilities(handle, "first"); err == nil || result != nil || evidenceProvider.calls != beforeEvidence {
+		t.Fatal("retired workspace invoked evidence provider")
 	}
 	for _, store := range stores {
 		if _, err := store.Get(t.Context(), rows[0].ID); err == nil {

@@ -500,6 +500,54 @@ repeat any mutation. It lists the exact local target, not other same-cluster
 aliases. Response paging currently does not bound the underlying journal scan.
 Unavailable or corrupt journal evidence returns a sanitized conflict response.
 
+The optional credential-backed operator contract uses the same route with
+`{"profile_id":"2","input":{...}}`. The profile ID must be canonical positive
+decimal text. Core acquires exclusive workspace lifecycle admission, reloads
+the target and selected active profile, validates the profile kind, decrypts
+only that profile, and masks audit and response payloads with its credential
+boundary. This contract does not deliver action or console lifecycle capabilities
+to its adapter and is not a new MCP action or token permission mode.
+
+Postgres `role-lifecycle-reconcile` accepts `input: {"expected": ENTRY}` using a
+complete entry from the current role-history page, including its generation.
+The selected admin profile must still match the recorded local authority;
+selecting another profile does not adopt or rebind the role. A required intent
+audit precedes the remote connection. Under a catalog fence, the connector checks
+cluster, database, successor, role OID, exact name and operation marker, and keeps
+that fence through the durable decision's write and fresh readback. Exact presence
+can confirm a bound provisioning intent or restore an interrupted cleanup intent
+to `provisioned`. No CREATE, grant, ownership transfer, revoke or DROP is repeated.
+The success response contains `target_id`, the confirmed `entry`, and
+`evidence: "exact_remote_identity_present"`. It does not recover a password or
+publish a credential profile. Unbound, missing, changed or terminal role evidence
+remains unresolved; absence never confirms cleanup. Continuous authoritative
+cluster history is required: this check cannot establish provenance after a
+clone, point-in-time restore or privileged reconstruction.
+
+Postgres `role-lifecycle-cleanup` accepts
+`input: {"expected": ENTRY, "confirmed_role_name": "exact role name"}`.
+Only a fresh `provisioned` entry is eligible. This operator operation can clean
+an orphan role whose remote provisioning committed without local profile
+publication. First reconcile a bound interrupted provisioning intent by exact
+presence, then review the new generation before deciding to clean it up.
+The selected original admin authority, required intent/terminal audits and
+catalog identity fence are the same as the credential cleanup workflow. The
+connector uses its existing transaction plan to reassign owned objects, revoke
+supported privileges and drop the exact role; it never uses `DROP OWNED`.
+It returns `evidence: "acknowledged_remote_cleanup"` only after remote commit
+and durable confirmation. It does not create, delete or edit a local profile.
+Interrupted cleanup remains unresolved; neither absent roles nor a lost commit
+acknowledgement authorize replay. Markerless profiles still require explicit
+adoption or manual external-cleanup evidence, not this operation.
+
+Failed verification returns `409` with `role_reconciliation_required`. If the
+required terminal audit cannot be confirmed, the code is
+`role_reconciliation_audit_outcome_unknown`; a local decision may already have
+been recorded. Reload role history and inspect the audit rather than submitting
+the same stale snapshot or blindly repeating the original operation. Connection
+and pre-audit cancellation remain attached to the request; terminal audit is
+attempted with a detached five-second deadline.
+
 `PUT /api/connector-targets/{id}/profiles/{profile_id}` updates one credential
 profile. If the `secret` object is omitted, the existing encrypted secret is
 kept. If `secret` is present, the vault payload is replaced.

@@ -15,12 +15,23 @@ func writeManagementResponse(
 	response connectors.ManagementResponse,
 	err error,
 ) {
+	writeManagementResponseWithBoundary(w, r, runtime, response, connectormanagement.CredentialBoundary{}, err)
+}
+
+func writeManagementResponseWithBoundary(
+	w http.ResponseWriter,
+	r *http.Request,
+	runtime CredentialRuntimePorts,
+	response connectors.ManagementResponse,
+	boundary connectormanagement.CredentialBoundary,
+	err error,
+) {
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
 	status, payload, err := connectormanagement.ProjectManagementResponse(
-		r.Context(), runtime.domain(), response, connectormanagement.CredentialBoundary{},
+		r.Context(), runtime.domain(), response, boundary,
 	)
 	if err != nil {
 		httptransport.WriteInternalError(w)

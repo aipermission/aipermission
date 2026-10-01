@@ -105,11 +105,15 @@ func (application *ConnectorManagementApplication) CredentialPreparation(handle 
 }
 
 func (application *ConnectorManagementApplication) credentialRuntime(handle *WorkspaceHandle) connectormgmt.CredentialRuntimePorts {
+	return application.credentialRuntimeWithCapabilities(handle, func(kind string) connectors.RuntimeCapabilityResolver {
+		return application.runtime.RuntimeCapabilities(handle, kind)
+	})
+}
+
+func (application *ConnectorManagementApplication) credentialRuntimeWithCapabilities(handle *WorkspaceHandle, capabilities func(string) connectors.RuntimeCapabilityResolver) connectormgmt.CredentialRuntimePorts {
 	return application.core.RuntimeCredentialPorts(
 		application.owner.connectorCredentialStorage(handle),
-		func(kind string) connectors.RuntimeCapabilityResolver {
-			return application.runtime.RuntimeCapabilities(handle, kind)
-		},
+		capabilities,
 		func(ctx context.Context, result connectors.ActionResult, boundary connectormgmt.CredentialBoundary) (connectors.ActionResult, error) {
 			return application.ports.RedactResult(ctx, handle, result, boundary)
 		},
@@ -167,8 +171,14 @@ func (application *ConnectorManagementApplication) workspace(handle *WorkspaceHa
 			},
 		},
 		Credentials: connectormgmt.CredentialPorts{
+			CleanupEvidenceCapabilities: func(kind string) (connectors.RuntimeCapabilityResolver, error) {
+				return application.runtime.CleanupEvidenceCapabilities(handle, kind)
+			},
 			Preparation: preparation,
 			Runtime:     application.credentialRuntime(handle),
+			OperationRuntime: application.credentialRuntimeWithCapabilities(handle, func(kind string) connectors.RuntimeCapabilityResolver {
+				return application.runtime.CredentialOperationCapabilities(handle, kind)
+			}),
 			SessionEnvironment: func(ctx context.Context, id int64) bool {
 				return application.ports.SessionEnvironment(ctx, handle, id)
 			},

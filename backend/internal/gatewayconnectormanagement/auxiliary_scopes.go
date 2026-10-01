@@ -20,6 +20,7 @@ func (component *Component) ProfileDeletionScope(w http.ResponseWriter) (connect
 		Cleanup: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) (connectormanagement.ProfileCleanupOutcome, error) {
 			return connectormanagement.CleanupProvisionedCredentialProfileIfNeeded(ctx, connectormanagement.ManagedCredentialCleanupScope{
 				Database: workspace.Storage.Database, Registry: workspace.Storage.Registry, Runtime: workspace.Credentials.Runtime.domain(),
+				EvidenceCapabilities: workspace.Credentials.CleanupEvidenceCapabilities,
 			}, target, profile)
 		},
 		BeforeDelete: func(ctx context.Context, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
