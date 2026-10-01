@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -182,32 +181,17 @@ func (application *ConnectorRuntimeApplication) ActionCapabilities(handle *Works
 }
 
 func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, approved bool, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
-	capabilities := connectorcapabilities.Set{}
 	workspace, ok := application.workspace(handle, true, finish, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return nil
 	}
-	adapterFor := application.adapters.For
+	mode := connectorports.RuntimeCapabilities
 	if approved {
-		capabilities[connectors.NetworkTransportCapabilityName] = connectorports.ApprovedNetworkTransport(workspace, adapterFor, application.trust, dependencies)
-		capabilities[connectors.CommandTransportCapabilityName] = connectorports.ApprovedCommandTransport(workspace, adapterFor, application.trust, dependencies)
-	} else {
-		network := connectorports.NetworkTransport(workspace, adapterFor, application.trust)
-		capabilities[network.ConnectorRuntimeCapability()] = network
-		command := connectorports.CommandTransport(workspace, adapterFor, application.trust)
-		capabilities[command.ConnectorRuntimeCapability()] = command
+		mode = connectorports.ApprovedActionCapabilities
 	}
-	capabilities, err := connectorcapabilities.ForRuntime(
-		capabilities, application.adapters.For(kind), connectorports.ScopedResourceRuntime(workspace, kind),
-		func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
-			return application.ports.RuntimeActionPorts(workspace, kind)
-		},
-	)
+	capabilities, err := application.ports.Capabilities(workspace, kind, mode, dependencies)
 	if err != nil {
 		log.Printf("connector runtime capabilities rejected kind=%s error=%v", kind, err)
-		return nil
-	}
-	if len(capabilities) == 0 {
 		return nil
 	}
 	return capabilities

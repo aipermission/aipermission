@@ -3,8 +3,6 @@ package gatewayinfrastructure
 import (
 	"errors"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorports "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure/connectorports"
 )
@@ -16,5 +14,5 @@ func (application *ConnectorRuntimeApplication) CleanupEvidenceCapabilities(hand
 	if !ok {
 		return nil, errors.New("connector resource runtime is unavailable")
 	}
-	return connectorcapabilities.Evidence(application.adapters.For(kind), connectorruntime.EvidenceResources(connectorports.ScopedResourceRuntime(workspace, kind)))
+	return application.ports.Capabilities(workspace, kind, connectorports.CleanupEvidenceCapabilities, nil)
 }

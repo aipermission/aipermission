@@ -37,7 +37,7 @@ func TestRuntimeApplicationBindsScopedProviderToActualWorkspaceAndConnector(t *t
 	})
 	application := &ConnectorRuntimeApplication{
 		owner: component.ConnectorPortsOwner(), adapters: adapters,
-		ports: connectorports.NewPorts(connectorports.PortsDependencies{}),
+		ports: connectorports.NewPorts(connectorports.PortsDependencies{LiveConsole: connectorports.LiveConsoleDependencies{AdapterFor: adapters.For}}),
 	}
 	stores := []connectorapi.CredentialResourceStore{}
 	for _, approved := range []bool{false, true} {

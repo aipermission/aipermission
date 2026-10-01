@@ -350,6 +350,15 @@ cross-step CAS: callers must hold the appropriate lifecycle admission across
 snapshot, dispatch and confirmation, and must preserve uncertain outcomes
 across cancellation or reply loss rather than retrying mutations blindly.
 
+The workspace port owner (`gatewayinfrastructure/connectorports`) constructs
+capabilities per invocation. Normal and approved-action modes share the same
+provider validation, but approved mode keeps its dependency fence even when
+the approved list is empty. Cleanup evidence uses a separate mode: it invokes
+only `EvidenceCapabilityProvider`, exposes a concrete Get-only resource
+projection, and never constructs action or transport ports. Do not cache these
+ports on long-lived components or expose ordinary mutable resource providers
+to cleanup evidence checks.
+
 The 0.2 connector line is a clean database baseline. Do not add runtime
 fallbacks for pre-0.2 preview schemas; important old data belongs in the
 separate versioned migration helper, not in gateway runtime code.

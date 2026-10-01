@@ -1,4 +1,4 @@
-package connectorruntime
+package connectorports
 
 import (
 	"context"
@@ -13,9 +13,9 @@ type evidenceResourceReader struct {
 	reader connectorapi.CredentialResourceReader
 }
 
-// EvidenceResources narrows actual runtime method sets, preventing an adapter
+// evidenceResources narrows actual runtime method sets, preventing an adapter
 // from recovering mutation/secret authority by type-asserting a read interface.
-func EvidenceResources(resources connectorapi.ScopedResourceRuntime) connectorapi.EvidenceResourceRuntime {
+func evidenceResources(resources connectorapi.ScopedResourceRuntime) connectorapi.EvidenceResourceRuntime {
 	if connectorapi.IsNilDependency(resources) {
 		return nil
 	}
