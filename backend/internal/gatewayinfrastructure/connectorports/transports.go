@@ -13,23 +13,23 @@ func transportDependencies(workspace Workspace, adapterFor func(string) connecto
 }
 
 func NetworkTransport(workspace Workspace, adapterFor func(string) connectorapi.Adapter, trustStorePath func() string) connectors.NetworkTransport {
-	return connectortransport.Network{Dependencies: transportDependencies(workspace, adapterFor, trustStorePath)}
+	return networkDelegate{transport: connectortransport.Network{Dependencies: transportDependencies(workspace, adapterFor, trustStorePath)}}
 }
 
 func CommandTransport(workspace Workspace, adapterFor func(string) connectorapi.Adapter, trustStorePath func() string) connectors.CommandTransport {
-	return connectortransport.Command{Dependencies: transportDependencies(workspace, adapterFor, trustStorePath)}
+	return commandDelegate{transport: connectortransport.Command{Dependencies: transportDependencies(workspace, adapterFor, trustStorePath)}}
 }
 
 func ApprovedNetworkTransport(workspace Workspace, adapterFor func(string) connectorapi.Adapter, trustStorePath func() string, dependencies []connectors.ResolvedDependency) connectors.NetworkTransport {
-	return connectortransport.Network{
+	return networkDelegate{transport: connectortransport.Network{
 		Dependencies: transportDependencies(workspace, adapterFor, trustStorePath),
 		Approved:     connectortransport.NewApproved(dependencies),
-	}
+	}}
 }
 
 func ApprovedCommandTransport(workspace Workspace, adapterFor func(string) connectorapi.Adapter, trustStorePath func() string, dependencies []connectors.ResolvedDependency) connectors.CommandTransport {
-	return connectortransport.Command{
+	return commandDelegate{transport: connectortransport.Command{
 		Dependencies: transportDependencies(workspace, adapterFor, trustStorePath),
 		Approved:     connectortransport.NewApproved(dependencies),
-	}
+	}}
 }
