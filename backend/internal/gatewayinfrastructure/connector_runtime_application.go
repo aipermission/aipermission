@@ -173,21 +173,21 @@ func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandl
 }
 
 func (application *ConnectorRuntimeApplication) RuntimeCapabilities(handle *WorkspaceHandle, kind string) connectors.RuntimeCapabilityResolver {
-	return application.runtimeCapabilities(handle, kind, nil, false, nil)
+	return application.runtimeCapabilities(handle, kind, nil, connectorports.RuntimeCapabilities, nil)
+}
+
+func (application *ConnectorRuntimeApplication) CredentialOperationCapabilities(handle *WorkspaceHandle, kind string) connectors.RuntimeCapabilityResolver {
+	return application.runtimeCapabilities(handle, kind, nil, connectorports.CredentialOperationCapabilities, nil)
 }
 
 func (application *ConnectorRuntimeApplication) ActionCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
-	return application.runtimeCapabilities(handle, kind, dependencies, true, finish)
+	return application.runtimeCapabilities(handle, kind, dependencies, connectorports.ApprovedActionCapabilities, finish)
 }
 
-func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, approved bool, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
+func (application *ConnectorRuntimeApplication) runtimeCapabilities(handle *WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, mode connectorports.CapabilityMode, finish ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
 	workspace, ok := application.workspace(handle, true, finish, ConnectorTargetWorkflowPorts{})
 	if !ok {
 		return nil
-	}
-	mode := connectorports.RuntimeCapabilities
-	if approved {
-		mode = connectorports.ApprovedActionCapabilities
 	}
 	capabilities, err := application.ports.Capabilities(workspace, kind, mode, dependencies)
 	if err != nil {

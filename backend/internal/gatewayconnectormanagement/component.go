@@ -37,14 +37,16 @@ type StoragePorts struct {
 }
 
 type CredentialPorts struct {
-	Preparation        CredentialPreparationPorts
-	Runtime            CredentialRuntimePorts
-	SessionEnvironment func(context.Context, int64) bool
-	BeforeCreate       func(context.Context, Target) error
-	BeforeDelete       func(context.Context, Target, CredentialProfile) error
-	SpecialTest        func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
-	RedactDetails      func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
-	ResourceRuntime    func(string) connectorapi.CredentialResourceRuntime
+	Preparation                 CredentialPreparationPorts
+	Runtime                     CredentialRuntimePorts
+	OperationRuntime            CredentialRuntimePorts
+	CleanupEvidenceCapabilities func(string) (connectors.RuntimeCapabilityResolver, error)
+	SessionEnvironment          func(context.Context, int64) bool
+	BeforeCreate                func(context.Context, Target) error
+	BeforeDelete                func(context.Context, Target, CredentialProfile) error
+	SpecialTest                 func(context.Context, connectors.TargetView, connectors.CredentialProfileView) (*connectors.ManagementResponse, error)
+	RedactDetails               func(context.Context, map[string]any, CredentialBoundary) (map[string]any, error)
+	ResourceRuntime             func(string) connectorapi.CredentialResourceRuntime
 }
 
 type LifecyclePorts struct {

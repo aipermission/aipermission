@@ -14,6 +14,7 @@ const (
 	RuntimeCapabilities CapabilityMode = iota
 	ApprovedActionCapabilities
 	CleanupEvidenceCapabilities
+	CredentialOperationCapabilities
 )
 
 // Capabilities constructs invocation-bound ports. Evidence never constructs
@@ -22,7 +23,7 @@ func (component *PortsComponent) Capabilities(workspace Workspace, kind string, 
 	if component == nil || component.dependencies.LiveConsole.AdapterFor == nil {
 		return nil, ErrRuntimeUnavailable
 	}
-	if mode != RuntimeCapabilities && mode != ApprovedActionCapabilities && mode != CleanupEvidenceCapabilities {
+	if mode != RuntimeCapabilities && mode != ApprovedActionCapabilities && mode != CleanupEvidenceCapabilities && mode != CredentialOperationCapabilities {
 		return nil, fmt.Errorf("invalid connector capability mode: %d", mode)
 	}
 	adapterFor := component.dependencies.LiveConsole.AdapterFor
@@ -43,6 +44,9 @@ func (component *PortsComponent) Capabilities(workspace Workspace, kind string, 
 		base[network.ConnectorRuntimeCapability()] = network
 		command := CommandTransport(workspace, adapterFor, trust)
 		base[command.ConnectorRuntimeCapability()] = command
+	}
+	if mode == CredentialOperationCapabilities {
+		return connectorcapabilities.ForResources(base, adapterFor(kind), ScopedResourceRuntime(workspace, kind))
 	}
 	capabilities, err := connectorcapabilities.ForRuntime(base, adapterFor(kind), ScopedResourceRuntime(workspace, kind),
 		func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {

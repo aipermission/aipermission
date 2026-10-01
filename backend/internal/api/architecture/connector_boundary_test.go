@@ -37,13 +37,14 @@ func TestGenericConnectorHandlersDoNotBranchOnSSH(t *testing.T) {
 			t.Fatalf("read %s: %v", sourcePath, err)
 		}
 		source := string(content)
+		if forbiddenConnectorKindComparison(t, source) {
+			t.Fatalf("%s must not dispatch by a concrete connector kind", sourcePath)
+		}
 		for _, disallowed := range []string{
 			"connectors/ssh",
 			"sshconnector",
 			"connector_kind = 'ssh'",
 			"connector_kind='ssh'",
-			"ConnectorKind ==",
-			"ConnectorKind !=",
 		} {
 			if strings.Contains(source, disallowed) {
 				t.Fatalf("%s must use connector adapters, found %q", sourcePath, disallowed)

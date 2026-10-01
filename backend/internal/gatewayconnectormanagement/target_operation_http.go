@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
+	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -32,12 +33,16 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 		WriteTargetError(w, err)
 		return
 	}
-	adapter, _ := handler.component.dependencies.Adapters.For(target.ConnectorKind).(connectorapi.TargetOperationRunner)
-	if adapter == nil {
+	adapter := handler.component.dependencies.Adapters.For(target.ConnectorKind)
+	runner, _ := adapter.(connectorapi.TargetOperationRunner)
+	operation := strings.TrimSpace(r.PathValue("operation"))
+	credentialRunner, _ := adapter.(connectorapi.CredentialTargetOperationRunner)
+	credentialOperation := !resourcecontract.IsNilDependency(credentialRunner) && credentialRunner.SupportsCredentialTargetOperation(operation)
+	if resourcecontract.IsNilDependency(runner) && !credentialOperation {
 		httptransport.WriteError(w, http.StatusBadRequest, "operation is not supported for this connector")
 		return
 	}
-	if workspace.Adapters.OperationGateway == nil || workspace.Adapters.DataRuntime == nil {
+	if workspace.Adapters.OperationGateway == nil || (!credentialOperation && workspace.Adapters.DataRuntime == nil) {
 		httptransport.WriteInternalError(w)
 		return
 	}
@@ -45,9 +50,8 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 	if !httptransport.DecodeJSON(w, r, &input, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
-	operation := strings.TrimSpace(r.PathValue("operation"))
 	policy, _ := adapter.(connectorapi.TargetOperationLifecyclePolicy)
-	exclusive := policy != nil && policy.RequiresTargetOperationExclusion(operation)
+	exclusive := credentialOperation || (policy != nil && policy.RequiresTargetOperationExclusion(operation))
 	release, ok := acquireTargetAdmission(w, r, workspace.Storage, exclusive, "connector target operation was canceled")
 	if !ok {
 		return
@@ -64,12 +68,20 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 	}
 	target = fresh
 	gateway := workspace.Adapters.OperationGateway(target.ConnectorKind, target.ID)
-	runtime := workspace.Adapters.DataRuntime(target.ConnectorKind)
-	if gateway == nil || runtime == nil {
+	if resourcecontract.IsNilDependency(gateway) {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	response, err := adapter.RunTargetOperation(
+	if credentialOperation {
+		runCredentialTargetOperation(w, r, workspace, gateway, credentialRunner, target, operation, input)
+		return
+	}
+	runtime := workspace.Adapters.DataRuntime(target.ConnectorKind)
+	if resourcecontract.IsNilDependency(runtime) {
+		httptransport.WriteInternalError(w)
+		return
+	}
+	response, err := runner.RunTargetOperation(
 		r.Context(), gateway, runtime, connectorTarget(target), operation, input,
 	)
 	writeManagementResponse(w, r, workspace.Credentials.Runtime, response, err)

@@ -90,6 +90,29 @@ func TestCapabilitiesComposeResourcesAndActionsWithoutEvidence(t *testing.T) {
 	}
 }
 
+func TestCapabilitiesCredentialOperationsDoNotConstructActionPorts(t *testing.T) {
+	provider := &factoryProvider{
+		resourceValues: map[string]connectors.RuntimeCapability{"journal": factoryCapability("journal")},
+		actionValues:   map[string]connectors.RuntimeCapability{"journal": factoryCapability("journal")},
+	}
+	result, err := newFactoryPorts(provider).Capabilities(Workspace{}, "fixture", CredentialOperationCapabilities, nil)
+	if err != nil || result == nil || provider.resourceCalls != 1 || provider.actionCalls != 0 || provider.evidenceCalls != 0 || len(provider.gateways) != 0 {
+		t.Fatalf("credential operation constructed unrelated authority: %#v %v", provider, err)
+	}
+	if result.RuntimeCapability("journal") == nil || result.RuntimeCapability(connectors.SessionEnvironmentCapabilityName) != nil {
+		t.Fatal("credential operation lost journal or exposed action capability")
+	}
+	for _, name := range []string{connectors.NetworkTransportCapabilityName, connectors.CommandTransportCapabilityName} {
+		if result.RuntimeCapability(name) == nil {
+			t.Fatalf("credential operation lost transport %s", name)
+		}
+	}
+	delete(provider.resourceValues, "journal")
+	if result.RuntimeCapability("journal") == nil {
+		t.Fatal("credential operation aliases provider resource map")
+	}
+}
+
 func TestCapabilitiesEvidenceNeverConstructsNormalAuthority(t *testing.T) {
 	provider := &factoryProvider{evidenceValues: map[string]connectors.RuntimeCapability{"journal": factoryCapability("journal")}}
 	component := newFactoryPorts(provider)

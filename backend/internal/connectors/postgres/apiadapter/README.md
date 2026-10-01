@@ -38,3 +38,19 @@ Pagination is not a storage-work or memory bound. Same-cluster aliases belonging
 to another local target are not listed by this target's status view. Adoption,
 external evidence attestation and reconciliation remain separate responsibilities;
 this inspection endpoint is not a recovery implementation.
+
+## Credential-Backed Operator Decisions
+
+The optional `CredentialTargetOperationRunner` implements
+`role-lifecycle-reconcile` (exact presence) and `role-lifecycle-cleanup`
+(acknowledged remote cleanup). Both use fresh core-selected admin authority,
+workspace-exclusive admission, resource-only capabilities and required audits.
+Their common dispatcher does not expose an extra execution path to MCP.
+Cleanup requires the complete current provisioned entry and exact typed role
+name. It reuses catalog cleanup, including ownership/privilege handling and
+durable confirmation, without deleting or publishing a local credential.
+Thus an orphan role can be cleaned after a bound provisioning intent is
+reconciled by presence. Unknown cleanup commits are never retried blindly.
+See [the REST contract](../../../../../docs/api/rest-api.md) for request and
+response shapes. Markerless adoption/manual external cleanup remains a distinct
+operator workflow; neither inspection nor role-name absence proves it.
