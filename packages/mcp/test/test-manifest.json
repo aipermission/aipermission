@@ -1,6 +1,7 @@
 {
   "files": [
     "test/client-registry.test.js",
+    "test/contracts/action-input.test.js",
     "test/contracts/lifecycle.test.js",
     "test/contracts/response-contracts.test.js",
     "test/doctor.test.js",
@@ -15,7 +16,7 @@
     "test/transport/http-transport.test.js",
     "test/transport/withheld-output.test.js"
   ],
-  "minimumTests": 122,
+  "minimumTests": 124,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func TestGenerateContractUsesCoreAndConnectorRoutes(t *testing.T) {
@@ -53,6 +56,16 @@ func TestCommittedFrontendContractIsCurrent(t *testing.T) {
 	mcpPath := filepath.Join("..", "..", "..", "packages", "mcp", "src", "generated-connector-contract.js")
 	assertGeneratedFile(t, contractPath, generateFrontendContract(true))
 	assertGeneratedFile(t, mcpPath, generateFrontendContract(false))
+}
+
+func TestGeneratedActionInputLimitUsesCanonicalBudget(t *testing.T) {
+	for _, typescript := range []bool{false, true} {
+		output := string(generateFrontendContract(typescript))
+		want := fmt.Sprintf("export const connectorActionMaximumInputBytes = %d;", connectors.MaximumActionInputBytes)
+		if !strings.Contains(output, want) {
+			t.Fatalf("generated budget missing: %s", output)
+		}
+	}
 }
 
 func TestRuntimeListUsesFrontendWidthWithoutChangingMCPFormat(t *testing.T) {

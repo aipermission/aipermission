@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { connectorActionStatuses, connectorRetryClasses } from "./generated-connector-contract.js";
+import { connectorActionStatuses, connectorRetryClasses, connectorActionMaximumInputBytes } from "./generated-connector-contract.js";
 
 const positiveID = z.number().int().positive();
 const nonNegativeInteger = z.number().int().nonnegative();
@@ -114,7 +114,7 @@ const actionDefinitionSchema = z
     sensitive_input_fields: z.array(z.string()).optional(),
     output_hint: outputHintSchema.optional(),
     retry_policy: retryPolicySchema,
-    max_input_bytes: positiveID,
+    max_input_bytes: positiveID.max(connectorActionMaximumInputBytes),
   })
   .strict();
 

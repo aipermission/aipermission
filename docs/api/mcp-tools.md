@@ -433,7 +433,13 @@ valid token in one unlocked workspace. Transport admission is isolated between
 workspaces even when their local token IDs match. At most four persisted
 connector actions may remain `running` for that token, so work that continues
 after the initial HTTP response still consumes concurrency capacity. Each
-connector action declares its own JSON input-byte limit. The idempotent request
+connector action declares its own JSON input-byte limit, published as the required
+`max_input_bytes` field in its action definition. The gateway fills unspecified
+connector limits with 1 MiB and accepts explicit limits from 1 byte through
+24 MiB. REST schemas and generated client contracts use that same canonical
+maximum; MCP rejects missing, non-integer, or out-of-range published limits.
+This counts serialized action-input JSON, not the HTTP request envelope or
+decoded file size. The idempotent request
 transaction atomically backpressures new work when the projected record would
 exceed 20,000 rows or 256 MiB of persisted request data for that token; active
 records reserve their bounded terminal-output capacity. Capacity rejection

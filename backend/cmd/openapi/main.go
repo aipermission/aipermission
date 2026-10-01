@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/builtin"
 	"github.com/aipermission/aipermission/backend/internal/restcontract"
 )
@@ -64,6 +65,7 @@ func generateFrontendContract(typescript bool) []byte {
 	writeRuntimeList(&output, "executionRules", restcontract.ConnectorExecutionRules(), typescript)
 	output.WriteByte('\n')
 	writeRuntimeList(&output, "connectorActionResponseRequiredFields", restcontract.ConnectorActionResponseRequiredFields(), typescript)
+	fmt.Fprintf(&output, "\nexport const connectorActionMaximumInputBytes = %d;\n", connectors.MaximumActionInputBytes)
 	return []byte(output.String())
 }
 

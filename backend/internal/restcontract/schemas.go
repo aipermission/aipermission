@@ -213,7 +213,8 @@ func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
 		"sensitive_input_fields": arraySchema(stringSchema()),
 		"output_hint":            stringMap,
 		"retry_policy":           retryPolicySchema(),
-	}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy"})
+		"max_input_bytes":        map[string]any{"type": "integer", "minimum": 1, "maximum": connectors.MaximumActionInputBytes},
+	}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy", "max_input_bytes"})
 }
 
 func typedOperationContracts() map[Route]operationContract {
