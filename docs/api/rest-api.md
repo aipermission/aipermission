@@ -1042,6 +1042,11 @@ requires the revision returned by the latest GET:
 
 A stale `expected_revision` returns `409 Conflict`; clients must reload before
 retrying so one browser tab cannot restore settings disabled in another tab.
+`revision` is also accepted as the revision field name. Both alternatives in
+the canonical request schema require the complete settings document and a
+nonblank revision. Generated frontend types enforce the required fields and
+value types rather than treating the update as an unknown value; nonblank string
+constraints are enforced by schema and runtime validation, not TypeScript.
 
 `expose_mcp_server_metadata` controls whether MCP connector target discovery includes SSH `host`, `port`, and `username`. `redaction_mode` is `basic` or `off`; basic redaction masks common token/password/API-key/private-key patterns before command history, connector action history, console transcripts, and audit payloads are persisted or returned through MCP.
 

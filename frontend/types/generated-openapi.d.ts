@@ -2670,14 +2670,22 @@ export interface components {
             revision: string;
         };
         SecuritySettingsUpdate: {
-            expected_revision?: string;
+            expected_revision: string;
             expose_mcp_server_metadata: boolean;
             mcp_start_enabled: boolean;
             /** @enum {string} */
             redaction_mode: "off" | "basic";
             reusable_tokens: boolean;
             revision?: string;
-        } | unknown | unknown;
+        } | {
+            expected_revision?: string;
+            expose_mcp_server_metadata: boolean;
+            mcp_start_enabled: boolean;
+            /** @enum {string} */
+            redaction_mode: "off" | "basic";
+            reusable_tokens: boolean;
+            revision: string;
+        };
         TargetProfile: {
             config?: {
                 [key: string]: unknown;

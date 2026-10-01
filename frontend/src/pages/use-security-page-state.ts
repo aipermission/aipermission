@@ -9,6 +9,7 @@ import {
   type RedactionForm,
   type RedactionRule,
   type SecuritySettings,
+  type SecuritySettingsUpdate,
 } from "../lib/gateway-contracts/security-settings-contract";
 
 const emptyActionState = { state: "idle", error: null, message: null };
@@ -68,7 +69,7 @@ export function useSecurityPageState() {
       mcp_start_enabled: nextData.mcp_start_enabled,
       redaction_mode: nextData.redaction_mode,
       expected_revision: security.data.revision,
-    };
+    } satisfies SecuritySettingsUpdate;
     securitySavingRef.current = true;
     await runSecurityAction({
       pending: "saving",
