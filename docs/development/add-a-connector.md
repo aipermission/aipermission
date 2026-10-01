@@ -743,6 +743,30 @@ that can produce/restore backup artifacts implements `BackupRestorer`. Core owns
 HTTP upload/download, confirmation, vault persistence, and audit; the connector
 owns only the external service-specific work.
 
+A structured connector needing a durable domain journal can implement
+`gatewayconnectorapi.ScopedResourceCapabilityProvider` in its own adapter. Its
+`ScopedResourceRuntime` exposes only `CredentialResources(resourceKind)` for the
+core-bound connector kind. Return a typed `connectors.RuntimeCapability` for the
+domain service, as the Postgres `apiadapter` does for its role journal. This
+resource-only contract does not require a console runtime, execution-surface ID,
+principal resolver, action mutation port, database handle or Vault handle. Core
+still owns workspace exclusion, resource encryption, scope enforcement and
+retirement; the connector owns its journal schema, transitions and remote proof.
+Do not use `AsyncRuntimeAdapter` just to obtain connector-scoped persistence.
+
+A managed credential can optionally implement
+`ProvisionedCredentialCleanupEvidence` to confirm an already-completed cleanup
+before core looks up the original administrator. Its adapter must implement
+`EvidenceCapabilityProvider`, which receives only `EvidenceResourceRuntime`.
+The concrete resource readers expose public `Get` only, not mutable stores,
+`GetSecret`, console/session ports or transports. Return a separate read-only
+domain capability, not the mutable lifecycle journal. Core still holds exclusive
+lifecycle admission across fresh target/profile reads, evidence validation,
+local retirement and audit. A nil evidence result requires the usual authenticated
+remote cleanup; errors or nonterminal results stop deletion. Test missing/changed
+identity, uncertain records, cancellation during projection and retained readers
+after workspace retirement. Never infer completed cleanup from remote absence.
+
 ## Built-In Example: Redis / Valkey
 
 The built-in Redis / Valkey connector adds only protocol/product-specific behavior:
