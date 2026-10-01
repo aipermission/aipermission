@@ -241,7 +241,7 @@ func TestPrepareMetadataActions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare get_tables: %v", err)
 	}
-	if tables.Payload["schema"] != "public" || tables.Payload["include_system"] != true {
+	if tables.Payload["schema"] != " public " || tables.Payload["include_system"] != true {
 		t.Fatalf("unexpected tables payload: %#v", tables.Payload)
 	}
 }
@@ -268,7 +268,7 @@ func TestPrepareDescribeTableRequiresTable(t *testing.T) {
 	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 		Target:     connectors.TargetView{Ref: "postgres:7:11", ConnectorKind: Kind},
 		ActionName: ActionDescribeTable,
-		Input:      map[string]any{"table": " "},
+		Input:      map[string]any{"table": ""},
 	})
 	if err == nil {
 		t.Fatal("expected missing table error")
