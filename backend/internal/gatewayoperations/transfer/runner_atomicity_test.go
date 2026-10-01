@@ -894,7 +894,9 @@ func TestPeriodicTempRecoveryRetriesFailedDeletion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	staged := filepath.Join(root, "download-retry")
+	// Upload cleanup can use a directory to force Remove to fail. Download
+	// cleanup must reject directories before discarding byte evidence.
+	staged := filepath.Join(root, "upload-retry")
 	if err := os.Mkdir(staged, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -903,7 +905,7 @@ func TestPeriodicTempRecoveryRetriesFailedDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	item, err := fixture.store.Create(t.Context(), filetransfer.CreateRequest{
-		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionDownload, Source: filetransfer.SourceUI,
+		RuntimeID: fixture.runtimeID, Direction: filetransfer.DirectionUpload, Source: filetransfer.SourceUI,
 		RemotePath: "/retry", FileName: "retry", TempPath: staged,
 	})
 	if err != nil {

@@ -2,6 +2,8 @@ package connectors
 
 import "context"
 
+// TransferProgress reports an absolute byte count for one attempt. Callbacks
+// must finish before the transfer method returns.
 type TransferProgress func(transferred int64, total int64)
 
 type TransferOptions struct {
@@ -13,6 +15,8 @@ type TransferOptions struct {
 }
 
 type TransferResult struct {
+	// For downloads Bytes includes successfully written bytes even on failure.
+	// The caller owns partial local staging and its cleanup after final evidence.
 	Bytes          int64
 	Size           int64
 	ChecksumSHA256 string

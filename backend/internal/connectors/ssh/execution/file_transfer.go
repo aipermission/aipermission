@@ -732,8 +732,8 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 		}
 		nr, er := src.Read(buffer)
 		if nr > 0 {
-			if options.MaxBytes > 0 && copied+int64(nr) > options.MaxBytes {
-				return copied, "", fmt.Errorf("transfer exceeds the %d byte limit", options.MaxBytes)
+			if options.MaxBytes > 0 && int64(nr) > options.MaxBytes-copied {
+				return copied, "", fmt.Errorf("%w: transfer exceeds the %d byte limit", connectors.ErrTransferByteLimit, options.MaxBytes)
 			}
 			chunk := buffer[:nr]
 			nw, ew := dst.Write(chunk)

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
 func DownloadFile(ctx context.Context, target Target, remotePath string, localPath string, progress TransferProgress) (TransferResult, error) {
@@ -37,7 +39,7 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 		return TransferResult{}, fmt.Errorf("remote path is a directory")
 	}
 	if options.MaxBytes > 0 && info.Size() > options.MaxBytes {
-		return TransferResult{}, fmt.Errorf("remote file is larger than %d bytes", options.MaxBytes)
+		return TransferResult{}, fmt.Errorf("%w: remote file is larger than %d bytes", connectors.ErrTransferByteLimit, options.MaxBytes)
 	}
 
 	local, err := os.Create(localPath)
@@ -46,7 +48,7 @@ func DownloadFileWithOptions(ctx context.Context, target Target, remotePath stri
 	}
 	copied, checksum, err := copyAndCloseDownloadedFile(ctx, local, remote, info.Size(), options)
 	if err != nil {
-		return TransferResult{}, fmt.Errorf("download file: %w", err)
+		return TransferResult{Bytes: copied}, fmt.Errorf("download file: %w", err)
 	}
 	if options.Progress != nil {
 		options.Progress(copied, info.Size())
@@ -66,7 +68,7 @@ func copyAndCloseDownloadedFile(ctx context.Context, local io.WriteCloser, remot
 		closeErr = fmt.Errorf("close local download file: %w", closeErr)
 	}
 	if copyErr != nil || closeErr != nil {
-		return 0, "", errors.Join(copyErr, closeErr)
+		return copied, "", errors.Join(copyErr, closeErr)
 	}
 	return copied, checksum, nil
 }

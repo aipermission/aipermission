@@ -231,12 +231,20 @@ func (s Runner) removeExpiredTransferTemp(runtime *Runtime, transferID int64, va
 	if runtime == nil || !s.TempPathAllowed(runtime, value) {
 		return
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), fileTransferPersistenceAttemptTimeout)
+	defer cancel()
+	ready, err := s.prepareExpiredTransferCleanup(ctx, runtime, transferID, value)
+	if err != nil {
+		log.Printf("recover expired file transfer evidence failed transfer=%d error=%v", transferID, err)
+		return
+	}
+	if !ready {
+		return
+	}
 	if err := os.Remove(value); err != nil && !os.IsNotExist(err) {
 		log.Printf("remove expired file transfer temp failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), fileTransferPersistenceAttemptTimeout)
-	defer cancel()
 	if err := runtime.store.ClearTempPath(ctx, transferID, value); err != nil {
 		log.Printf("clear expired file transfer temp record failed transfer=%d error=%v", transferID, err)
 	}
@@ -255,6 +263,9 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 		return errors.Join(append(cleanupErrors, err)...)
 	}
 	for _, item := range items {
+		if transferOwnerActive(runtime, item) {
+			continue
+		}
 		if !s.TempPathAllowed(runtime, item.TempPath) {
 			// Stale records can reference a previous workspace namespace. Never
 			// touch that path; detach only the database reference so one completed

@@ -2,6 +2,8 @@ package connectors
 
 import "errors"
 
+var ErrTransferByteLimit = errors.New("file transfer byte limit exceeded")
+
 // ClassifiedError exposes a stable machine-readable connector failure code
 // without coupling the gateway to connector-specific error types.
 type ClassifiedError struct {
