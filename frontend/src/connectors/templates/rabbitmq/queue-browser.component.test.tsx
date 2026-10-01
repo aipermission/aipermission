@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { QueueBrowser } from "./queue-browser";
 import { QueueDetail } from "./queue-detail";
+import { queueNameLabel } from "./helpers";
 import { connectorConsoleTheme } from "../_shared/console-theme";
 import type { RabbitBrowser } from "./use-rabbitmq-browser";
 
@@ -62,6 +63,19 @@ it("locks vhost changes while publishing", () => {
   expect(screen.getByRole("button", { name: "Refresh" })).toBeDisabled();
 });
 
+it.each([" tenant ", " \t ", ""])("forwards the exact vhost draft from the browser form: %j", (vhostDraft) => {
+  const model = browser({ vhostDraft });
+  render(<QueueBrowser browser={model} styles={styles} />);
+  const input = screen.getByPlaceholderText("vhost");
+  expect(input).toHaveValue(vhostDraft);
+  const next = `${vhostDraft} `;
+  fireEvent.change(input, { target: { value: next } });
+  expect(model.setVhostDraft).toHaveBeenCalledExactlyOnceWith(next);
+  expect(model.applyVhost).not.toHaveBeenCalled();
+  fireEvent.submit(screen.getByRole("button", { name: "Refresh" }).closest("form")!);
+  expect(model.applyVhost).toHaveBeenCalledOnce();
+});
+
 it("keeps queue filtering separate from the vhost form", async () => {
   const user = userEvent.setup();
   const model = browser();
@@ -117,4 +131,19 @@ it("selects a queue while normalizing absent RabbitMQ counters", async () => {
   expect(screen.getAllByText(/ready 0 · unacked 0 · consumers 0/)).toHaveLength(2);
   await user.click(screen.getByRole("button", { name: /jobs/ }));
   expect(model.selectQueue).toHaveBeenCalledWith("jobs");
+});
+
+it("distinguishes padded, whitespace-only and quoted queue names without changing selection", async () => {
+  const user = userEvent.setup();
+  const names = ["jobs", " jobs ", " ", "  ", "\u00a0", "\t", '" jobs "', "\\u0020"];
+  const queues = names.map((name) => ({ name, vhost: "/" }));
+  const model = browser({ filteredQueues: queues, queues });
+  render(<QueueBrowser browser={model} styles={styles} />);
+  for (const name of names) {
+    const label = queueNameLabel(name);
+    const button = screen.getByRole("button", { name: label });
+    expect(button).toHaveTextContent(label);
+    await user.click(button);
+    expect(model.selectQueue).toHaveBeenLastCalledWith(name);
+  }
 });

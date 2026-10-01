@@ -185,6 +185,11 @@ browser actions such as `overview`, `list_vhosts`, `list_queues`, `get_queue`,
 `list_bindings`, `peek_messages`, and `publish_message`. Message payload
 previews and published payloads can contain secrets or customer data; use short
 reasons and prefer approval-required access until the workflow is trusted.
+Vhost, queue, exchange and routing-key names remain exact UTF-8 strings.
+Do not trim returned names or treat whitespace-only names as missing. Invalid
+Unicode responses fail without repairing resource identity; a dispatched
+mutation can still have an unknown outcome. See the
+[RabbitMQ action boundary](../../docs/api/mcp-tools.md).
 
 For Kafka or Redpanda, call `get_connector_actions(target_ref)` to discover
 cluster, topic, consumer-group, lag, bounded message-read, guarded publish, and

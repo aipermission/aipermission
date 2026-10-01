@@ -321,6 +321,15 @@ with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
 
+Vhost, queue, exchange and routing-key values are exact UTF-8 identities,
+including leading, trailing and whitespace-only names. Preserve returned names
+when selecting, approving and dispatching actions. Only absent or exactly empty
+optional values use their documented defaults; whitespace is not absence.
+Unsupported non-string or non-UTF-8 identifiers fail before dispatch. Management
+responses with malformed Unicode fail rather than being repaired into another
+name. If a publish or peek was already dispatched, an invalid response retains
+an unknown outcome; do not retry blindly.
+
 Kafka / Redpanda actions include cluster metadata, topic listing and
 description, consumer-group listing and lag description, bounded message
 samples from an explicit topic partition, guarded single-message publishing,

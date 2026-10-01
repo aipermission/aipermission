@@ -4,7 +4,7 @@ import { Button } from "../../../components/ui/button";
 import { Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { connectorActionBusy } from "../_shared/action-state";
-import { queueTotals } from "./helpers";
+import { queueNameLabel, queueTotals } from "./helpers";
 import type { RabbitBrowser } from "./use-rabbitmq-browser";
 import type { RabbitQueue, RabbitStyles } from "./browser-types";
 
@@ -71,13 +71,14 @@ export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styl
           <button
             key={`${queue.vhost || browser.vhost}:${queue.name}`}
             type="button"
+            aria-label={queueNameLabel(queue.name)}
             aria-pressed={browser.activeQueue === queue.name}
             className={`mb-1 grid w-full gap-1 rounded-md border px-3 py-2 text-left text-sm transition ${browser.activeQueue === queue.name ? styles.activeRow : `${styles.border} ${styles.rowHover}`}`}
             onClick={() => browser.selectQueue(queue.name)}
             disabled={browser.publishLocked}
           >
             <span className="truncate font-mono text-xs font-semibold" title={queue.name}>
-              {queue.name}
+              {queueNameLabel(queue.name)}
             </span>
             <span className={`text-xs ${browser.activeQueue === queue.name ? "" : styles.muted}`}>
               ready {numberText(queue.messages_ready)} · unacked {numberText(queue.messages_unacknowledged)} · consumers{" "}

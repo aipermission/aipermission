@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiGet } from "../../../lib/api";
@@ -21,7 +21,7 @@ vi.mock("../_shared/observation-scheduler", () => ({
   scheduleObservation: (...args: Parameters<typeof observations.schedule>) => observations.schedule(...args),
 }));
 
-const queues = [{ name: "jobs.ready", vhost: "/", state: "running", messages: 2 }];
+const queues = ["jobs.ready", " jobs ", " "].map((name) => ({ name, vhost: "/", state: "running", messages: 2 }));
 const observations = mutationObservationQueue();
 let observedApproval: ConnectorApproval | null = null;
 
@@ -41,7 +41,7 @@ beforeEach(() => {
         actionName === "list_queues"
           ? { queues }
           : actionName === "get_queue"
-            ? queues[0]
+            ? queues.find((queue) => queue.name === input?.queue)
             : actionName === "list_bindings"
               ? { bindings: [{ routing_key: "jobs.ready" }] }
               : actionName === "peek_messages"
@@ -64,7 +64,13 @@ beforeEach(() => {
     });
 });
 
-function QueueWorkspace({ approvals = { state: "ready", data: [] } }: { approvals?: RabbitBrowserProps["approvals"] }) {
+function QueueWorkspace({
+  approvals = { state: "ready", data: [] },
+  queueName = "jobs.ready",
+}: {
+  approvals?: RabbitBrowserProps["approvals"];
+  queueName?: string;
+}) {
   const browser = useRabbitMQBrowser({
     target: { ref: "rabbitmq:1:1", config: { vhost: "/" } },
     approvals,
@@ -73,7 +79,7 @@ function QueueWorkspace({ approvals = { state: "ready", data: [] } }: { approval
   });
   return (
     <>
-      <button type="button" onClick={() => void browser.selectQueue("jobs.ready")}>
+      <button type="button" onClick={() => void browser.selectQueue(queueName)}>
         Select queue
       </button>
       <QueueDetail browser={browser} styles={connectorConsoleTheme("dark")} />
@@ -162,6 +168,91 @@ it("supports a custom routing key without overwriting the selected queue", async
   );
   await user.click(screen.getByRole("button", { name: "Back to detail" }));
   expect(screen.getByText("jobs.ready")).toBeVisible();
+});
+
+it.each([" jobs ", " "])("publishes directly to the exact selected queue %j through the default exchange", async (queueName) => {
+  const user = userEvent.setup();
+  render(<QueueWorkspace queueName={queueName} />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Select queue" }));
+  await screen.findByText("running");
+  await user.click(screen.getByRole("button", { name: "Publish" }));
+  expect(screen.getByRole("combobox")).toHaveValue(queueName);
+  await user.type(screen.getByRole("textbox", { name: "Publish payload" }), "Exact destination");
+  expect(screen.getByRole("button", { name: "Publish message" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Publish message" }));
+  expect(runGuardedConnectorAction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actionName: "publish_message",
+      input: expect.objectContaining({ exchange: "amq.default", routing_key: queueName }),
+    }),
+  );
+});
+
+it.each([
+  { exchange: " events ", routingKey: " jobs " },
+  { exchange: " ", routingKey: " \t " },
+  { exchange: "", routingKey: "jobs" },
+])("publishes exact custom identities and defaults only an empty exchange: %j", async ({ exchange, routingKey }) => {
+  const user = userEvent.setup();
+  render(<QueueWorkspace />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Publish" }));
+  await user.click(screen.getByRole("combobox"));
+  await user.click(screen.getByRole("option", { name: /Custom routing key/ }));
+  const routing = screen.getByRole("textbox", { name: "Custom routing key" });
+  await user.click(routing);
+  await user.paste(routingKey);
+  const exchangeInput = screen.getByRole("textbox", { name: "Publish exchange" });
+  await user.clear(exchangeInput);
+  if (exchange) await user.paste(exchange);
+  await user.type(screen.getByRole("textbox", { name: "Publish payload" }), "Custom destination");
+  expect(screen.getByRole("button", { name: "Publish message" })).toBeEnabled();
+  await user.click(screen.getByRole("button", { name: "Publish message" }));
+  expect(runGuardedConnectorAction).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actionName: "publish_message",
+      input: expect.objectContaining({ exchange: exchange || "amq.default", routing_key: routingKey }),
+    }),
+  );
+});
+
+it("keeps a whitespace queue identity when switching to custom routing and reopening publishing", async () => {
+  const user = userEvent.setup();
+  render(<QueueWorkspace queueName=" " />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Select queue" }));
+  await screen.findByText("running");
+  await user.click(screen.getByRole("button", { name: "Publish" }));
+  await user.click(screen.getByRole("combobox"));
+  await user.click(screen.getByRole("option", { name: /Custom routing key/ }));
+  const routing = screen.getByRole("textbox", { name: "Custom routing key" });
+  expect(routing).toHaveValue(" ");
+  await user.click(routing);
+  await user.paste(" ");
+  await user.click(screen.getByRole("button", { name: "Back to detail" }));
+  await user.click(screen.getByRole("button", { name: "Publish" }));
+  expect(screen.getByRole("textbox", { name: "Custom routing key" })).toHaveValue("  ");
+});
+
+it("still rejects an exactly empty custom routing key with a nonempty payload", async () => {
+  const user = userEvent.setup();
+  render(<QueueWorkspace />);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Publish" })).toBeEnabled());
+  await user.click(screen.getByRole("button", { name: "Publish" }));
+  await user.click(screen.getByRole("combobox"));
+  await user.click(screen.getByRole("option", { name: /Custom routing key/ }));
+  const routing = screen.getByRole("textbox", { name: "Custom routing key" });
+  await user.type(routing, " ");
+  await user.type(screen.getByRole("textbox", { name: "Publish payload" }), "Payload");
+  expect(screen.getByRole("button", { name: "Publish message" })).toBeEnabled();
+  await user.clear(routing);
+  const submit = screen.getByRole("button", { name: "Publish message" });
+  expect(submit).toBeDisabled();
+  vi.mocked(runGuardedConnectorAction).mockClear();
+  fireEvent.submit(submit.closest("form")!);
+  expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+  expect(screen.getByText("Routing key and payload are required.")).toBeVisible();
 });
 
 async function preparePublish(user: ReturnType<typeof userEvent.setup>) {

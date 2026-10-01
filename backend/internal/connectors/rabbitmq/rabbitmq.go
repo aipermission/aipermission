@@ -70,6 +70,9 @@ func (Connector) Version() string {
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
+	if err := validateRabbitIdentities(action.Payload); err != nil {
+		return connectors.ActionResult{}, err
+	}
 	client, err := newRabbitClient(ctx, runtime)
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -133,7 +136,7 @@ func executeListVhosts(ctx context.Context, client *rabbitClient) (connectors.Ac
 	}
 	names := make([]string, 0, len(rows))
 	for _, row := range rows {
-		if name := strings.TrimSpace(fmt.Sprint(row["name"])); name != "" {
+		if name, ok := row["name"].(string); ok && name != "" {
 			names = append(names, name)
 		}
 	}
@@ -180,7 +183,7 @@ func executeListQueues(ctx context.Context, client *rabbitClient, input map[stri
 
 func executeGetQueue(ctx context.Context, client *rabbitClient, input map[string]any, fallbackVHost string) (connectors.ActionResult, error) {
 	vhost := normalizeVHost(input, "vhost", fallbackVHost)
-	queue := strings.TrimSpace(stringValue(input, "queue"))
+	queue := stringValue(input, "queue")
 	if queue == "" {
 		return connectors.ActionResult{}, fmt.Errorf("queue is required")
 	}
@@ -197,7 +200,7 @@ func executeGetQueue(ctx context.Context, client *rabbitClient, input map[string
 
 func executeListBindings(ctx context.Context, client *rabbitClient, input map[string]any, fallbackVHost string) (connectors.ActionResult, error) {
 	vhost := normalizeVHost(input, "vhost", fallbackVHost)
-	queue := strings.TrimSpace(stringValue(input, "queue"))
+	queue := stringValue(input, "queue")
 	limit := normalizeInt(input, "limit", defaultQueueLimit, 1, maxQueueLimit)
 	path := "/api/bindings/" + pathPart(vhost)
 	pageSize := min(limit+1, maxRabbitListPageSize)
@@ -232,7 +235,7 @@ func executeListBindings(ctx context.Context, client *rabbitClient, input map[st
 
 func executePeekMessages(ctx context.Context, client *rabbitClient, input map[string]any, fallbackVHost string) (connectors.ActionResult, error) {
 	vhost := normalizeVHost(input, "vhost", fallbackVHost)
-	queue := strings.TrimSpace(stringValue(input, "queue"))
+	queue := stringValue(input, "queue")
 	if queue == "" {
 		return connectors.ActionResult{}, fmt.Errorf("queue is required")
 	}
@@ -278,11 +281,11 @@ func executePeekMessages(ctx context.Context, client *rabbitClient, input map[st
 
 func executePublishMessage(ctx context.Context, client *rabbitClient, input map[string]any, fallbackVHost string) (connectors.ActionResult, error) {
 	vhost := normalizeVHost(input, "vhost", fallbackVHost)
-	exchange := strings.TrimSpace(stringValue(input, "exchange"))
+	exchange := stringValue(input, "exchange")
 	if exchange == "" {
 		exchange = "amq.default"
 	}
-	routingKey := strings.TrimSpace(stringValue(input, "routing_key"))
+	routingKey := stringValue(input, "routing_key")
 	if routingKey == "" {
 		return connectors.ActionResult{}, fmt.Errorf("routing_key is required")
 	}

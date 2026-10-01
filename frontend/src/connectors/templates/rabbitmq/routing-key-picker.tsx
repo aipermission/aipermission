@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "../../../components/ui/form";
-import { uniqueQueueNames } from "./helpers";
+import { queueNameLabel, uniqueQueueNames } from "./helpers";
 import type { KeyboardEvent, MouseEvent } from "react";
 import type { RabbitQueue, RabbitStyles } from "./browser-types";
 
-type RoutingOption = { kind: "custom" | "queue"; label: string; help: string };
+type RoutingOption = { label: string; help: string } & ({ kind: "custom" } | { kind: "queue"; name: string });
 type RoutingKeyPickerProps = {
   queues: readonly Pick<RabbitQueue, "name">[];
   value: string;
@@ -28,7 +28,12 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
   const options = useMemo<RoutingOption[]>(
     () => [
       { kind: "custom", label: "Custom routing key", help: "Type an exchange-specific routing key manually." },
-      ...visibleQueues.map<RoutingOption>((name) => ({ kind: "queue", label: name, help: "Queue routing key via amq.default" })),
+      ...visibleQueues.map<RoutingOption>((name) => ({
+        kind: "queue",
+        name,
+        label: queueNameLabel(name),
+        help: "Queue routing key via amq.default",
+      })),
     ],
     [visibleQueues],
   );
@@ -41,7 +46,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
     event.preventDefault();
     if (!option) return;
     if (option.kind === "custom") onCustom();
-    else onQueue(option.label);
+    else onQueue(option.name);
     setOpen(false);
     setQuery("");
   }
@@ -95,7 +100,7 @@ export function RoutingKeyPicker({ queues, value, custom, onQueue, onCustom, sty
         >
           {options.map((option, index) => (
             <button
-              key={`${option.kind}:${option.label}`}
+              key={option.kind === "queue" ? `queue:${option.name}` : option.kind}
               id={`rabbit-routing-option-${index}`}
               type="button"
               role="option"

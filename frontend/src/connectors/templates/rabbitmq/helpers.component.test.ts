@@ -4,11 +4,24 @@ import {
   formatMessages,
   parsePublishProperties,
   queueMetaText,
+  queueNameLabel,
   queueTotals,
   readRabbitQueues,
   readRabbitRecords,
   uniqueQueueNames,
 } from "./helpers";
+
+it.each([
+  [" ", '"\\u0020"'],
+  ["  ", '"\\u0020\\u0020"'],
+  ["\u00a0", '"\\u00a0"'],
+  ["\t", '"\\t"'],
+  ["\\u0020", '"\\\\u0020"'],
+  ['" ', '"\\"\\u0020"'],
+  ["jobs", '"jobs"'],
+])("renders an unambiguous display label for %j", (name, label) => {
+  expect(queueNameLabel(name)).toBe(label);
+});
 
 it("validates queue identities while retaining connector metadata", () => {
   const queues = readRabbitQueues([
@@ -38,6 +51,15 @@ it("normalizes absent counters and excludes malformed record collections", () =>
   expect(queueMetaText({})).toContain("ready 0");
   expect(readRabbitRecords([null, [], "text", { payload: "a" }])).toEqual([{ payload: "a" }]);
   expect(readRabbitRecords(null)).toEqual([]);
+});
+
+it("deduplicates only exact queue identities without coercing malformed names", () => {
+  const input = JSON.parse(
+    '[{"name":" jobs "},{"name":"jobs"},{"name":" "},{"name":" jobs "},{"name":""},{"name":42},{"name":true},{"name":{}},{"name":null},{}]',
+  );
+  expect(uniqueQueueNames(input)).toHaveLength(3);
+  expect(uniqueQueueNames(input)).toEqual(expect.arrayContaining([" jobs ", "jobs", " "]));
+  expect(readRabbitQueues(input).map((queue) => queue.name)).toEqual([" jobs ", "jobs", " ", " jobs ", ""]);
 });
 
 it("formats payloads without treating external message data as instructions", () => {

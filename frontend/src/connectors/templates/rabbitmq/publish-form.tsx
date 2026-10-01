@@ -51,9 +51,7 @@ export function RabbitPublishForm({ browser, styles }: { browser: RabbitBrowser;
               value={browser.publish.routingKey}
               custom={browser.publish.customRoutingKey}
               onQueue={(routingKey) => setPublish({ customRoutingKey: false, routingKey })}
-              onCustom={() =>
-                setPublish({ customRoutingKey: true, routingKey: browser.publish.routingKey.trim() ? browser.publish.routingKey : "" })
-              }
+              onCustom={() => setPublish({ customRoutingKey: true })}
               styles={styles}
               disabled={browser.publishLocked}
             />
@@ -103,9 +101,7 @@ export function RabbitPublishForm({ browser, styles }: { browser: RabbitBrowser;
         <Button
           type="submit"
           className="h-9 px-4 text-sm"
-          disabled={
-            browser.publishLocked || connectorActionBusy(browser.state) || !browser.publish.routingKey.trim() || !browser.publish.payload
-          }
+          disabled={browser.publishLocked || connectorActionBusy(browser.state) || !browser.publish.routingKey || !browser.publish.payload}
         >
           <Send className="h-4 w-4" />
           Publish message

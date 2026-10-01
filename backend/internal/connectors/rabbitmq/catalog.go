@@ -52,11 +52,12 @@ func (Connector) TargetSchema() connectors.Schema {
 			Description: "RabbitMQ Management API TCP port, usually 15672 or the port shown in the management URL. Do not use the AMQP listener port.",
 		},
 		{
-			Name:        "vhost",
-			Label:       "Default vhost",
-			Type:        connectors.FieldString,
-			Default:     defaultRabbitMQVHost,
-			Description: "Default RabbitMQ virtual host for queue actions.",
+			Name:               "vhost",
+			Label:              "Default vhost",
+			Type:               connectors.FieldString,
+			PreserveWhitespace: true,
+			Default:            defaultRabbitMQVHost,
+			Description:        "Default RabbitMQ virtual host for queue actions.",
 		},
 		{
 			Name:        "transport_target_ref",
@@ -112,6 +113,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"RabbitMQ destructive actions such as purge, ack, and delete are intentionally not part of the 0.2.6 MVP.",
 		},
 		Warnings: []string{
+			"Vhost, queue, exchange, and routing-key names are exact UTF-8 identities. Preserve returned whitespace; never trim a name into a different resource.",
 			"RabbitMQ message payloads may contain secrets or customer data. Redaction is best-effort; avoid reading payloads unless explicitly approved.",
 			"peek_messages uses the Management API get endpoint with ack_requeue_true and bounded count/truncate limits.",
 			"publish_message creates a new message in RabbitMQ. Use a dedicated credential with RabbitMQ-level write scope.",
@@ -147,7 +149,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
+				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional vhost; defaults to target vhost."},
 				{Name: "pattern", Label: "Pattern", Type: connectors.FieldString, Description: "Optional case-insensitive queue name filter."},
 				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultQueueLimit},
 			}},
@@ -160,8 +162,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
-				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Required: true},
+				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional vhost; defaults to target vhost."},
+				{Name: "queue", Label: "Queue", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 128 << 10},
 		},
@@ -172,8 +174,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
-				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Description: "Optional queue name."},
+				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional vhost; defaults to target vhost."},
+				{Name: "queue", Label: "Queue", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional queue name."},
 				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultQueueLimit},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxQueueLimit},
@@ -185,8 +187,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "browser",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
-				{Name: "queue", Label: "Queue", Type: connectors.FieldString, Required: true},
+				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional vhost; defaults to target vhost."},
+				{Name: "queue", Label: "Queue", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 				{Name: "count", Label: "Count", Type: connectors.FieldInteger, Default: defaultPeekCount},
 				{Name: "max_payload_bytes", Label: "Max payload bytes", Type: connectors.FieldInteger, Default: defaultPayloadMaxBytes},
 			}},
@@ -200,9 +202,9 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Category:    "write",
 			Risk:        connectors.RiskWrite,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, Description: "Optional vhost; defaults to target vhost."},
-				{Name: "exchange", Label: "Exchange", Type: connectors.FieldString, Default: "amq.default", Description: "Exchange name. Use amq.default to route directly to a queue by routing key."},
-				{Name: "routing_key", Label: "Routing key", Type: connectors.FieldString, Required: true},
+				{Name: "vhost", Label: "Vhost", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional vhost; defaults to target vhost."},
+				{Name: "exchange", Label: "Exchange", Type: connectors.FieldString, PreserveWhitespace: true, Default: "amq.default", Description: "Exchange name. Use amq.default to route directly to a queue by routing key."},
+				{Name: "routing_key", Label: "Routing key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 				{Name: "payload", Label: "Payload", Type: connectors.FieldMultiline, Required: true},
 				{Name: "payload_encoding", Label: "Payload encoding", Type: connectors.FieldSelect, Default: "string", Options: []connectors.FieldOption{
 					{Value: "string", Label: "String"},
@@ -217,6 +219,9 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 }
 
 func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
+	if err := validateRabbitIdentities(req.Input, req.Target.Config); err != nil {
+		return connectors.PreparedAction{}, err
+	}
 	input := copyMap(req.Input)
 	risk := connectors.RiskRead
 	title := ""
@@ -240,7 +245,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		summary = fmt.Sprintf("List queues in vhost %q.", vhost)
 	case ActionGetQueue:
 		vhost = normalizeVHost(input, "vhost", vhost)
-		queue := strings.TrimSpace(stringValue(input, "queue"))
+		queue := stringValue(input, "queue")
 		if queue == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("queue is required")
 		}
@@ -250,7 +255,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		summary = fmt.Sprintf("%s/%s", vhost, queue)
 	case ActionListBindings:
 		vhost = normalizeVHost(input, "vhost", vhost)
-		queue := strings.TrimSpace(stringValue(input, "queue"))
+		queue := stringValue(input, "queue")
 		limit := normalizeInt(input, "limit", defaultQueueLimit, 1, maxQueueLimit)
 		input["vhost"] = vhost
 		input["queue"] = queue
@@ -264,7 +269,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	case ActionPeekMessages:
 		risk = connectors.RiskWrite
 		vhost = normalizeVHost(input, "vhost", vhost)
-		queue := strings.TrimSpace(stringValue(input, "queue"))
+		queue := stringValue(input, "queue")
 		if queue == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("queue is required")
 		}
@@ -279,11 +284,11 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	case ActionPublish:
 		risk = connectors.RiskWrite
 		vhost = normalizeVHost(input, "vhost", vhost)
-		exchange := strings.TrimSpace(stringValue(input, "exchange"))
+		exchange := stringValue(input, "exchange")
 		if exchange == "" {
 			exchange = "amq.default"
 		}
-		routingKey := strings.TrimSpace(stringValue(input, "routing_key"))
+		routingKey := stringValue(input, "routing_key")
 		if routingKey == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("routing_key is required")
 		}
