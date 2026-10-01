@@ -1,15 +1,12 @@
 package console
 
 import (
-	"context"
-	"errors"
-	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/testkit/websocketpipe"
 	"github.com/gorilla/websocket"
 )
 
@@ -161,81 +158,5 @@ func waitConsoleFrameWork(t *testing.T, done <-chan struct{}) {
 // transport, so this test neither needs a listening port nor emulates frames.
 func newConsoleFramePair(t *testing.T) (*websocket.Conn, *websocket.Conn) {
 	t.Helper()
-	clientPipe, serverPipe := net.Pipe()
-	deadline := time.Now().Add(10 * time.Second)
-	_ = clientPipe.SetDeadline(deadline)
-	_ = serverPipe.SetDeadline(deadline)
-	listener := &consoleFrameListener{pending: make(chan net.Conn, 1), closed: make(chan struct{}), conn: serverPipe}
-	listener.pending <- serverPipe
-	upgraded := make(chan *websocket.Conn, 1)
-	upgradeErrors := make(chan error, 1)
-	upgrader := websocket.Upgrader{}
-	httpServer := &http.Server{
-		ReadHeaderTimeout: 5 * time.Second,
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ws, err := upgrader.Upgrade(w, r, nil)
-			if err != nil {
-				upgradeErrors <- err
-				return
-			}
-			upgraded <- ws
-		}),
-	}
-	serveDone := make(chan struct{})
-	go func() {
-		defer close(serveDone)
-		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
-			upgradeErrors <- err
-		}
-	}()
-	t.Cleanup(func() {
-		_ = clientPipe.Close()
-		_ = serverPipe.Close()
-		_ = httpServer.Close()
-		_ = listener.Close()
-		waitConsoleFrameWork(t, serveDone)
-	})
-	dialer := websocket.Dialer{
-		HandshakeTimeout: 5 * time.Second,
-		NetDialContext:   func(context.Context, string, string) (net.Conn, error) { return clientPipe, nil },
-	}
-	client, _, err := dialer.DialContext(t.Context(), "ws://console.fixture/", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case server := <-upgraded:
-		if err := server.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
-			t.Fatal(err)
-		}
-		return server, client
-	case err := <-upgradeErrors:
-		t.Fatal(err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("websocket fixture upgrade did not finish")
-	}
-	return nil, nil
+	return websocketpipe.Pair(t)
 }
-
-type consoleFrameListener struct {
-	pending chan net.Conn
-	closed  chan struct{}
-	conn    net.Conn
-	once    sync.Once
-}
-
-func (l *consoleFrameListener) Accept() (net.Conn, error) {
-	select {
-	case conn := <-l.pending:
-		return conn, nil
-	case <-l.closed:
-		return nil, net.ErrClosed
-	}
-}
-
-func (l *consoleFrameListener) Close() error {
-	l.once.Do(func() { close(l.closed) })
-	return l.conn.Close()
-}
-
-func (l *consoleFrameListener) Addr() net.Addr { return l.conn.LocalAddr() }

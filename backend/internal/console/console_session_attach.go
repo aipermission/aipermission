@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
+	"github.com/aipermission/aipermission/backend/internal/socketwrite"
 	"github.com/gorilla/websocket"
 )
 
@@ -43,7 +44,7 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 		if registerErr != nil {
 			return registerErr
 		}
-		writeErr := ws.WriteJSON(ptyServerMessage{
+		writeErr := socketwrite.JSONLocked(ws, ptyServerMessage{
 			Type: "snapshot", Status: snapshotStatus, Data: transcript, SessionID: session.id,
 		})
 		writeMu.Unlock()
@@ -73,7 +74,9 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 		switch message.Type {
 		case "input":
 			if len(message.Data) > maxConsoleInputBytes {
-				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: ErrInputTooLarge.Error(), SessionID: session.id})
+				if err := writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: ErrInputTooLarge.Error(), SessionID: session.id}); err != nil {
+					return err
+				}
 				continue
 			}
 			if err := inputLimiter.wait(r.Context()); err != nil {
@@ -82,7 +85,9 @@ func (m *Manager) Attach(w http.ResponseWriter, r *http.Request, principal execu
 			if err := m.authorizeOperation(r.Context(), principal, session, OperationInput, func() error {
 				return session.submitManualInput(message.Data)
 			}); err != nil {
-				_ = writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: err.Error(), SessionID: session.id})
+				if writeErr := writePTYMessage(ws, writeMu, ptyServerMessage{Type: "error", Status: "error", Data: err.Error(), SessionID: session.id}); writeErr != nil {
+					return writeErr
+				}
 			}
 		case "resize":
 			if !resizeLimiter.allow() {

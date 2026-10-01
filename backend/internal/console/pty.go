@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/socketwrite"
 	"github.com/gorilla/websocket"
 )
 
@@ -24,34 +25,11 @@ type ptyServerMessage struct {
 }
 
 func writePTYMessage(ws *websocket.Conn, writeMu *sync.Mutex, message ptyServerMessage) error {
-	if writeMu != nil {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-	}
-	return ws.WriteJSON(message)
-}
-
-func writePTYControl(ws *websocket.Conn, writeMu *sync.Mutex, messageType int, deadline time.Time) error {
-	if writeMu != nil {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-	}
-	return ws.WriteControl(messageType, nil, deadline)
+	return socketwrite.JSON(ws, writeMu, message)
 }
 
 func keepPTYAlive(ws *websocket.Conn, writeMu *sync.Mutex, stop <-chan struct{}) {
-	ticker := time.NewTicker(ptyPingInterval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if err := writePTYControl(ws, writeMu, websocket.PingMessage, time.Now().Add(10*time.Second)); err != nil {
-				return
-			}
-		case <-stop:
-			return
-		}
-	}
+	socketwrite.KeepAlive(ws, writeMu, ptyPingInterval, stop)
 }
 
 type consoleIntervalLimiter struct {
