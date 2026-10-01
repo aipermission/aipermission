@@ -709,7 +709,7 @@ func quoteIdentifier(value string) string {
 }
 
 func quoteLiteral(value string) string {
-	return `'` + strings.ReplaceAll(value, `'`, `''`) + `'`
+	return `E'` + strings.ReplaceAll(strings.ReplaceAll(value, `\`, `\\`), `'`, `''`) + `'`
 }
 
 func stringInput(input map[string]any, name string) string {
@@ -735,24 +735,6 @@ func anySlice(value any) []any {
 		out := make([]any, 0, len(typed))
 		for _, item := range typed {
 			out = append(out, item)
-		}
-		return out
-	default:
-		return nil
-	}
-}
-
-func stringSlice(value any) []string {
-	if value == nil {
-		return nil
-	}
-	switch typed := value.(type) {
-	case []string:
-		return typed
-	case []any:
-		out := make([]string, 0, len(typed))
-		for _, item := range typed {
-			out = append(out, strings.TrimSpace(fmt.Sprint(item)))
 		}
 		return out
 	default:
