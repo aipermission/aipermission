@@ -10,7 +10,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -327,7 +326,7 @@ func (r *Registry) Register(kind string, adapter Adapter) error {
 	if !connectors.ValidIdentifier(kind) {
 		return fmt.Errorf("invalid connector adapter kind %q", kind)
 	}
-	if isNilAdapter(adapter) {
+	if IsNilDependency(adapter) {
 		return fmt.Errorf("connector adapter %q is nil", kind)
 	}
 	if r == nil {
@@ -398,7 +397,7 @@ func SnapshotCatalog(source Catalog) (Catalog, error) {
 			return nil, fmt.Errorf("connector adapter catalog contains invalid kind %q", rawKind)
 		}
 		adapter := source.For(kind)
-		if isNilAdapter(adapter) {
+		if IsNilDependency(adapter) {
 			return nil, fmt.Errorf("connector adapter catalog kind %q is missing", kind)
 		}
 		if _, exists := adapters[kind]; exists {
@@ -407,19 +406,6 @@ func SnapshotCatalog(source Catalog) (Catalog, error) {
 		adapters[kind] = adapter
 	}
 	return catalogSnapshot{adapters: adapters}, nil
-}
-
-func isNilAdapter(adapter Adapter) bool {
-	if adapter == nil {
-		return true
-	}
-	value := reflect.ValueOf(adapter)
-	switch value.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return value.IsNil()
-	default:
-		return false
-	}
 }
 
 func (snapshot catalogSnapshot) For(kind string) Adapter {
