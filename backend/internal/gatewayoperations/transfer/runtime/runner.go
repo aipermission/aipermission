@@ -78,10 +78,11 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 	}
 	result, err := execution.Adapter.UploadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite,
 		s.transferOptions(runtime, transferID, nil, 0))
+	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
+		log.Printf("file upload final evidence unavailable transfer=%d error=%v", transferID, evidenceErr)
+		return
+	}
 	if err != nil {
-		if result.Bytes > 0 || result.ChecksumSHA256 != "" {
-			_ = runtime.store.UpdateEvidence(runtime.finalization.Context(), transferID, result.Bytes, result.ChecksumSHA256)
-		}
 		if s.finishFileTransferError(runtime, transferID, ctx, &execution, err) {
 			s.cleanupTransferTempAfterError(runtime, transferID, item.TempPath, err)
 		}
@@ -141,6 +142,10 @@ func (s Runner) RunDownload(ctx context.Context, runtime *Runtime, transferID in
 		Progress: s.transferProgress(runtime, transferID),
 		MaxBytes: s.maxObjectBytes,
 	})
+	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
+		log.Printf("file download final evidence unavailable transfer=%d error=%v", transferID, evidenceErr)
+		return
+	}
 	if err != nil {
 		if s.finishFileTransferError(runtime, transferID, ctx, &execution, err) {
 			s.RemoveTempPath(runtime, item.TempPath)
@@ -222,6 +227,11 @@ func (s Runner) runBatch(ctx context.Context, runtime *Runtime, batchID int64, o
 		log.Printf("read file transfer batch failed batch=%d error=%v", batchID, err)
 		return
 	}
+	budget, err := s.downloadBudget(runtime, batch)
+	if err != nil {
+		s.rejectDownloadBatchBudget(runtime, batchID, &execution, err)
+		return
+	}
 	for {
 		if err := control.Wait(ctx); err != nil {
 			break
@@ -235,7 +245,13 @@ func (s Runner) runBatch(ctx context.Context, runtime *Runtime, batchID int64, o
 			s.cleanupBatchTempsIfDurable(runtime, batchID, s.finishFileTransferBatchError(runtime, batchID, ctx, &execution, err))
 			return
 		}
-		s.runTransferBatchItem(ctx, runtime, latest.ID, overwrite, control, execution)
+		if err := s.runTransferBatchItem(ctx, runtime, latest.ID, overwrite, control, execution, budget); err != nil {
+			if errors.Is(err, transferjobs.ErrEvidenceNotDurable) {
+				return
+			}
+			s.rejectDownloadBatchBudget(runtime, batchID, &execution, err)
+			return
+		}
 		_ = runtime.store.RecalculateBatch(context.Background(), batchID)
 		if ctx.Err() != nil {
 			break
@@ -377,7 +393,7 @@ func (s Runner) validateDownloadBatchBeforeRun(ctx context.Context, runtime *Run
 	return runtime.store.UpdatePendingBatchItemSizes(ctx, batch.ID, sizes)
 }
 
-func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, transferID int64, overwrite bool, control *transferjobs.Control, execution Execution) {
+func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, transferID int64, overwrite bool, control *transferjobs.Control, execution Execution, budget *batchDownloadBudget) error {
 	itemCtx, itemCancel := context.WithCancel(ctx)
 	runtime.jobs.Files.RegisterCancel(transferID, itemCancel)
 	runtime.jobs.Files.RegisterControl(transferID, control)
@@ -391,10 +407,10 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 			s.RemoveTransferTemp(runtime, transferID)
 		}
 		log.Printf("mark file transfer running failed transfer=%d error=%v", transferID, err)
-		return
+		return nil
 	}
 	if !ok {
-		return
+		return nil
 	}
 	item, err := runtime.store.Get(itemCtx, transferID)
 	if err != nil {
@@ -402,23 +418,26 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 			s.RemoveTransferTemp(runtime, transferID)
 		}
 		log.Printf("read file transfer failed transfer=%d error=%v", transferID, err)
-		return
+		return nil
 	}
 	options := s.transferOptions(runtime, transferID, control.Wait, s.maxObjectBytes)
 	var result connectors.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
 		result, err = execution.Adapter.UploadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
 	} else {
-		result, err = execution.Adapter.DownloadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.RemotePath, item.TempPath, options)
+		result, err = s.downloadBatchItem(itemCtx, runtime, item, execution, options, budget)
+	}
+	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
+		return evidenceErr
 	}
 	if err != nil {
-		if result.Bytes > 0 || result.ChecksumSHA256 != "" {
-			_ = runtime.store.UpdateEvidence(runtime.finalization.Context(), transferID, result.Bytes, result.ChecksumSHA256)
-		}
 		if s.finishFileTransferError(runtime, transferID, itemCtx, &execution, err) {
 			s.cleanupTransferTempAfterError(runtime, transferID, item.TempPath, err)
 		}
-		return
+		if errors.Is(err, connectors.ErrTransferByteLimit) {
+			return err
+		}
+		return nil
 	}
 	completed, err := transferjobs.FinalizeSuccessfulFileTransfer(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256)
 	if err != nil {
@@ -428,11 +447,12 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		s.removeTransferTemp(runtime, transferID, item.TempPath)
 	}
 	if !completed {
-		return
+		return nil
 	}
 	if item.Direction == filetransfer.DirectionDownload && item.BatchID == 0 {
 		s.scheduleTransferRecordTempCleanup(runtime, transferID, item.TempPath, time.Now().Add(s.tempTTL))
 	}
+	return nil
 }
 
 func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectors.TransferProgress {

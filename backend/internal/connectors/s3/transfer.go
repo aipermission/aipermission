@@ -275,7 +275,7 @@ func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPat
 	return TransferResult{Bytes: info.Size(), Size: info.Size(), ChecksumSHA256: checksum, DurationMS: time.Since(started).Milliseconds()}, nil
 }
 
-func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, localPath string, options TransferOptions) (TransferResult, error) {
+func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remotePath string, localPath string, options TransferOptions) (result TransferResult, err error) {
 	if _, err := NormalizeTransferPath(remotePath, false); err != nil {
 		return TransferResult{}, err
 	}
@@ -308,37 +308,40 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 		maxBytes = options.MaxBytes
 	}
 	if response.ContentLength > maxBytes {
-		return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxBytes)
+		return TransferResult{}, fmt.Errorf("%w: download object is larger than %d bytes", connectors.ErrTransferByteLimit, maxBytes)
 	}
 	output, err := os.OpenFile(localPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		return TransferResult{}, err
 	}
-	completed := false
+	var written int64
 	defer func() {
+		result.Bytes = written
 		_ = output.Close()
-		if !completed {
-			_ = os.Remove(localPath)
-		}
 	}()
 	hash := sha256.New()
 	buffer := make([]byte, 256<<10)
-	var written int64
 	for {
 		if err := waitTransfer(ctx, options); err != nil {
 			return TransferResult{}, err
 		}
 		read, readErr := response.Body.Read(buffer)
 		if read > 0 {
-			written += int64(read)
-			if written > maxBytes {
-				return TransferResult{}, fmt.Errorf("download object is larger than %d bytes", maxBytes)
+			if int64(read) > maxBytes-written {
+				return TransferResult{}, fmt.Errorf("%w: download object is larger than %d bytes", connectors.ErrTransferByteLimit, maxBytes)
 			}
-			if _, err := output.Write(buffer[:read]); err != nil {
-				return TransferResult{}, err
+			count, writeErr := output.Write(buffer[:read])
+			written += int64(count)
+			if count > 0 {
+				_, _ = hash.Write(buffer[:count])
+				progressTransfer(options, written, response.ContentLength)
 			}
-			_, _ = hash.Write(buffer[:read])
-			progressTransfer(options, written, response.ContentLength)
+			if writeErr != nil {
+				return TransferResult{}, writeErr
+			}
+			if count != read {
+				return TransferResult{}, io.ErrShortWrite
+			}
 		}
 		if readErr == io.EOF {
 			break
@@ -350,7 +353,6 @@ func DownloadFile(ctx context.Context, runtime connectors.RuntimeContext, remote
 	if err := output.Close(); err != nil {
 		return TransferResult{}, err
 	}
-	completed = true
 	return TransferResult{Bytes: written, Size: written, ChecksumSHA256: hex.EncodeToString(hash.Sum(nil)), DurationMS: time.Since(started).Milliseconds()}, nil
 }
 

@@ -127,6 +127,9 @@ func (s Runner) finishFileTransferError(runtime *Runtime, transferID int64, ctx 
 	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
 		return s.failFileTransfer(runtime, transferID, execution, err, filetransfer.FailureKindOutcomeUnknown)
 	}
+	if errors.Is(err, connectors.ErrTransferByteLimit) {
+		return s.failFileTransfer(runtime, transferID, execution, err, filetransfer.FailureKindValidation)
+	}
 	switch classifyFileTransferInterruption(ctx, err) {
 	case fileTransferTimedOut:
 		return s.failFileTransfer(runtime, transferID, execution, errFileTransferTimedOut, filetransfer.FailureKindTimeout)

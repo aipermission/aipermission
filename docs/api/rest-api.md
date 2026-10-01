@@ -808,7 +808,18 @@ packaged into a temporary zip, then served through `GET
 /api/file-transfer-batches/{id}/download`. Duplicate remote paths in the same
 queue are rejected. Generated zip archives preserve paths relative to the
 downloaded files' common remote directory and add numeric suffixes only for
-colliding entries. A download batch is limited to 1 GiB total remote file size.
+colliding entries. A download batch is limited to 1 GiB of actual downloaded
+content, not only the pre-download stat estimates. Each stream receives the
+smaller of its object limit and the remaining batch budget. Bytes written by
+failed or canceled attempts still consume this budget even when their staging
+files are removed. Once the budget is exhausted, additional pending files are
+not downloaded; limit rejection persists a validation failure, removes owned
+staging after durable failure, and never publishes a completed ZIP.
+Download adapters retain failed partial staging until the gateway persists its
+final byte evidence. That evidence, its history projection, and batch byte totals
+commit together, including late observations after cancellation. Cleanup skips
+active owners; after a restart, retained download staging is reconciled before
+deletion. This does not turn a canceled or failed transfer back into a success.
 
 `GET /api/file-transfer-batches/{id}` returns the batch record, aggregate
 progress, speed/ETA, and ordered per-file items. `POST

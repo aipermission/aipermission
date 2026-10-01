@@ -90,10 +90,7 @@ func (adapter) DownloadFile(ctx context.Context, server connectorapi.FileTransfe
 		return connectors.TransferResult{}, err
 	}
 	result, err := s3connector.DownloadFile(ctx, runtime, remotePath, localPath, s3TransferOptions(options))
-	if err != nil {
-		return connectors.TransferResult{}, err
-	}
-	return transferResult(result), nil
+	return transferResult(result), err
 }
 
 func transferRuntime(ctx context.Context, server connectorapi.FileTransferGateway, runtime connectorapi.TransferRuntime, runtimeID int64) (connectors.RuntimeContext, error) {

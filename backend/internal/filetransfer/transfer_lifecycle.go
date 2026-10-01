@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/aipermission/aipermission/backend/internal/history"
 )
 
 func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
@@ -59,19 +61,22 @@ func (s *Store) UpdateProgressStats(ctx context.Context, id int64, transferred i
 }
 
 func (s *Store) UpdateEvidence(ctx context.Context, id, transferred int64, checksum string) error {
-	if transferred < 0 {
-		transferred = 0
+	if id < 1 || transferred < 0 {
+		return ErrInvalidArgument
 	}
 	now := nowString()
-	_, err := s.updateTransferWithHistory(ctx, id, "update file transfer evidence", `
+	changed, err := s.updateTransferWithProjection(ctx, id, "update file transfer evidence", syncTransferEvidenceWithExecutor, `
 		UPDATE file_transfers
 		SET transferred_bytes = CASE WHEN ? > transferred_bytes THEN ? ELSE transferred_bytes END,
 			checksum_sha256 = CASE WHEN ? != '' THEN ? ELSE checksum_sha256 END,
 			updated_at = ?
-		WHERE id = ? AND status IN (?, ?)`,
+		WHERE id = ? AND status IN (?, ?, ?, ?, ?, ?, ?)`,
 		transferred, transferred, strings.TrimSpace(checksum), strings.TrimSpace(checksum), now, id,
-		StatusRunning, StatusPaused,
+		StatusPendingApproval, StatusPending, StatusRunning, StatusPaused, StatusCompleted, StatusFailed, StatusCanceled,
 	)
+	if err == nil && !changed {
+		return ErrNotFound
+	}
 	return err
 }
 
@@ -310,6 +315,10 @@ func (s *Store) Pause(ctx context.Context, id int64) (bool, error) {
 }
 
 func (s *Store) updateTransferWithHistory(ctx context.Context, id int64, operation string, query string, args ...any) (bool, error) {
+	return s.updateTransferWithProjection(ctx, id, operation, syncTransferHistoryWithExecutor, query, args...)
+}
+
+func (s *Store) updateTransferWithProjection(ctx context.Context, id int64, operation string, project func(context.Context, history.CommandProjectionExecutor, int64) error, query string, args ...any) (bool, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, fmt.Errorf("begin %s: %w", operation, err)
@@ -326,7 +335,7 @@ func (s *Store) updateTransferWithHistory(ctx context.Context, id int64, operati
 	if rows == 0 {
 		return false, nil
 	}
-	if err := syncTransferHistoryWithExecutor(ctx, tx, id); err != nil {
+	if err := project(ctx, tx, id); err != nil {
 		return false, err
 	}
 	if err := tx.Commit(); err != nil {

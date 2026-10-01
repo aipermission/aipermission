@@ -19,6 +19,21 @@ func syncTransferHistoryWithExecutor(ctx context.Context, executor history.Comma
 	return history.SyncFileTransferWithExecutor(ctx, executor, id)
 }
 
+// Late evidence must repair canceled batch totals in the same transaction.
+func syncTransferEvidenceWithExecutor(ctx context.Context, executor history.CommandProjectionExecutor, id int64) error {
+	if err := syncTransferHistoryWithExecutor(ctx, executor, id); err != nil {
+		return err
+	}
+	var batchID int64
+	if err := executor.QueryRowContext(ctx, `SELECT COALESCE(batch_id, 0) FROM file_transfers WHERE id = ?`, id).Scan(&batchID); err != nil {
+		return fmt.Errorf("read file transfer evidence batch: %w", err)
+	}
+	if batchID > 0 {
+		return recalculateBatch(ctx, executor, batchID)
+	}
+	return nil
+}
+
 // SyncHistory repairs the derived history projection after a canonical transfer update.
 func (s *Store) SyncHistory(ctx context.Context, id int64) error {
 	return s.syncTransferHistory(ctx, id)
