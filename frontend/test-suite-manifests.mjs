@@ -90,6 +90,12 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/postgres/use-postgres-provisioning.ts": [
     "src/connectors/templates/postgres/use-postgres-provisioning.component.test.tsx",
   ],
+  "src/connectors/templates/postgres/role-lifecycle/use-role-history.ts": [
+    "src/connectors/templates/postgres/role-lifecycle/use-role-history.component.test.tsx",
+    "src/connectors/templates/postgres/role-lifecycle/use-role-reconciliation.component.test.tsx",
+    "src/connectors/templates/postgres/role-lifecycle/role-decision-consent.component.test.tsx",
+    "src/test/postgres/role-history-transport.component.test.tsx",
+  ],
   "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.tsx",
   ],

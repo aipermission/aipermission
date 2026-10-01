@@ -1726,10 +1726,58 @@
       "lines": 100
     },
     "src/connectors/templates/postgres/provisioning.ts": {
-      "statements": 93.8,
-      "branches": 73.22,
+      "statements": 98.24,
+      "branches": 77.34,
       "functions": 100,
-      "lines": 94.56
+      "lines": 98.92
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-history-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-history-dialog.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-history-identity.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-history-loader.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-history-types.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/role-reconciliation-form.tsx": {
+      "statements": 100,
+      "branches": 98.14,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/postgres/role-lifecycle/use-role-history.ts": {
+      "statements": 98.36,
+      "branches": 96.22,
+      "functions": 100,
+      "lines": 99.03
     },
     "src/connectors/templates/postgres/use-postgres-backup-restore.ts": {
       "statements": 97.75,

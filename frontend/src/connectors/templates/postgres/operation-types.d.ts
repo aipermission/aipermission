@@ -4,10 +4,10 @@ import type { DatabaseTarget } from "../_shared/database-model-types";
 export type PostgresOperation = {
   open: boolean;
   connector_kind?: "postgres" | "";
-  type?: "provision-user" | "backup-restore" | "";
+  type?: "provision-user" | "backup-restore" | "role-history" | "";
   state?: string;
   error?: string | null;
-  target?: Partial<Pick<DatabaseTarget, "id" | "name" | "config">>;
+  target?: Partial<Pick<DatabaseTarget, "id" | "name" | "config" | "profiles">>;
   profile?: Partial<Pick<components["schemas"]["ConnectorCredentialProfile"], "id" | "ref" | "label">>;
 };
 export type ProvisionResult = { profile?: { id?: number; label?: string }; result?: { display_text?: string } };
