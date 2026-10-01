@@ -146,6 +146,9 @@ func runHostPingAttempts(ctx context.Context, scope HostPingScope, request HostP
 	started := time.Now()
 	received := 0
 	for attemptNumber := 1; attemptNumber <= count; attemptNumber++ {
+		if ctx.Err() != nil {
+			return HostPingResponse{}, false
+		}
 		attempt := HostPingAttempt{Attempt: attemptNumber}
 		attemptStarted := time.Now()
 		attemptContext, cancel := context.WithTimeout(ctx, hostPingTimeout)
@@ -155,6 +158,9 @@ func runHostPingAttempts(ctx context.Context, scope HostPingScope, request HostP
 		})
 		attempt.DurationMS = time.Since(attemptStarted).Milliseconds()
 		cancel()
+		if ctx.Err() != nil {
+			return HostPingResponse{}, false
+		}
 		if err != nil {
 			attempt.Error = scope.Redact(ctx, normalizeHostPingError(err))
 		} else {
@@ -169,6 +175,9 @@ func runHostPingAttempts(ctx context.Context, scope HostPingScope, request HostP
 			case <-time.After(hostPingPause):
 			}
 		}
+	}
+	if ctx.Err() != nil {
+		return HostPingResponse{}, false
 	}
 	return HostPingResponse{
 		OK: received == count, Host: request.Host, Port: request.Port, Mode: request.Mode,

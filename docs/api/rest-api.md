@@ -318,6 +318,11 @@ connector profile so the result matches what Redis / Valkey, Postgres, RabbitMQ,
 future TCP-backed connector would see from that SSH target. `project_id` is
 required, and the transport target must belong to that same project.
 
+If the request is canceled or its deadline expires during the checks, the
+handler returns `408` instead of publishing a completed reachability result or
+completed ping observation. A probe's own timeout while the request is still
+active remains a failed attempt in the normal `200` measurement response.
+
 `POST /api/connector-targets/{id}/operations/docker-check` runs a read-only,
 on-demand Docker status command through the SSH connector adapter. It does not
 persist inventory or poll in the background. The response includes whether
