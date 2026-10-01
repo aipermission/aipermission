@@ -2,8 +2,8 @@ package connectormanagement
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -26,7 +26,7 @@ func RuntimeCredentialPreparation(storage CredentialStorage, provider Credential
 					return canonicalize(ctx, connectorKind, credentialKind, public)
 				}
 			}
-			return cloneMap(public), nil
+			return connectorcredentials.CloneMetadata(public), nil
 		},
 		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			secret := map[string]any{}
@@ -55,48 +55,9 @@ func RuntimeCredentialPorts(storage CredentialStorage, capabilities RuntimeCapab
 			if capabilities != nil {
 				resolved = capabilities(target.ConnectorKind)
 			}
-			return connectors.RuntimeContext{
-				Target: targetViewForProfile(target, profile.ID), Profile: connectortargets.CredentialProfileView(profile),
-				Secrets: secretAccessor{values: secrets, boundary: boundary}, Events: noopEventSink{}, Capabilities: resolved,
-			}
+			return connectorcredentials.Context(target, profile, secrets, boundary, resolved)
 		},
 		RedactResult: redactResult,
 		RedactText:   redactText,
 	}
-}
-
-type secretAccessor struct {
-	values   map[string]any
-	boundary CredentialBoundary
-}
-
-func (accessor secretAccessor) GetSecret(_ context.Context, name string) (string, error) {
-	value, ok := accessor.values[name]
-	if !ok || value == nil {
-		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
-	}
-	text := fmt.Sprint(value)
-	accessor.boundary.Add(text)
-	return text, nil
-}
-
-func (accessor secretAccessor) RegisterSensitiveValue(value string) { accessor.boundary.Add(value) }
-
-type noopEventSink struct{}
-
-func (noopEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
-
-func targetViewForProfile(target connectortargets.Target, profileID int64) connectors.TargetView {
-	return connectors.TargetView{
-		ID: target.ID, Ref: connectors.FormatTargetRef(target.ConnectorKind, target.ID, profileID),
-		ConnectorKind: target.ConnectorKind, Name: target.Name, Config: cloneMap(target.Config),
-	}
-}
-
-func cloneMap(input map[string]any) map[string]any {
-	result := make(map[string]any, len(input))
-	for key, value := range input {
-		result[key] = value
-	}
-	return result
 }

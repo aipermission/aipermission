@@ -8,31 +8,11 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 )
-
-type secretAccessor struct {
-	values   map[string]any
-	boundary actionresult.CredentialBoundary
-}
-
-func (a secretAccessor) GetSecret(_ context.Context, name string) (string, error) {
-	value, ok := a.values[name]
-	if !ok || value == nil {
-		return "", fmt.Errorf("%w: %q", connectors.ErrSecretNotFound, name)
-	}
-	text := fmt.Sprint(value)
-	a.boundary.Add(text)
-	return text, nil
-}
-
-func (a secretAccessor) RegisterSensitiveValue(value string) { a.boundary.Add(value) }
-
-type noopEventSink struct{}
-
-func (noopEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
 
 func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	if err := r.validate(); err != nil {
@@ -295,8 +275,8 @@ func (r *Runtime) Snapshot(ctx context.Context, prepared PreparedRequest) (Execu
 func (r *Runtime) ExecutePrepared(ctx context.Context, principal executionprincipal.Principal, prepared PreparedRequest, snapshot ExecutionSnapshot) (connectors.ActionResult, error) {
 	result, err := r.service.Execute(ctx, ExecutionRequest{Prepared: prepared, Runtime: connectors.RuntimeContext{
 		Target: prepared.Target, Profile: prepared.Profile,
-		Secrets: secretAccessor{values: snapshot.Secrets, boundary: snapshot.CredentialBoundary},
-		Events:  noopEventSink{}, Principal: connectors.Principal{
+		Secrets: connectorcredentials.Secrets(snapshot.Secrets, snapshot.CredentialBoundary),
+		Events:  connectorcredentials.EventSink{}, Principal: connectors.Principal{
 			Kind: connectors.PrincipalKind(principal.Kind), TokenID: principal.TokenID,
 			WorkspaceID: principal.WorkspaceID, RuntimeInstanceID: principal.RuntimeInstanceID,
 		},

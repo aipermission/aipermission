@@ -27,7 +27,8 @@ func TestRuntimeCredentialPortsBuildsScopedSecretAccessor(t *testing.T) {
 	ports := RuntimeCredentialPorts(CredentialStorage{}, nil, nil, nil)
 	boundary := actionresult.NewCredentialBoundary(nil)
 	runtimeContext := ports.RuntimeContext(
-		connectortargets.Target{ID: 4, ConnectorKind: "fixture", Name: "target", Config: map[string]any{"mode": "direct"}},
+		connectortargets.Target{ID: 4, ProjectID: 12, ConnectorKind: "fixture", Name: "target",
+			UpdatedAt: "2026-10-01T00:00:00Z", Config: map[string]any{"mode": "direct"}},
 		connectortargets.CredentialProfile{ID: 7, TargetID: 4, Label: "main"},
 		map[string]any{"password": "secret-value"}, boundary,
 	)
@@ -37,6 +38,9 @@ func TestRuntimeCredentialPortsBuildsScopedSecretAccessor(t *testing.T) {
 	}
 	if runtimeContext.Target.Ref != connectors.FormatTargetRef("fixture", 4, 7) {
 		t.Fatalf("target ref=%q", runtimeContext.Target.Ref)
+	}
+	if runtimeContext.Target.ProjectID != 12 || runtimeContext.Target.UpdatedAt != "2026-10-01T00:00:00Z" {
+		t.Fatalf("runtime target lost authority fields: %#v", runtimeContext.Target)
 	}
 	if boundary.Redact("prefix secret-value suffix") == "prefix secret-value suffix" {
 		t.Fatal("credential boundary did not register accessed secret")

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -210,7 +211,7 @@ func (s *Scope) resolveRuntimeContext(ctx context.Context, runtimeID int64, capa
 	if s.secretAccessor == nil {
 		return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, ErrInvalidRuntime
 	}
-	return connectors.RuntimeContext{Target: target, Profile: profile, Secrets: s.secretAccessor(secrets), Events: noopEventSink{}}, surface, nil
+	return connectors.RuntimeContext{Target: target, Profile: profile, Secrets: s.secretAccessor(secrets), Events: connectorcredentials.EventSink{}}, surface, nil
 }
 
 func (s *Scope) DataRuntime() connectorapi.ConnectorDataRuntime {
@@ -364,10 +365,6 @@ func (r sessionRuntime) InterruptActive(ctx context.Context, principal connector
 	}
 	return manager.InterruptActive(ctx, core, coreSessionHandle(handle))
 }
-
-type noopEventSink struct{}
-
-func (noopEventSink) Emit(context.Context, connectors.ActionEvent) error { return nil }
 
 var _ connectorapi.ConnectorDataRuntime = dataRuntime{}
 var _ connectorapi.LiveConsoleRuntime = dataRuntime{}
