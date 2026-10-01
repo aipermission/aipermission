@@ -161,6 +161,11 @@ temporary directory; abandoned files older than 24 hours are scavenged during
 startup. Database rename/move writes a durable local journal before moving the
 SQLCipher file, WAL/SHM sidecars, or migration snapshots. Startup rolls an
 incomplete journal back to its source and preserves a durably completed move.
+Rollback durably removes the completion marker before returning any artifact
+to its source basename. If that directory sync fails, it stops before reverse
+renames and retains the journal and current artifact locations for recovery.
+This also keeps migration snapshots associated with the database through
+interrupted rollback; checkpoint and runtime-close requirements are unchanged.
 
 The database password and gateway secret serve different purposes. The password
 opens the SQLCipher file; the gateway secret decrypts connector credentials
