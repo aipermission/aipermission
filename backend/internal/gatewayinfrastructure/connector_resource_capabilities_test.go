@@ -53,7 +53,7 @@ func TestScopedCapabilitiesDoNotRequireActionRuntimeAuthority(t *testing.T) {
 		"domain_journal": testRuntimeCapability("domain_journal"),
 	}}
 	factoryCalls := 0
-	result, err := connectorcapabilities.ForRuntime(runtimeCapabilities{
+	result, err := connectorcapabilities.ForRuntime(connectorcapabilities.Set{
 		connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 	}, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 		factoryCalls++
@@ -94,7 +94,7 @@ func TestCapabilityCompositionPreservesActionAndCombinedProviders(t *testing.T) 
 			t.Fatal("combined adapter discarded scoped capabilities")
 		}
 	}
-	base := runtimeCapabilities{"existing": testRuntimeCapability("existing")}
+	base := connectorcapabilities.Set{"existing": testRuntimeCapability("existing")}
 	if result, err := connectorcapabilities.ForRuntime(base, nil, nil, nil); err != nil || result["existing"] == nil {
 		t.Fatalf("non-provider connector changed: %#v err=%v", result, err)
 	}
@@ -112,7 +112,7 @@ func TestCapabilityCompositionFailsClosedBeforeActionAuthorityOnInvalidResources
 			&actionCapabilityProvider{},
 		}
 		factoryCalls := 0
-		result, err := connectorcapabilities.ForRuntime(runtimeCapabilities{
+		result, err := connectorcapabilities.ForRuntime(connectorcapabilities.Set{
 			connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 		}, provider, resources, func() (connectorapi.RuntimeActionGateway, connectorapi.ActionRuntime) {
 			factoryCalls++
@@ -167,7 +167,7 @@ func TestCredentialCompositionNeverExposesActionProviderAuthority(t *testing.T) 
 		if combined {
 			adapter = combinedCapabilityProvider{resource, action}
 		}
-		result, err := connectorcapabilities.ForResources(runtimeCapabilities{
+		result, err := connectorcapabilities.ForResources(connectorcapabilities.Set{
 			connectors.NetworkTransportCapabilityName: testRuntimeCapability(connectors.NetworkTransportCapabilityName),
 		}, adapter, resources)
 		if err != nil || result[connectors.NetworkTransportCapabilityName] == nil || result["action_service"] != nil || action.calls != 0 {
