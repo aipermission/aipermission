@@ -878,6 +878,13 @@ func TestConsoleSessionManagerEnsureReadyReturnsConnectionError(t *testing.T) {
 	manager := NewManager(database, func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error) {
 		return nil, errors.New("transport dial: dial tcp 127.0.0.1:23: connect: connection refused")
 	}, nil)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := manager.CloseAll(ctx); err != nil {
+			t.Errorf("drain failed session before closing test database: %v", err)
+		}
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
