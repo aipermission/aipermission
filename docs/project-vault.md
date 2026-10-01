@@ -1,5 +1,12 @@
 # Project Vault
 
+Vault capacity is bounded to 5,000 active items per database and 1,000 per owner
+project. Moving an item to another owner checks the destination's capacity in
+the metadata transaction. Editing an item without changing its owner does not
+consume another slot; an owner transfer does not increase the database total.
+Expired active items still count until removed or archived. Rejected transfers
+leave the item's value, revisions, assignments, tags, and usage notes unchanged.
+
 Project Vault is a local, project-scoped secret inventory for one developer.
 It stores reusable secret values in the encrypted AIPermission database and can
 apply selected values to supported connector console sessions without returning
