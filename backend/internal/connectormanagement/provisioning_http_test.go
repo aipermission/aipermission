@@ -13,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 type failedCleanupProvisioningConnector struct{ managementTestConnector }
@@ -119,7 +120,7 @@ func TestProvisioningProfileLabelExistsFailsClosedOnStoreError(t *testing.T) {
 	if err := fixture.database.Close(); err != nil {
 		t.Fatalf("close database: %v", err)
 	}
-	if exists, err := provisioningProfileLabelExists(t.Context(), connectortargets.NewStore(fixture.database), fixture.target.ID, "generated-profile"); err == nil || exists {
+	if exists, err := connectortargets.NewStore(fixture.database).HasCredentialProfileLabel(t.Context(), fixture.target.ID, "generated-profile"); err == nil || exists {
 		t.Fatalf("exists=%t err=%v, want a closed-store error", exists, err)
 	}
 }
@@ -289,11 +290,20 @@ func createDuplicateProvisioningProfile(t *testing.T, fixture *managementHTTPFix
 type provisioningHTTPTestState struct {
 	auditActions      []string
 	ensuredProfileID  int64
+	transactionCalls  int
+	encryptionCalls   int
+	ensureCalls       int
+	runtime           *CredentialRuntimePorts
 	registry          *connectors.Registry
 	auditErr          error
 	exclusiveHeld     bool
 	exclusiveAcquires int
 	exclusiveReleases int
+	finishTransaction func(*sql.Tx) error
+	transaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
+	ensureErr         error
+	ensure            func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error
+	auditPayloads     []any
 }
 
 func performProvisioningRequest(
@@ -307,8 +317,12 @@ func performProvisioningRequest(
 		if registry == nil {
 			registry = fixture.registry
 		}
+		runtime := managementCredentialRuntimePorts()
+		if state.runtime != nil {
+			runtime = *state.runtime
+		}
 		return ProvisioningScope{
-			Database: fixture.database, Registry: registry, Runtime: managementCredentialRuntimePorts(),
+			Database: fixture.database, Registry: registry, Runtime: runtime,
 			AcquireExclusive: func(context.Context) (func(), error) {
 				if state.exclusiveHeld {
 					t.Fatal("exclusive lifecycle gate acquired twice")
@@ -321,6 +335,7 @@ func performProvisioningRequest(
 				}, nil
 			},
 			EncryptSecret: func(_ context.Context, profileID int64, payload json.RawMessage) (string, error) {
+				state.encryptionCalls++
 				state.requireExclusive(t)
 				if profileID < 1 || !strings.Contains(string(payload), "managed-secret") {
 					t.Fatalf("encrypt input profile=%d payload=%s", profileID, payload)
@@ -328,7 +343,11 @@ func performProvisioningRequest(
 				return "encrypted-managed-secret", nil
 			},
 			WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
+				state.transactionCalls++
 				state.requireExclusive(t)
+				if state.transaction != nil {
+					return state.transaction(ctx, mutate)
+				}
 				tx, err := fixture.database.BeginTx(ctx, nil)
 				if err != nil {
 					return err
@@ -339,18 +358,29 @@ func performProvisioningRequest(
 					return nil
 				}
 				if err := mutate(tx, appendAudit); err != nil {
-					return err
+					if rollbackErr := tx.Rollback(); rollbackErr != nil {
+						return transactionstate.Unknown(errors.Join(err, rollbackErr))
+					}
+					return transactionstate.NotCommitted(err)
+				}
+				if state.finishTransaction != nil {
+					return state.finishTransaction(tx)
 				}
 				return tx.Commit()
 			},
-			EnsureRuntimeSurfaces: func(_ context.Context, _ *connectortargets.Store, _ connectortargets.Target, profile connectortargets.CredentialProfile) error {
+			EnsureRuntimeSurfaces: func(ctx context.Context, store *connectortargets.Store, target connectortargets.Target, profile connectortargets.CredentialProfile) error {
+				state.ensureCalls++
 				state.requireExclusive(t)
 				state.ensuredProfileID = profile.ID
-				return nil
+				if state.ensure != nil {
+					return state.ensure(ctx, store, target, profile)
+				}
+				return state.ensureErr
 			},
-			AuditRequired: func(_ context.Context, action string, _ any) error {
+			AuditRequired: func(_ context.Context, action string, payload any) error {
 				state.requireExclusive(t)
 				state.auditActions = append(state.auditActions, action)
+				state.auditPayloads = append(state.auditPayloads, payload)
 				return state.auditErr
 			},
 		}, true

@@ -142,6 +142,10 @@ callback admission and COMMIT require acknowledged rollback instead of publishin
 a canceled callback. Cancellation after COMMIT starts does not overturn an
 acknowledged commit. Detached BEGIN uses the local SQLCipher driver's deferred
 transaction and bounded busy wait, not an arbitrary driver's wall-clock bound.
+Credential provisioning compensates a remote credential only after confirmed
+non-publication. For ambiguous publication it may confirm the complete prepared
+profile with fresh exact readback; otherwise it records reconciliation-required
+state and retains the remote credential. Row absence is not rollback proof.
 
 ## Dispatcher
 
