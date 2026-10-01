@@ -1834,10 +1834,10 @@
       "lines": 100
     },
     "src/connectors/templates/rabbitmq/helpers.ts": {
-      "statements": 97.56,
+      "statements": 97.72,
       "branches": 89.13,
       "functions": 100,
-      "lines": 96.87
+      "lines": 96.96
     },
     "src/connectors/templates/rabbitmq/list-item.ts": {
       "statements": 100,
@@ -1859,7 +1859,7 @@
     },
     "src/connectors/templates/rabbitmq/publish-form.tsx": {
       "statements": 100,
-      "branches": 88.23,
+      "branches": 93.33,
       "functions": 100,
       "lines": 100
     },
@@ -1877,15 +1877,15 @@
     },
     "src/connectors/templates/rabbitmq/routing-key-picker.tsx": {
       "statements": 100,
-      "branches": 97.36,
+      "branches": 97.5,
       "functions": 100,
       "lines": 100
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": {
-      "statements": 97.03,
-      "branches": 83.67,
+      "statements": 100,
+      "branches": 91.83,
       "functions": 100,
-      "lines": 99.11
+      "lines": 100
     },
     "src/connectors/templates/redis/browser-helpers.ts": {
       "statements": 100,
@@ -1990,10 +1990,10 @@
       "lines": 100
     },
     "src/connectors/templates/redis/value-workspace.tsx": {
-      "statements": 95.23,
-      "branches": 84.21,
+      "statements": 100,
+      "branches": 90.16,
       "functions": 100,
-      "lines": 95
+      "lines": 100
     },
     "src/connectors/templates/registry.tsx": {
       "statements": 100,
@@ -2422,8 +2422,8 @@
       "lines": 100
     },
     "src/lib/gateway-contracts/connector-catalog-contract.ts": {
-      "statements": 88.88,
-      "branches": 90.9,
+      "statements": 89.65,
+      "branches": 92.5,
       "functions": 100,
       "lines": 100
     },
