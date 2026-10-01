@@ -29,6 +29,7 @@ it("binds native SSH credential state to the owned credential form and update ac
     formMode: result.current.drawer.mode,
     state: result.current.actionState,
     onSubmit: result.current.save,
+    onReadImportFile: vi.fn(),
   });
   expect(props.form.key_type).toBe("rsa");
   act(() => {

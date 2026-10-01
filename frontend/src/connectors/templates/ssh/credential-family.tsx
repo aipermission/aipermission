@@ -2,7 +2,7 @@ import { defineCredentialFamily } from "../_shared/credential-family-registratio
 import { credentialDisplayRow } from "../_shared/credential-display-row";
 import type { InventoryTarget } from "../../../lib/gateway-contracts/connector-inventory-contract";
 import { optionalConsolePort, optionalConsoleText, optionalConsoleTextOrNumber } from "../_shared/console-target-config";
-import { SSHCredentialFormTemplate } from "./credential-form";
+import { SSHCredentialFormController } from "./credential-form-controller";
 import { SSHCredentialRowActionsTemplate } from "./credential-row-actions";
 import { sshCredentialResourcesResponse } from "./model-helpers";
 import * as model from "./model";
@@ -25,14 +25,12 @@ export const sshCredentialFamily = defineCredentialFamily<SSHCredentialState, Ro
   displayRow: credentialDisplayRow,
   renderOperations: (row) => <SSHCredentialRowActionsTemplate row={row} />,
   renderForm: ({ editor }) => (
-    <SSHCredentialFormTemplate
-      {...model.credentialFormProps({
-        formState: editor.formState,
-        setFormState: editor.setFormState,
-        formMode: editor.drawer.mode,
-        state: editor.actionState,
-        onSubmit: editor.save,
-      })}
+    <SSHCredentialFormController
+      formState={editor.formState}
+      setFormState={editor.setFormState}
+      formMode={editor.drawer.mode}
+      state={editor.actionState}
+      onSubmit={editor.save}
     />
   ),
 });

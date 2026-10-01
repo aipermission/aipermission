@@ -111,6 +111,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/s3/versions-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/use-s3-upload.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
   "src/connectors/templates/ssh/bulk-command-dialog.tsx": ["src/connectors/templates/ssh/bulk-command-dialog.component.test.tsx"],
+  "src/connectors/templates/ssh/credential-form-controller.tsx": ["src/connectors/templates/ssh/credential-import.component.test.tsx"],
   "src/connectors/templates/ssh/operations.tsx": ["src/connectors/templates/ssh/console.component.test.tsx"],
   "src/connectors/templates/ssh/use-cleanup-reconciliation.ts": [
     "src/connectors/templates/ssh/use-cleanup-reconciliation.component.test.tsx",

@@ -145,9 +145,9 @@ export function SSHCredentialFormTemplate({
             />
           </Field>
           {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
-          <Button type="submit" disabled={state.state === "importing"}>
+          <Button type="submit" disabled={state.state === "importing" || state.state === "reading"}>
             <Upload className="h-4 w-4" />
-            {state.state === "importing" ? "Importing..." : "Import credential"}
+            {state.state === "importing" ? "Importing..." : state.state === "reading" ? "Reading key file..." : "Import credential"}
           </Button>
           <Notice tone="warn">
             Imported keys are decrypted once during import, normalized, and then stored in the encrypted local vault. The passphrase is not
