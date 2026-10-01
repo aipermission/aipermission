@@ -1,4 +1,4 @@
-package connectorruntime
+package connectorports
 
 import (
 	"context"
@@ -40,7 +40,7 @@ func TestEvidenceResourcesExposeOnlyGetAndPreserveScopeAndErrors(t *testing.T) {
 		}
 		return connectorapi.CredentialResource{}, readFailure
 	}}}
-	runtime := EvidenceResources(resources)
+	runtime := evidenceResources(resources)
 	reader := runtime.CredentialResources("domain_journal")
 	if resources.kind != "domain_journal" {
 		t.Fatal("evidence runtime dropped connector resource-class scope")
@@ -70,12 +70,12 @@ func TestEvidenceResourcesExposeOnlyGetAndPreserveScopeAndErrors(t *testing.T) {
 
 func TestEvidenceResourcesRejectUnavailableBackingStores(t *testing.T) {
 	for _, resources := range []connectorapi.ScopedResourceRuntime{nil, (*evidenceTestResources)(nil)} {
-		if got := EvidenceResources(resources); got != nil {
+		if got := evidenceResources(resources); got != nil {
 			t.Fatal("nil or typed-nil resource runtime accepted")
 		}
 	}
 	for _, store := range []connectorapi.CredentialResourceStore{nil, (*evidenceTestStore)(nil)} {
-		if got := EvidenceResources(&evidenceTestResources{store: store}).CredentialResources("domain_journal"); got != nil {
+		if got := evidenceResources(&evidenceTestResources{store: store}).CredentialResources("domain_journal"); got != nil {
 			t.Fatal("nil or typed-nil backing store accepted")
 		}
 	}

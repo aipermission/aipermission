@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
@@ -121,10 +120,8 @@ func PortCredentialResourceRuntime(workspace Workspace, kind string) connectorap
 	return connectortransport.CredentialResourceRuntime(workspace.runtime, kind)
 }
 
-type SecretAccessorFactory func(map[string]any) connectors.SecretAccessor
-
-func TransferRuntimeWithSecretAccessor(workspace Workspace, kind string, accessor SecretAccessorFactory) connectorapi.TransferRuntime {
-	scope := connectortransport.ScopeWithSecretAccessor(workspace.runtime, kind, connectorruntime.SecretAccessorFactory(accessor))
+func TransferRuntimeWithSecretAccessor(workspace Workspace, kind string, accessor func(map[string]any) connectors.SecretAccessor) connectorapi.TransferRuntime {
+	scope := connectortransport.ScopeWithSecretAccessor(workspace.runtime, kind, accessor)
 	return scope.TransferRuntime()
 }
 

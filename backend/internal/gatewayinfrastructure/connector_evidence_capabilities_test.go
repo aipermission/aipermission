@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorcapabilities"
-	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
@@ -27,13 +26,19 @@ type allCapabilityProviders struct {
 	*evidenceCapabilityProvider
 }
 
+type evidenceContractRuntime struct{}
+
+func (evidenceContractRuntime) CredentialResources(string) connectorapi.CredentialResourceReader {
+	return nil
+}
+
 func TestEvidenceCapabilityCompositionCannotInvokeMutableOrActionProviders(t *testing.T) {
 	resource := &scopedCapabilityProvider{}
 	action := &actionCapabilityProvider{}
 	evidence := &evidenceCapabilityProvider{provided: map[string]connectors.RuntimeCapability{
 		"local_evidence": testRuntimeCapability("local_evidence"),
 	}}
-	runtime := connectorruntime.EvidenceResources(connectorruntime.NewScope("fixture", connectorruntime.Dependencies{}).ScopedResourceRuntime())
+	runtime := evidenceContractRuntime{}
 	result, err := connectorcapabilities.Evidence(allCapabilityProviders{resource, action, evidence}, runtime)
 	if err != nil || len(result) != 1 || result["local_evidence"] == nil || evidence.calls != 1 || evidence.seen != runtime || resource.calls != 0 || action.calls != 0 {
 		t.Fatalf("evidence authority crossed boundary: %#v %v calls=%d/%d/%d", result, err, resource.calls, action.calls, evidence.calls)
@@ -45,7 +50,7 @@ func TestEvidenceCapabilityCompositionCannotInvokeMutableOrActionProviders(t *te
 }
 
 func TestEvidenceCapabilityCompositionRejectsMissingAndProtectedAuthority(t *testing.T) {
-	runtime := connectorruntime.EvidenceResources(connectorruntime.NewScope("fixture", connectorruntime.Dependencies{}).ScopedResourceRuntime())
+	runtime := evidenceContractRuntime{}
 	for _, adapter := range []connectorapi.Adapter{nil, struct{}{}, (*evidenceCapabilityProvider)(nil), &actionCapabilityProvider{}, &scopedCapabilityProvider{}} {
 		if result, err := connectorcapabilities.Evidence(adapter, runtime); err == nil || result != nil {
 			t.Fatalf("missing evidence provider accepted: %#v %v", result, err)
