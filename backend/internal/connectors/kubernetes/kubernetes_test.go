@@ -214,7 +214,7 @@ func TestListPodsUsesSelectedNamespaces(t *testing.T) {
 
 func TestConnectionSelectedScopeDoesNotRequireClusterNamespaceList(t *testing.T) {
 	transport := &fakeCommandTransport{results: map[string]connectors.CommandRunResult{
-		"kubectl get pods -n 'production' --limit=1 -o json": {Stdout: `{"items":[]}`, DurationMS: 5},
+		"kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'": {Stdout: `{"items":[]}`, DurationMS: 5},
 	}}
 	result, err := New().TestConnection(context.Background(), connectors.RuntimeContext{
 		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
@@ -222,7 +222,7 @@ func TestConnectionSelectedScopeDoesNotRequireClusterNamespaceList(t *testing.T)
 	if err != nil || result.Status != connectors.TestOK {
 		t.Fatalf("test connection result=%#v err=%v", result, err)
 	}
-	if len(transport.commands) != 1 || transport.commands[0] != "kubectl get pods -n 'production' --limit=1 -o json" {
+	if len(transport.commands) != 1 || transport.commands[0] != "kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'" {
 		t.Fatalf("commands = %#v", transport.commands)
 	}
 }

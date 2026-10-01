@@ -1,5 +1,5 @@
 name: Set up backend native dependencies
-description: Install native headers required by the embedded SQLCipher runtime.
+description: Install native headers and verify the Linux backend CLI test dependency.
 
 runs:
   using: composite
@@ -9,3 +9,8 @@ runs:
       run: |
         sudo apt-get update
         sudo apt-get install -y --no-install-recommends libssl-dev
+    - name: Verify kubectl for connector CLI regressions
+      shell: bash
+      run: |
+        command -v kubectl
+        kubectl version --client -o json
