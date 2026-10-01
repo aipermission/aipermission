@@ -306,6 +306,25 @@ results fail explicitly; narrow MATCH rather than assuming a partial result
 is complete. The display preview may be shortened; use the structured keys.
 SCAN is not a snapshot and may repeat keys during concurrent changes.
 
+`get_key` collection previews (`hash`, `set`, `list`, `zset`) retain at most
+512 KiB of encoded value data, including hash field names and JSON escaping.
+`max_bytes` clips each individual value/member; it is not a collection-wide
+limit. `truncated` means values were clipped or entries remain, while
+`complete` means enumeration reached its end, not that every value is complete.
+`returned_items` counts retained entries. If enumeration is incomplete, pass
+`next_input` unchanged to the next `get_key` call. Hash/set continuations use
+`cursor` plus a page `offset`, replaying the same scan page with a stable COUNT
+hint; list/sorted-set continuations use a range `offset`. Omitted/null optional
+cursor and offset values use the initial position, as in shared schema
+normalization; they do not resume a previous preview. These are not snapshots:
+concurrent changes may repeat or skip entries, and a shortened replay page fails
+explicitly rather than claiming completion. Restart discovery if that happens.
+An exactly full range page may require one empty final read. After 100 scan
+pages, the partial result has `scan_limit_reached: true` and a continuation.
+Hash field identities are never shortened or repaired; a field that cannot fit
+the preview budget or is not UTF-8 fails explicitly. Collection metadata and
+continuation input together are capped at 3 MiB, below the shared result limit.
+
 Key identities are exact UTF-8 strings: whitespace, NUL, valid Unicode and
 literal U+FFFD are preserved through discovery and later actions. Non-UTF-8
 binary key inputs are rejected before key commands. If SCAN returns such a

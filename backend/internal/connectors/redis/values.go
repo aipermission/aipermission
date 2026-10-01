@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -119,59 +118,6 @@ func redisKeyType(client *redisClient, key string) (string, error) {
 	return respString(value), nil
 }
 
-func redisScanCollection(client *redisClient, command string, key string, limit int, maxBytes int) ([]string, error) {
-	cursor := "0"
-	items := []string{}
-	for pages := 0; len(items) < limit; pages++ {
-		if pages == maxScanPages {
-			return nil, fmt.Errorf("redis collection scan exceeded %d pages", maxScanPages)
-		}
-		value, err := client.Do(command, key, cursor, "COUNT", strconv.Itoa(min(limit-len(items), 100)))
-		if err != nil {
-			return nil, err
-		}
-		nextCursor, page, err := redisScanPage(value, command)
-		if err != nil {
-			return nil, err
-		}
-		cursor = nextCursor
-		items = append(items, limitStrings(page, limit-len(items), maxBytes)...)
-		if cursor == "0" {
-			break
-		}
-	}
-	return items, nil
-}
-
-func redisScanHash(client *redisClient, key string, limit int) (map[string]string, error) {
-	cursor := "0"
-	fields := make(map[string]string, limit)
-	for pages := 0; len(fields) < limit; pages++ {
-		if pages == maxScanPages {
-			return nil, fmt.Errorf("redis hash scan exceeded %d pages", maxScanPages)
-		}
-		value, err := client.Do("HSCAN", key, cursor, "COUNT", strconv.Itoa(min(limit-len(fields), 100)))
-		if err != nil {
-			return nil, err
-		}
-		nextCursor, items, err := redisScanPage(value, "HSCAN")
-		if err != nil {
-			return nil, err
-		}
-		if len(items)%2 != 0 {
-			return nil, fmt.Errorf("unexpected HSCAN response: field and value pairs are incomplete")
-		}
-		for index := 0; index < len(items) && len(fields) < limit; index += 2 {
-			fields[items[index]] = items[index+1]
-		}
-		cursor = nextCursor
-		if cursor == "0" {
-			break
-		}
-	}
-	return fields, nil
-}
-
 func redisScanPage(value respValue, command string) (string, []string, error) {
 	if value.kind != respArray || value.null || len(value.array) != 2 {
 		return "", nil, fmt.Errorf("unexpected %s response: expected cursor and items", command)
@@ -192,22 +138,13 @@ func redisScanPage(value respValue, command string) (string, []string, error) {
 }
 
 func redisKeyDisplay(output map[string]any) string {
-	encoded := fmt.Sprintf("%v", output["value"])
-	return truncateString(encoded, 4000)
-}
-
-func scorePairs(values []string, maxBytes int) ([]map[string]string, error) {
-	if len(values)%2 != 0 {
-		return nil, fmt.Errorf("unexpected ZRANGE response: member and score pairs are incomplete")
+	if output["exists"] == false {
+		return "Redis key does not exist."
 	}
-	out := []map[string]string{}
-	for index := 0; index+1 < len(values); index += 2 {
-		out = append(out, map[string]string{
-			"member": truncateString(values[index], maxBytes),
-			"score":  values[index+1],
-		})
+	if text, ok := output["value"].(string); ok {
+		return truncateString(text, 4000)
 	}
-	return out, nil
+	return fmt.Sprintf("Read Redis %s preview (%v item(s), truncated=%v).", output["type"], output["returned_items"], output["truncated"])
 }
 
 func redisStringSlice(value respValue, command string) ([]string, error) {
@@ -377,39 +314,6 @@ func copyMap(input map[string]any) map[string]any {
 	out := map[string]any{}
 	for key, value := range input {
 		out[key] = value
-	}
-	return out
-}
-
-func limitStrings(values []string, limit int, maxBytes int) []string {
-	if limit < 1 || len(values) == 0 {
-		return nil
-	}
-	if len(values) > limit {
-		values = values[:limit]
-	}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		out = append(out, truncateString(value, maxBytes))
-	}
-	return out
-}
-
-func limitStringMap(values map[string]string, limit int, maxBytes int) map[string]string {
-	out := map[string]string{}
-	if limit < 1 {
-		return out
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	if len(keys) > limit {
-		keys = keys[:limit]
-	}
-	for _, key := range keys {
-		out[key] = truncateString(values[key], maxBytes)
 	}
 	return out
 }

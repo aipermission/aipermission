@@ -117,6 +117,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 		Usage: []string{
 			"Use scan_keys before reading key values when the key name is unknown.",
 			"Use get_key to read a bounded value preview by key type.",
+			"Collection previews have a 512 KiB encoded value budget. Pass next_input unchanged to get_key until complete; truncated also marks shortened individual values. Hash/set continuation can replay a scan page, and collections are not snapshots.",
 			"Use set_string only for intentional string writes; non-string mutations should be explicit future actions.",
 			"Use delete_keys carefully; it is destructive and should normally require approval.",
 		},
@@ -177,8 +178,10 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true},
 				{Name: "limit", Label: "Collection limit", Type: connectors.FieldInteger, Default: defaultValueLimit},
 				{Name: "max_bytes", Label: "Max bytes", Type: connectors.FieldInteger, Default: defaultMaxValueBytes},
+				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Hash/set scan cursor from next_input; defaults to 0."},
+				{Name: "offset", Label: "Offset", Type: connectors.FieldInteger, Description: "Collection continuation offset from next_input. Hash/set offsets address the replayed scan page; list/zset offsets address the range."},
 			}},
-			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxValueBytes},
+			OutputHint: connectors.OutputHint{Format: "json", MaxBytes: maxKeyPreviewEncodedBytes},
 		},
 		{
 			Name:        ActionSetString,
@@ -252,6 +255,9 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		input["key"] = key
 		input["limit"] = normalizeInt(input, "limit", defaultValueLimit, 1, maxValueLimit)
 		input["max_bytes"] = normalizeInt(input, "max_bytes", defaultMaxValueBytes, 1, maxValueBytes)
+		if _, err := collectionPreviewPosition(input); err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		title = "Read " + product + " key"
 		summary = fmt.Sprintf("%q", key)
 	case ActionSetString:

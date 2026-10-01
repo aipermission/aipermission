@@ -32,6 +32,27 @@ function valueBrowser(overrides: Partial<RedisValueBrowser> = {}): RedisValueBro
 }
 
 describe("RedisValueWorkspace", () => {
+  it.each(["hash", "list", "set", "zset"])("labels partial %s results in value and JSON modes", (type) => {
+    const browser = valueBrowser({
+      activeKey: "collection",
+      creatingKey: false,
+      keyResult: { key: "collection", type, value: [], ttl_ms: -1, truncated: true },
+      canSaveString: false,
+      editableString: false,
+    });
+    const { rerender } = render(<RedisValueWorkspace styles={connectorConsoleTheme("light")} browser={browser} />);
+    expect(screen.getByText(/partial collection preview/i)).toBeInTheDocument();
+    rerender(<RedisValueWorkspace styles={connectorConsoleTheme("light")} browser={{ ...browser, resultMode: "json" }} />);
+    expect(screen.getByText(/partial collection preview/i)).toBeInTheDocument();
+    rerender(
+      <RedisValueWorkspace
+        styles={connectorConsoleTheme("light")}
+        browser={{ ...browser, keyResult: { ...browser.keyResult!, truncated: false } }}
+      />,
+    );
+    expect(screen.queryByText(/partial collection preview/i)).not.toBeInTheDocument();
+  });
+
   it("renders truncated string values as a read-only bounded preview", () => {
     render(
       <RedisValueWorkspace
