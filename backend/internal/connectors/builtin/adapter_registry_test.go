@@ -6,6 +6,7 @@ import (
 
 	dockerconnector "github.com/aipermission/aipermission/backend/internal/connectors/docker"
 	kubernetesconnector "github.com/aipermission/aipermission/backend/internal/connectors/kubernetes"
+	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
@@ -21,6 +22,7 @@ func TestNewCatalogRegistersRuntimeAdaptersExplicitly(t *testing.T) {
 	expectedAdapterKinds := []string{
 		dockerconnector.Kind,
 		kubernetesconnector.Kind,
+		postgresconnector.Kind,
 		s3connector.Kind,
 		sshconnector.Kind,
 	}

@@ -346,6 +346,7 @@
     "internal/connectors/kubernetes": 42.0,
     "internal/connectors/mail": 53.0,
     "internal/connectors/postgres": 50.0,
+    "internal/connectors/postgres/apiadapter": 90.0,
     "internal/connectors/postgres/rolecatalog": 90.0,
     "internal/connectors/postgres/rolejournal": 90.0,
     "internal/connectors/rabbitmq": 53.0,

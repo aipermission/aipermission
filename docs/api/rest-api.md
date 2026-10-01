@@ -489,6 +489,17 @@ and bounded Docker log reads through operations such as `docker-check` and
 `docker-logs`. These operations are local UI helpers, not generic connector
 actions and not MCP tools.
 
+The Postgres adapter exposes read-only `role-lifecycle-status` on this same
+authenticated local UI route. Use `{}` for the first page or
+`{"after_resource_id":"64"}` for a continuation. Responses contain `target_id`,
+at most 64 `entries`, `has_more` and `next_after_resource_id`. Entry `resource_id`
+and continuation IDs are canonical decimal strings, preserving large IDs.
+An empty list is `entries: []`, not evidence of remote cleanup. This inspection
+does not dial a server, read secrets, adopt a role, release a lifecycle fence or
+repeat any mutation. It lists the exact local target, not other same-cluster
+aliases. Response paging currently does not bound the underlying journal scan.
+Unavailable or corrupt journal evidence returns a sanitized conflict response.
+
 `PUT /api/connector-targets/{id}/profiles/{profile_id}` updates one credential
 profile. If the `secret` object is omitted, the existing encrypted secret is
 kept. If `secret` is present, the vault payload is replaced.
@@ -502,10 +513,37 @@ deleting the target handles persistent console, file-transfer, and
 authorized_keys cleanup state together.
 Managed connector profiles can also perform external cleanup before the local
 profile is archived. For example, deleting a Postgres credential profile created
-by AIPermission reassigns objects owned by the managed role to the admin role,
-removes privileges owned by the managed role, and then drops it. The local
+by AIPermission verifies the saved cluster/database/role identity under a catalog
+fence, reassigns current-database objects to the recorded admin role, revokes
+supported privileges, and then drops the role. It never uses `DROP OWNED` to
+delete objects. Shared ownership, other-database dependencies, missing catalog
+privileges, changed authority or unresolved lifecycle evidence reject automatic
+cleanup. Older managed profiles without durable identity evidence require
+operator adoption or manual reconciliation; matching a username alone is not
+sufficient. Missing role names never prove successful cleanup. The local
 profile is archived only after the connector reports completed external cleanup;
 the redacted cleanup summary is retained in the deletion audit event.
+
+Managed Postgres provisioning stores connector-owned `managed_identity` evidence
+in the public profile metadata, backed by an encrypted connector-scoped resource
+journal. Ordinary profile create/edit requests cannot supply or replace the
+connector's `managed_*` lifecycle metadata. Intent precedes remote role creation;
+exact OID binding precedes COMMIT. Cleanup intent precedes destructive dispatch.
+Ambiguous cleanup COMMIT leaves unresolved evidence instead of authorizing a
+blind retry.
+
+Credential provisioning's local profile, runtime surfaces and required audit are
+published in one transaction. Automatic remote compensation requires confirmed
+local rollback or proof that no local transaction began. A commit/rollback error
+alone is not that proof. The transaction owner must first establish finality or
+retire its uncertain physical connection: uncommitted rows visible on a reused
+connection are not evidence of publication. After that boundary, fresh exact
+readback of the fully prepared profile may confirm success and return `201`. Missing,
+changed or unreadable evidence returns `409` with
+`profile_persistence_outcome_unknown`; no remote cleanup is dispatched, and a
+required reconciliation audit is attempted. If that audit cannot be persisted,
+the API returns `500` with `provisioning_reconciliation_audit_failed`. Inspect
+local and remote state before creating a new user or retrying the mutation.
 
 `POST /api/connector-targets/{id}/profiles/{profile_id}/test` runs the
 connector's side-effect-free connection test when the connector implements one.

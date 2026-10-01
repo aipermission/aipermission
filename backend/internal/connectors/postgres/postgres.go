@@ -181,6 +181,12 @@ func (Connector) CredentialSchemas() []connectors.CredentialSchema {
 					Description: "Provisioning preset used for this managed role.",
 				},
 				{
+					Name:        "managed_identity",
+					Label:       "Managed role identity",
+					Type:        connectors.FieldJSON,
+					Description: "Immutable connector-owned reference to durable role identity and lifecycle evidence.",
+				},
+				{
 					Name:        "managed_scope",
 					Label:       "Managed scope",
 					Type:        connectors.FieldJSON,

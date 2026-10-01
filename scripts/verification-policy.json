@@ -434,6 +434,10 @@
   ],
   "recovery_tests": [
     {
+      "package": "./internal/connectors/postgres/apiadapter",
+      "name": "TestRecoveryDrillPostgresSQLCipherTerminalCleanupRetiresWithoutOriginalAdmin"
+    },
+    {
       "package": "./internal/api",
       "name": "TestRecoveryDrillEncryptedBackupWrongPasswordAndGatewaySecret"
     },
@@ -459,6 +463,7 @@
     "TestPostgresRealService",
     "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",
+    "TestPostgresProvisionScopePreservesExactPrivilegesRealService",
     "TestPostgresRoleFenceBlocksCrossDatabaseCatalogWriters",
     "TestPostgresRoleFenceFailsClosedWhenCatalogWriterAlreadyEntered",
     "TestPostgresRoleFenceRejectsRoleNameReuseAndMarkerDrift",
