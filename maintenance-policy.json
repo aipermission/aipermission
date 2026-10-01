@@ -359,6 +359,7 @@
     "internal/gatewayinfrastructure": 17.0,
     "internal/gatewayvault": 40.0,
     "internal/gatewayworkspace": 18.0,
+    "internal/jsonidentity": 100.0,
     "internal/observability": 60.0,
     "internal/projectvault": 69.0,
     "internal/restcontract": 84.0,
