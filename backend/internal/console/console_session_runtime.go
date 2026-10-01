@@ -509,6 +509,8 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	if data == "" {
 		return
 	}
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	automationActive := s.activeExec != nil
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
@@ -577,6 +579,8 @@ func (s *managedConsoleSession) appendDisplayOutput(data string) {
 		return
 	}
 	data = s.redactForPersistence(data)
+	s.outputMu.Lock()
+	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	if strings.HasPrefix(data, "[AI command]") && s.transcript != "" && !strings.HasSuffix(s.transcript, "\n") && !strings.HasSuffix(s.transcript, "\r") {
 		data = "\r\n" + data

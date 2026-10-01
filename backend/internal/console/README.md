@@ -9,6 +9,8 @@ Responsibilities:
 - multiplex websocket clients attached to one PTY session
 - capture live output recipients with each transcript update, so newly attached
   clients receive that update through their snapshot or live output, not both
+- serialize output appends through live delivery, so concurrently produced
+  manual output and AI display headers follow the same order as the transcript
 - enforce local hardening limits for websocket clients, input size, and high-frequency input/resize messages
 - execute AI commands through the persistent shell
 - detect long-running command state
