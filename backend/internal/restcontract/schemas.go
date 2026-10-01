@@ -314,11 +314,14 @@ func securitySettingsUpdateSchema() map[string]any {
 		"expected_revision":          nonBlankStringSchema(),
 		"revision":                   nonBlankStringSchema(),
 	}, []string{"reusable_tokens", "expose_mcp_server_metadata", "mcp_start_enabled", "redaction_mode"})
-	schema["anyOf"] = []any{
-		map[string]any{"required": []string{"expected_revision"}},
-		map[string]any{"required": []string{"revision"}},
+	var alternatives []any
+	for _, revisionField := range []string{"expected_revision", "revision"} {
+		branch := cloneSchema(schema)
+		required := append([]string(nil), schema["required"].([]string)...)
+		branch["required"] = append(required, revisionField)
+		alternatives = append(alternatives, branch)
 	}
-	return schema
+	return map[string]any{"anyOf": alternatives}
 }
 
 func vaultApprovalContextSchema() map[string]any {

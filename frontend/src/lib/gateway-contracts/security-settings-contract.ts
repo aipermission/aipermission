@@ -1,10 +1,7 @@
-export type SecuritySettings = {
-  reusable_tokens: boolean;
-  expose_mcp_server_metadata: boolean;
-  mcp_start_enabled: boolean;
-  redaction_mode: "basic" | "off";
-  revision: string;
-};
+import type { components } from "../../../types/generated-openapi";
+
+export type SecuritySettings = components["schemas"]["SecuritySettingsDocument"];
+export type SecuritySettingsUpdate = components["schemas"]["SecuritySettingsUpdate"];
 export type RedactionForm = { name: string; pattern: string; enabled: boolean };
 export type RedactionRule = RedactionForm & { id: number };
 

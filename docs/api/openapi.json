@@ -1557,54 +1557,86 @@
         "type": "object"
       },
       "SecuritySettingsUpdate": {
-        "additionalProperties": false,
         "anyOf": [
           {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "expose_mcp_server_metadata": {
+                "type": "boolean"
+              },
+              "mcp_start_enabled": {
+                "type": "boolean"
+              },
+              "redaction_mode": {
+                "enum": [
+                  "off",
+                  "basic"
+                ],
+                "type": "string"
+              },
+              "reusable_tokens": {
+                "type": "boolean"
+              },
+              "revision": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              }
+            },
             "required": [
+              "reusable_tokens",
+              "expose_mcp_server_metadata",
+              "mcp_start_enabled",
+              "redaction_mode",
               "expected_revision"
-            ]
+            ],
+            "type": "object"
           },
           {
+            "additionalProperties": false,
+            "properties": {
+              "expected_revision": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              },
+              "expose_mcp_server_metadata": {
+                "type": "boolean"
+              },
+              "mcp_start_enabled": {
+                "type": "boolean"
+              },
+              "redaction_mode": {
+                "enum": [
+                  "off",
+                  "basic"
+                ],
+                "type": "string"
+              },
+              "reusable_tokens": {
+                "type": "boolean"
+              },
+              "revision": {
+                "minLength": 1,
+                "pattern": "\\S",
+                "type": "string"
+              }
+            },
             "required": [
+              "reusable_tokens",
+              "expose_mcp_server_metadata",
+              "mcp_start_enabled",
+              "redaction_mode",
               "revision"
-            ]
-          }
-        ],
-        "properties": {
-          "expected_revision": {
-            "minLength": 1,
-            "pattern": "\\S",
-            "type": "string"
-          },
-          "expose_mcp_server_metadata": {
-            "type": "boolean"
-          },
-          "mcp_start_enabled": {
-            "type": "boolean"
-          },
-          "redaction_mode": {
-            "enum": [
-              "off",
-              "basic"
             ],
-            "type": "string"
-          },
-          "reusable_tokens": {
-            "type": "boolean"
-          },
-          "revision": {
-            "minLength": 1,
-            "pattern": "\\S",
-            "type": "string"
+            "type": "object"
           }
-        },
-        "required": [
-          "reusable_tokens",
-          "expose_mcp_server_metadata",
-          "mcp_start_enabled",
-          "redaction_mode"
-        ],
-        "type": "object"
+        ]
       },
       "TargetProfile": {
         "additionalProperties": false,
