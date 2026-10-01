@@ -64,7 +64,7 @@ func (s *managedConsoleSession) insertManualCommand(command manualCommandRecord)
 			CompletionTrackingReason: command.CompletionTrackingReason,
 		})
 		if completion != nil {
-			s.runOwnedWork(func() { s.finishManualOutputCapture(completion) })
+			s.finishManualOutputCapture(completion)
 		}
 	} else {
 		s.pauseManualCaptureAfterCommand(command)

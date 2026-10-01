@@ -108,6 +108,10 @@ func (s *managedConsoleSession) destroySensitiveRuntime() {
 	}
 	// Admitted persistence work must retain the exact redactor until it drains.
 	s.drainOwnedWork()
+	s.closeManualOutputCapture(manualSessionClosed)
+	if err := s.closeStaleManualRunningRows(0, manualSessionClosed); err != nil {
+		logConsolePersistError("manual_history_final", s.id, err)
+	}
 	s.closeExactRedactor()
 	s.environment.Destroy()
 	if s.startupAdmissionRelease != nil {
