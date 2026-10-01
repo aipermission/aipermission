@@ -112,6 +112,10 @@ func enforceCreateQuota(ctx context.Context, tx storeDB, ownerProjectID int64) e
 	if total >= maxItemsPerDatabase {
 		return ValidationError("vault item database quota reached")
 	}
+	return enforceOwnerQuota(ctx, tx, ownerProjectID)
+}
+
+func enforceOwnerQuota(ctx context.Context, tx storeDB, ownerProjectID int64) error {
 	var ownerTotal int
 	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM vault_items WHERE status = 'active' AND owner_project_id = ?`, ownerProjectID).Scan(&ownerTotal); err != nil {
 		return err

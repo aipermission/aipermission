@@ -135,6 +135,9 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 		return Item{}, fmt.Errorf("begin update vault metadata: %w", err)
 	}
 	defer rollback()
+	if err := enforceMetadataOwnerQuota(ctx, tx, input); err != nil {
+		return Item{}, err
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE vault_items
 		SET name = ?, owner_project_id = ?, secret_type = ?, provider = ?, environment = ?,
@@ -197,6 +200,26 @@ func (s *Store) UpdateMetadata(ctx context.Context, input UpdateMetadataInput) (
 		return Item{}, fmt.Errorf("commit vault metadata: %w", err)
 	}
 	return item, nil
+}
+
+func enforceMetadataOwnerQuota(ctx context.Context, tx storeDB, input UpdateMetadataInput) error {
+	var ownerID, revision int64
+	err := tx.QueryRowContext(ctx, `
+		SELECT owner_project_id, metadata_revision FROM vault_items
+		WHERE id = ? AND status = 'active'`, input.ID).Scan(&ownerID, &revision)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read Vault owner revision: %w", err)
+	}
+	if revision != input.ExpectedMetadataRevision {
+		return ErrStale
+	}
+	if ownerID == input.OwnerProjectID {
+		return nil
+	}
+	return enforceOwnerQuota(ctx, tx, input.OwnerProjectID)
 }
 
 func (s *Store) Delete(ctx context.Context, id int64, expectedValueVersion int64, expectedMetadataRevision int64) error {
