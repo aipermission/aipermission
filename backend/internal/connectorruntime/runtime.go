@@ -9,12 +9,12 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
+	"github.com/aipermission/aipermission/backend/internal/connectorcredentials/profilesecrets"
 	"github.com/aipermission/aipermission/backend/internal/connectorresources"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/console"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
-	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -42,8 +42,7 @@ type Dependencies struct {
 type Scope struct {
 	kind            string
 	database        *sql.DB
-	vault           *vault.Vault
-	workspaceID     string
+	profileSecrets  profilesecrets.ProfileSecretCodec
 	resources       ResourceScopes
 	consoleSessions *console.Manager
 	secretAccessor  SecretAccessorFactory
@@ -53,8 +52,7 @@ func NewScope(kind string, dependencies Dependencies) *Scope {
 	return &Scope{
 		kind:            strings.TrimSpace(kind),
 		database:        dependencies.Database,
-		vault:           dependencies.Vault,
-		workspaceID:     strings.TrimSpace(dependencies.WorkspaceID),
+		profileSecrets:  profilesecrets.NewProfileSecretCodec(dependencies.Vault, strings.TrimSpace(dependencies.WorkspaceID)),
 		resources:       dependencies.Resources,
 		consoleSessions: dependencies.ConsoleSessions,
 		secretAccessor:  dependencies.SecretAccessor,
@@ -201,10 +199,11 @@ func (s *Scope) resolveRuntimeContext(ctx context.Context, runtimeID int64, capa
 	}
 	secrets := map[string]any{}
 	if storedProfile.EncryptedSecretJSON != "" {
-		if s.vault == nil || s.workspaceID == "" {
+		if !s.profileSecrets.Available() {
 			return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, ErrInvalidRuntime
 		}
-		if err := recordcrypto.DecryptJSON(s.vault, s.workspaceID, recordcrypto.ConnectorCredentialProfile, storedProfile.ID, storedProfile.EncryptedSecretJSON, &secrets); err != nil {
+		secrets, err = s.profileSecrets.Decrypt(ctx, storedProfile.ID, storedProfile.EncryptedSecretJSON)
+		if err != nil {
 			return connectors.RuntimeContext{}, connectortargets.RuntimeSurface{}, err
 		}
 	}
