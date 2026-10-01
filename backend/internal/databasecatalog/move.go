@@ -116,6 +116,11 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 			// let startup recovery decide whether the target is authoritative.
 			return errors.Join(cause, fmt.Errorf("remove database move completion marker: %w", err))
 		}
+		// Recovery must durably see an incomplete move before any artifact returns
+		// to its source basename, including retained migration snapshots.
+		if err := ops.syncDir(journalDir); err != nil {
+			return errors.Join(cause, fmt.Errorf("sync removed database move completion marker: %w", err))
+		}
 		for index := len(moved) - 1; index >= 0; index-- {
 			item := moved[index]
 			if err := ops.rename(item.Target, item.Source); err != nil {
