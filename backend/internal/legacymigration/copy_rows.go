@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	"github.com/aipermission/aipermission/backend/internal/projects/scopes"
 	"github.com/aipermission/aipermission/backend/internal/vault"
 )
 
@@ -166,6 +167,9 @@ func copyLegacyTokens(ctx context.Context, sourceDB *sql.DB, tx *sql.Tx) (int, e
 			token.UpdatedAt,
 		); err != nil {
 			return 0, fmt.Errorf("copy token %q: %w", token.Name, err)
+		}
+		if err := scopes.InitializeForToken(ctx, tx, token.ID, token.CreatedAt, token.UpdatedAt); err != nil {
+			return 0, fmt.Errorf("copy token %q project scopes: %w", token.Name, err)
 		}
 	}
 	return len(tokens), nil

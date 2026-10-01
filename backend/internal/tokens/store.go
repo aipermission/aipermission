@@ -14,6 +14,7 @@ import (
 	"unicode"
 
 	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
+	"github.com/aipermission/aipermission/backend/internal/projects/scopes"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -234,10 +235,8 @@ func (s *Store) create(ctx context.Context, request CreateRequest, tokenValue, t
 			return CreateResponse{}, fmt.Errorf("store encrypted reusable token: %w", err)
 		}
 	}
-	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
-		SELECT ?, id, 1, ?, ? FROM projects WHERE status = 'active'`, id, now, now); err != nil {
-		return CreateResponse{}, fmt.Errorf("initialize token project scopes: %w", err)
+	if err := scopes.InitializeForToken(ctx, s.db, id, now, now); err != nil {
+		return CreateResponse{}, err
 	}
 	item, err := s.Get(ctx, id)
 	if err != nil {
