@@ -118,6 +118,31 @@ uncertainty instead of inventing success or failure. A running request whose
 lease expires before dispatch cannot later reach the connector; the dispatch
 claim fails closed. Exactly-once remote execution is a non-goal.
 
+The transaction owner exposes local failure finality through
+`internal/transactionstate`: no transaction began or acknowledged rollback is
+`NotCommitted`; a commit error, failed rollback or `sql.ErrTxDone` without
+independent evidence is `Unknown`. Both preserve their underlying causes.
+Unknown outer finality overrides older callback/driver markers. A plain error
+from an alternate transaction owner also does not authorize compensation.
+Joined errors require compatible proof in every branch, not merely the first
+matching marker. `transactionstate.Run`, used by the audited owner,
+pins a physical `sql.Conn` for its transaction
+and discards it on uncertain commit/rollback before allowing readback. Some
+drivers can leave a transaction open after COMMIT failure while `sql.Tx` is
+already done; reading through that same pooled connection is not committed-state
+evidence. Only explicit `UnknownWithSafeReadback` finality authorizes fresh
+publication readback, after verified transaction completion or physical
+connection retirement. The owner releases its pinned connection before audit
+projection so SQLCipher's single-connection pool cannot deadlock.
+Its BEGIN lifetime is detached from caller cancellation to keep transaction
+finalization synchronous with the owner rather than racing `database/sql`'s
+automatic rollback and connection close. Connection acquisition and callback
+SQL retain the original context. Explicit cancellation checks before BEGIN,
+callback admission and COMMIT require acknowledged rollback instead of publishing
+a canceled callback. Cancellation after COMMIT starts does not overturn an
+acknowledged commit. Detached BEGIN uses the local SQLCipher driver's deferred
+transaction and bounded busy wait, not an arbitrary driver's wall-clock bound.
+
 ## Dispatcher
 
 One local dispatcher runs for each unlocked database runtime. It:

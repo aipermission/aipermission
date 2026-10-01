@@ -375,6 +375,7 @@
     "internal/socketwrite": 96.0,
     "internal/testkit/websocketpipe": 87.0,
     "internal/tokens": 82.0,
+    "internal/transactionstate": 100.0,
     "internal/vault": 82.0,
     "internal/vaultrequests": 70.0,
     "internal/vaultsessions": 82.0
