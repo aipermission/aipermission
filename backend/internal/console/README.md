@@ -7,6 +7,8 @@ Responsibilities:
 - create, list, attach, resize, close, and close-by-runtime-profile console sessions
 - keep live connector sessions separate from HTTP handlers
 - multiplex websocket clients attached to one PTY session
+- capture live output recipients with each transcript update, so newly attached
+  clients receive that update through their snapshot or live output, not both
 - enforce local hardening limits for websocket clients, input size, and high-frequency input/resize messages
 - execute AI commands through the persistent shell
 - detect long-running command state
