@@ -3,8 +3,8 @@
 `Run` owns one pinned local SQL transaction and releases the connection before
 returning to its caller. Audit projection and connector resource readback must
 run after it returns, not inside the callback against the same pool. The audited
-mutation coordinator uses this owner; connector domain code never receives its
-database or physical connection.
+mutation coordinator and scoped credential-resource creation use this owner;
+connector domain code never receives its database or physical connection.
 
 The callback must use the supplied transaction, must not commit/roll it back,
 must pass the original caller context to its SQL operations, and must not
