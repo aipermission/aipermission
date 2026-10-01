@@ -157,7 +157,7 @@ func executeListQueues(ctx context.Context, client *rabbitClient, input map[stri
 		query.Set("name", pattern)
 		query.Set("use_regex", "false")
 	}
-	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, "/api/queues/"+pathPart(vhost), query, limit, pageSize, (limit+pageSize)/pageSize, func(row map[string]any) bool {
+	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, "/api/queues/"+pathPart(vhost), query, limit, pageSize, (limit+pageSize)/pageSize, false, func(row map[string]any) bool {
 		return pattern == "" || strings.Contains(strings.ToLower(strings.TrimSpace(fmt.Sprint(row["name"]))), pattern)
 	})
 	if err != nil {
@@ -209,7 +209,7 @@ func executeListBindings(ctx context.Context, client *rabbitClient, input map[st
 		pageSize = maxRabbitListPageSize
 		maxPages = maxBindingScanPages
 	}
-	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, path, nil, limit, pageSize, maxPages, func(row map[string]any) bool {
+	rows, truncated, scanLimitReached, err := collectRabbitList(ctx, client, path, nil, limit, pageSize, maxPages, true, func(row map[string]any) bool {
 		return queue == "" || (row["destination_type"] == "queue" && row["destination"] == queue)
 	})
 	if err != nil {

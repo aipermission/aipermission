@@ -2,6 +2,7 @@ package rabbitmqconnector
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -19,9 +20,10 @@ type rabbitListPage struct {
 	PageCount     int              `json:"page_count"`
 	FilteredCount int              `json:"filtered_count"`
 	Items         []map[string]any `json:"items"`
+	ScanLimited   bool             `json:"-"`
 }
 
-func readRabbitListPage(ctx context.Context, client *rabbitClient, path string, page int, pageSize int, query url.Values) (rabbitListPage, error) {
+func readRabbitListPage(ctx context.Context, client *rabbitClient, path string, page int, pageSize int, query url.Values, arrayLimit int) (rabbitListPage, error) {
 	params := url.Values{}
 	for key, values := range query {
 		params[key] = append([]string(nil), values...)
@@ -29,9 +31,16 @@ func readRabbitListPage(ctx context.Context, client *rabbitClient, path string, 
 	params.Set("page", strconv.Itoa(page))
 	params.Set("page_size", strconv.Itoa(pageSize))
 	params.Set("pagination", "true")
-	var result rabbitListPage
-	if err := client.Get(ctx, path+"?"+params.Encode(), &result); err != nil {
+	var data json.RawMessage
+	if err := client.Get(ctx, path+"?"+params.Encode(), &data); err != nil {
 		return rabbitListPage{}, err
+	}
+	if len(data) > 0 && data[0] == '[' && arrayLimit > 0 && page == 1 {
+		return decodeRabbitBindingArray(data, pageSize, arrayLimit)
+	}
+	var result rabbitListPage
+	if err := json.Unmarshal(data, &result); err != nil {
+		return rabbitListPage{}, fmt.Errorf("decode rabbitmq paginated list: %w", err)
 	}
 	if result.Page != page || result.PageSize != pageSize || result.PageCount < 0 || result.FilteredCount < 0 || len(result.Items) > pageSize || result.FilteredCount < len(result.Items) {
 		return rabbitListPage{}, fmt.Errorf("rabbitmq returned an invalid paginated list response")
@@ -45,10 +54,14 @@ func readRabbitListPage(ctx context.Context, client *rabbitClient, path string, 
 	return result, nil
 }
 
-func collectRabbitList(ctx context.Context, client *rabbitClient, path string, query url.Values, limit int, pageSize int, maxPages int, accept func(map[string]any) bool) ([]map[string]any, bool, bool, error) {
+func collectRabbitList(ctx context.Context, client *rabbitClient, path string, query url.Values, limit int, pageSize int, maxPages int, allowBindingArray bool, accept func(map[string]any) bool) ([]map[string]any, bool, bool, error) {
 	rows := make([]map[string]any, 0, limit)
+	arrayLimit := 0
+	if allowBindingArray {
+		arrayLimit = pageSize * maxPages
+	}
 	for pageNumber := 1; pageNumber <= maxPages; pageNumber++ {
-		page, err := readRabbitListPage(ctx, client, path, pageNumber, pageSize, query)
+		page, err := readRabbitListPage(ctx, client, path, pageNumber, pageSize, query, arrayLimit)
 		if err != nil {
 			return nil, false, false, err
 		}
@@ -61,7 +74,7 @@ func collectRabbitList(ctx context.Context, client *rabbitClient, path string, q
 			}
 		}
 		if pageNumber >= page.PageCount {
-			return rows, false, false, nil
+			return rows, page.ScanLimited, page.ScanLimited, nil
 		}
 		if len(page.Items) == 0 {
 			return nil, false, false, fmt.Errorf("rabbitmq returned an empty list page before the final page")
