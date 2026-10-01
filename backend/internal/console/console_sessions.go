@@ -251,6 +251,7 @@ type managedConsoleSession struct {
 
 	mu              sync.Mutex
 	execMu, inputMu sync.Mutex
+	outputMu        sync.Mutex
 	status          string
 	closing         bool
 	transcript      string
