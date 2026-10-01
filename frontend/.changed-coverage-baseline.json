@@ -2253,11 +2253,17 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/ssh/credential-form-controller.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/ssh/credential-form.tsx": {
-      "statements": 84.61,
-      "branches": 80,
-      "functions": 80,
-      "lines": 84.61
+      "statements": 100,
+      "branches": 93.1,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/ssh/credential-row-actions.tsx": {
       "statements": 75,
@@ -2284,10 +2290,10 @@
       "lines": 100
     },
     "src/connectors/templates/ssh/model.ts": {
-      "statements": 61,
-      "branches": 52.13,
-      "functions": 76.92,
-      "lines": 63.63
+      "statements": 65.56,
+      "branches": 54.34,
+      "functions": 82,
+      "lines": 68.25
     },
     "src/connectors/templates/ssh/operation-contracts.ts": {
       "statements": 100,

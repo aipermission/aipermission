@@ -7,7 +7,6 @@ import {
   targetConfigFromPayload,
   profilePublicFromPayload,
   isHostKeyError,
-  keyNameFromFilename,
   sshCredentialResourcesResponse,
 } from "./model-helpers";
 import type { SSHCredentialState, SSHForm, SSHImportForm, SSHKeyForm, SSHProfile } from "./form-types";
@@ -135,41 +134,24 @@ export function credentialFormProps({
   formMode,
   state,
   onSubmit,
-}: SSHCredentialPropsContext): SSHCredentialFormProps {
-  const setMode = (nextMode: "generate" | "import") => {
-    setFormState((current) => ({
-      ...current,
-      mode: nextMode,
-      form: nextMode === "generate" ? current.form : { ...emptySSHCredentialForm },
-      importForm: nextMode === "import" ? current.importForm : { ...emptySSHCredentialImportForm },
-    }));
-  };
+  onReadImportFile,
+}: SSHCredentialPropsContext & { onReadImportFile: SSHCredentialFormProps["onReadImportFile"] }): SSHCredentialFormProps {
   return {
     formMode,
     mode: formState.mode,
     form: formState.form,
     importForm: formState.importForm,
     state,
-    onModeChange: setMode,
-    onFormChange: (form) => setFormState((current) => ({ ...current, form })),
-    onImportFormChange: (importForm) => setFormState((current) => ({ ...current, importForm })),
-    onReadImportFile: async (event) => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      const text = await file.text();
+    onModeChange: (mode) =>
       setFormState((current) => ({
         ...current,
-        importForm: {
-          ...current.importForm,
-          name:
-            current.importForm.name === emptySSHCredentialImportForm.name
-              ? keyNameFromFilename(file.name, emptySSHCredentialImportForm.name)
-              : current.importForm.name,
-          private_key: text,
-        },
-      }));
-      event.target.value = "";
-    },
+        mode,
+        form: mode === "generate" ? current.form : { ...emptySSHCredentialForm },
+        importForm: mode === "import" ? current.importForm : { ...emptySSHCredentialImportForm },
+      })),
+    onFormChange: (form) => setFormState((current) => ({ ...current, form })),
+    onImportFormChange: (importForm) => setFormState((current) => ({ ...current, importForm })),
+    onReadImportFile,
     onCreate: (event) => onSubmit(event, "create"),
     onImport: (event) => onSubmit(event, "import"),
     onUpdate: (event) => onSubmit(event, "update"),

@@ -21,6 +21,12 @@ parse, including ed25519, rsa, and ecdsa keys. Imported RSA keys must be at
 least 2048 bits. Passphrase-protected imports use the passphrase only during
 import; the passphrase is not saved.
 
+Key-file reads are local drafts, not imports. Selecting another file, replacing
+the pasted key, changing generation/import mode, or closing the editor retires
+the earlier read. Import waits for the selected file to finish reading; only
+the currently visible draft is submitted. A failed read shows a bounded error
+without exposing file contents.
+
 ## User Flow
 
 1. The user opens the Credentials page.
