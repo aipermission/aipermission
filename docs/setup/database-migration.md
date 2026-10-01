@@ -52,6 +52,13 @@ The helper migrates:
 - existing SSH `exec` token permissions
 - settings, gateway secret, redaction rules, and history labels
 
+Imported tokens receive enabled scopes for the fresh target database's active
+projects using the same policy as new token creation. This preserves access to
+the migrated Ungrouped targets; it does not grant additional action permissions.
+Token and permission expiry, revocation, and original timestamps are retained.
+Token scopes and the imported configuration share one transaction: a scope
+write failure aborts the import instead of publishing a partially usable token.
+
 It intentionally does not migrate:
 
 - command history
