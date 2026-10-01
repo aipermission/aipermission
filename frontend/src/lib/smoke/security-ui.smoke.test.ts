@@ -34,8 +34,8 @@ test("nginx keeps route-specific upload limits and JSON error responses aligned"
   assert.match(nginxSource, /server \{[\s\S]*client_max_body_size 1m/);
   assert.match(nginxSource, /location = \/api\/connector-actions\/local-run[\s\S]*client_max_body_size 32m/);
   assert.match(nginxSource, /location = \/api\/mcp\/connector-actions\/call[\s\S]*client_max_body_size 32m/);
-  assert.match(nginxSource, /location = \/api\/backup\/import[\s\S]*client_max_body_size 256m/);
-  assert.match(nginxSource, /location ~ \^\/api\/connector-targets\/[\s\S]*client_max_body_size 256m/);
+  assert.match(nginxSource, /location = \/api\/backup\/import[^}]*client_max_body_size 257m/);
+  assert.match(nginxSource, /location ~ \^\/api\/connector-targets\/[^}]*client_max_body_size 257m/);
   assert.match(nginxSource, /location = \/api\/file-transfers\/upload[\s\S]*client_max_body_size 528m/);
   assert.match(nginxSource, /location = \/api\/file-transfers\/upload-batch[\s\S]*client_max_body_size 1040m/);
   assert.match(nginxSource, /error_page 413 = @json_payload_too_large/);

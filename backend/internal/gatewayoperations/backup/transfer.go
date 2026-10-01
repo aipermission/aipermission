@@ -22,6 +22,8 @@ type ImportDatabaseRequest struct {
 	DatabasePassword string `json:"database_password"`
 }
 
+const maxDatabaseMultipartOverhead int64 = 1 << 20
+
 func (component *Component) downloadDatabase(w http.ResponseWriter, r *http.Request) {
 	lease, ok := component.authorizedReadOperation(w, r)
 	if !ok {
@@ -57,7 +59,7 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 	defer lease.Release()
 	r, finishBody := guardImportBody(w, r, importBodyIdleTimeout)
 	defer finishBody()
-	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes+maxDatabaseMultipartOverhead)
 	if err := r.ParseMultipartForm(8 << 20); err != nil {
 		if r.Context().Err() != nil {
 			httptransport.WriteError(w, http.StatusRequestTimeout, "database upload stopped or was canceled")
@@ -76,12 +78,20 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 	}
 	request := ImportDatabaseRequest{DatabaseName: strings.TrimSpace(r.FormValue("database_name")), DatabasePassword: r.FormValue("database_password")}
 	defer clearStrings(&request.DatabasePassword)
-	file, _, err := r.FormFile("sqlite")
+	file, header, err := r.FormFile("sqlite")
 	if err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, "database file is required")
 		return
 	}
 	defer file.Close()
+	if header.Size < 1 {
+		httptransport.WriteError(w, http.StatusBadRequest, "database file must not be empty")
+		return
+	}
+	if header.Size > backups.MaxDatabaseTransferBytes {
+		httptransport.WriteError(w, http.StatusRequestEntityTooLarge, "uploaded database is too large; maximum import size is 256 MiB")
+		return
+	}
 	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, func(path string) error {
 		output, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 		if err != nil {

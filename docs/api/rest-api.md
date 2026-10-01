@@ -1196,6 +1196,12 @@ POST /api/backup/providers/{id}/records/{record_id}/restore
 
 `GET /api/backup/download` returns the active SQLCipher database as a binary `.aipdb` file. The backend creates a temporary SQLCipher snapshot and serves that snapshot instead of streaming the live database file directly. Snapshot creation and provider download/restore operations share a gateway-wide two-operation limit, honor request cancellation while queued or snapshotting, and reject snapshots larger than the 256 MiB gateway import/snapshot boundary.
 
+Database import and connector-profile restore accept artifacts up to exactly
+256 MiB. Their multipart HTTP envelopes have a separate 1 MiB allowance (257 MiB
+total) in both the backend and local proxy; this does not increase the artifact
+limit. Empty and one-byte-oversized artifacts are rejected before installation
+or connector restore dispatch.
+
 `POST /api/backup/import` should use `multipart/form-data`:
 
 ```txt
