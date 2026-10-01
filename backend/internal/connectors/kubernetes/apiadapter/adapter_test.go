@@ -11,12 +11,35 @@ import (
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
-func TestStringParamMissingValueReturnsEmpty(t *testing.T) {
-	if got := stringParam(map[string]any{"namespace": "default"}, "container"); got != "" {
-		t.Fatalf("expected missing optional param to be empty, got %q", got)
+func TestOpenLiveConsoleOmitsMissingOrNilContainer(t *testing.T) {
+	for _, nilContainer := range []bool{false, true} {
+		params := map[string]any{"namespace": " default ", "pod": " api-123 "}
+		if nilContainer {
+			params["container"] = nil
+		}
+		runtime := fakeLiveConsoleRuntime{
+			target:  connectors.TargetView{Config: map[string]any{"transport_target_ref": "ssh:2:20"}},
+			profile: connectors.CredentialProfileView{Public: map[string]any{"scope_mode": "all"}},
+		}
+		gateway := &fakeLiveConsoleGateway{}
+		_, err := adapter{}.OpenLiveConsole(t.Context(), gateway, runtime, connectorapi.LiveConsoleOpenRequest{RuntimeID: 7, Params: params})
+		if err != nil || gateway.openCalls != 1 {
+			t.Fatalf("nil container=%t: calls=%d error=%v", nilContainer, gateway.openCalls, err)
+		}
+		command, ok := gateway.lastParams["force_shell_command"].(string)
+		if !ok || strings.Contains(command, " -c ") || strings.Contains(command, "<nil>") || !strings.Contains(command, "-n 'default' 'api-123'") {
+			t.Fatalf("optional container changed command: %q", command)
+		}
 	}
-	if got := stringParam(map[string]any{"container": nil}, "container"); got != "" {
-		t.Fatalf("expected nil optional param to be empty, got %q", got)
+}
+
+func TestKubectlExecShellCommandPreservesContextAndShell(t *testing.T) {
+	got, err := kubectlExecShellCommand(connectors.TargetView{Config: map[string]any{
+		"context": "team's cluster", "kubectl_command": "/usr/local/bin/kubectl",
+	}}, "default", "api-123", "web")
+	want := "/usr/local/bin/kubectl --context 'team'\"'\"'s cluster' exec -it -n 'default' 'api-123' -c 'web' -- sh -lc 'if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh'"
+	if err != nil || got != want {
+		t.Fatalf("command=%q error=%v, want %q", got, err, want)
 	}
 }
 
@@ -115,7 +138,8 @@ func (fakeLiveConsoleRuntime) CredentialResources(string) connectorapi.Credentia
 }
 
 type fakeLiveConsoleGateway struct {
-	openCalls int
+	openCalls  int
+	lastParams map[string]any
 }
 
 func (*fakeLiveConsoleGateway) ConnectorTrustStorePath() string { return "" }
@@ -124,7 +148,8 @@ func (*fakeLiveConsoleGateway) ConnectorRunCommand(context.Context, connectors.C
 	return connectors.CommandRunResult{}, errors.New("unexpected command")
 }
 
-func (gateway *fakeLiveConsoleGateway) ConnectorOpenLiveConsole(context.Context, string, int, int, map[string]any) (*connectorapi.LiveConsoleSession, error) {
+func (gateway *fakeLiveConsoleGateway) ConnectorOpenLiveConsole(_ context.Context, _ string, _, _ int, params map[string]any) (*connectorapi.LiveConsoleSession, error) {
 	gateway.openCalls++
+	gateway.lastParams = params
 	return &connectorapi.LiveConsoleSession{}, nil
 }

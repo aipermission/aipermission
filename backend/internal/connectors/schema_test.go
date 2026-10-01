@@ -144,6 +144,27 @@ func TestConnectorMapValueHelpersShareExactSemantics(t *testing.T) {
 	}
 }
 
+func TestStringMapValuePreservesOptionalAndRawTextSemantics(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		values map[string]any
+		want   string
+	}{
+		{"nil map", nil, ""},
+		{"missing", map[string]any{}, ""},
+		{"nil value", map[string]any{"value": nil}, ""},
+		{"raw whitespace", map[string]any{"value": "  label \n"}, "  label \n"},
+		{"number", map[string]any{"value": json.Number("42")}, "42"},
+		{"boolean", map[string]any{"value": true}, "true"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := StringMapValue(test.values, "value"); got != test.want {
+				t.Fatalf("value=%q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestValidateSchemaDefinitionRejectsInvalidIntegerDefault(t *testing.T) {
 	err := ValidateNonSecretSchema(Schema{Fields: []Field{
 		{Name: "limit", Type: FieldInteger, Default: 1.5},

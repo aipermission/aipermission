@@ -24,7 +24,7 @@ func (adapter) LiveConsoleCapabilityKind() string {
 }
 
 func (adapter) LiveConsoleTargetRef(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (string, error) {
-	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, runtimeID)
+	target, profile, surface, err := runtime.TargetProfileByRuntimeID(ctx, runtimeID)
 	if err != nil {
 		return "", err
 	}
@@ -40,26 +40,26 @@ func (adapter) LiveConsoleTargetMetadata(target connectors.TargetView, profile c
 		"label":           target.Name,
 		"connector":       kubernetesconnector.Kind,
 		"profile":         profile.Label,
-		"transport":       strings.TrimSpace(stringConfigValue(target.Config, "transport_target_ref")),
+		"transport":       strings.TrimSpace(connectors.StringMapValue(target.Config, "transport_target_ref")),
 		"kubectl":         kubectl,
-		"context":         strings.TrimSpace(stringConfigValue(target.Config, "context")),
-		"default_ns":      strings.TrimSpace(stringConfigValue(target.Config, "default_namespace")),
-		"namespace_scope": strings.TrimSpace(stringConfigValue(profile.Public, "scope_mode")),
-		"namespaces":      strings.TrimSpace(stringConfigValue(profile.Public, "namespaces")),
+		"context":         strings.TrimSpace(connectors.StringMapValue(target.Config, "context")),
+		"default_ns":      strings.TrimSpace(connectors.StringMapValue(target.Config, "default_namespace")),
+		"namespace_scope": strings.TrimSpace(connectors.StringMapValue(profile.Public, "scope_mode")),
+		"namespaces":      strings.TrimSpace(connectors.StringMapValue(profile.Public, "namespaces")),
 	}
 }
 
 func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveConsoleGateway, runtime connectorapi.LiveConsoleRuntime, request connectorapi.LiveConsoleOpenRequest) (*connectorapi.LiveConsoleSession, error) {
-	target, profile, surface, err := kubernetesTargetProfileByRuntimeID(ctx, runtime, request.RuntimeID)
+	target, profile, surface, err := runtime.TargetProfileByRuntimeID(ctx, request.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
 	if surface.ConnectorKind != kubernetesconnector.Kind || surface.CapabilityKind != connectortargets.RuntimeCapabilityLiveConsole {
 		return nil, connectortargets.ErrRuntimeSurfaceNotFound
 	}
-	namespace := strings.TrimSpace(stringParam(request.Params, "namespace"))
-	pod := strings.TrimSpace(stringParam(request.Params, "pod"))
-	container := strings.TrimSpace(stringParam(request.Params, "container"))
+	namespace := strings.TrimSpace(connectors.StringMapValue(request.Params, "namespace"))
+	pod := strings.TrimSpace(connectors.StringMapValue(request.Params, "pod"))
+	container := strings.TrimSpace(connectors.StringMapValue(request.Params, "container"))
 	if namespace == "" || pod == "" {
 		return nil, errors.New("kubernetes namespace and pod are required")
 	}
@@ -76,7 +76,7 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	if !kubernetesconnector.ProfileAllowsNamespace(profile, namespace) {
 		return nil, fmt.Errorf("%w: %s", kubernetesconnector.ErrScopeDenied, namespace)
 	}
-	transportRef := strings.TrimSpace(stringConfigValue(target.Config, "transport_target_ref"))
+	transportRef := strings.TrimSpace(connectors.StringMapValue(target.Config, "transport_target_ref"))
 	if transportRef == "" {
 		return nil, fmt.Errorf("%w: transport_target_ref is required", kubernetesconnector.ErrInvalidConfig)
 	}
@@ -87,57 +87,18 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 	return server.ConnectorOpenLiveConsole(ctx, transportRef, request.Rows, request.Cols, map[string]any{"force_shell_command": command})
 }
 
-func kubernetesTargetProfileByRuntimeID(ctx context.Context, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) (connectors.TargetView, connectors.CredentialProfileView, connectorapi.RuntimeSurface, error) {
-	return runtime.TargetProfileByRuntimeID(ctx, runtimeID)
-}
-
 func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod string, container string) (string, error) {
 	command, err := kubernetesconnector.KubectlCommand(target)
 	if err != nil {
 		return "", err
 	}
-	contextName := strings.TrimSpace(stringConfigValue(target.Config, "context"))
+	contextName := strings.TrimSpace(connectors.StringMapValue(target.Config, "context"))
 	if contextName != "" {
-		command += " --context " + shellQuote(contextName)
+		command += " --context " + connectors.QuoteShellArgument(contextName)
 	}
-	command += " exec -it -n " + shellQuote(namespace) + " " + shellQuote(pod)
+	command += " exec -it -n " + connectors.QuoteShellArgument(namespace) + " " + connectors.QuoteShellArgument(pod)
 	if container != "" {
-		command += " -c " + shellQuote(container)
+		command += " -c " + connectors.QuoteShellArgument(container)
 	}
-	shellProbe := "if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh"
-	return command + " -- sh -lc " + shellQuote(shellProbe), nil
-}
-
-func stringParam(params map[string]any, key string) string {
-	if params == nil {
-		return ""
-	}
-	value, ok := params[key]
-	if !ok || value == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(value))
-}
-
-func stringConfigValue(values map[string]any, key string) string {
-	if values == nil {
-		return ""
-	}
-	value, ok := values[key]
-	if !ok || value == nil {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return typed
-	default:
-		return fmt.Sprint(typed)
-	}
-}
-
-func shellQuote(value string) string {
-	if value == "" {
-		return "''"
-	}
-	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+	return command + " -- sh -lc " + connectors.QuoteShellArgument(connectors.InteractiveShellProbe), nil
 }
