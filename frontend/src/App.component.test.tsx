@@ -10,12 +10,12 @@ import { errorMessage } from "./lib/errors.ts";
 import type { UnlockPage, UnlockShell } from "./pages/unlock.tsx";
 import type { Shell } from "./components/app-shell.tsx";
 
-const { setTheme, consoleModule } = vi.hoisted(() => {
+const { setTheme, consoleModule, mcpModule } = vi.hoisted(() => {
   let resolve!: () => void;
   const ready = new Promise<void>((done) => {
     resolve = done;
   });
-  return { setTheme: vi.fn(), consoleModule: { ready, resolve } };
+  return { setTheme: vi.fn(), consoleModule: { ready, resolve }, mcpModule: { loaded: false } };
 });
 
 vi.mock("./lib/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./lib/api")>()), apiGet: vi.fn() }));
@@ -30,7 +30,10 @@ vi.mock("./pages/audit-logs", () => ({ AuditLogsPage: () => <h1>Audit logs route
 vi.mock("./pages/tokens", () => ({ TokensPage: () => <h1>Tokens route</h1> }));
 vi.mock("./pages/security", () => ({ SecurityPage: () => <h1>Security route</h1> }));
 vi.mock("./pages/settings", () => ({ SettingsPage: () => <h1>Settings route</h1> }));
-vi.mock("./pages/mcp-setup", () => ({ MCPSetupPage: () => <h1>MCP setup route</h1> }));
+vi.mock("./pages/mcp-setup", () => {
+  mcpModule.loaded = true;
+  return { MCPSetupPage: () => <h1>MCP setup route</h1> };
+});
 vi.mock("./pages/console", async () => {
   await consoleModule.ready;
   return { ConsolePage: () => <h1>Console route</h1> };
@@ -44,6 +47,7 @@ vi.mock("./components/app-shell", () => ({
         <span>Theme: {theme}</span>
         <output aria-label="Current route">{location.pathname}</output>
         <Link to="/credentials">Credentials</Link>
+        <Link to="/mcp-setup">MCP setup</Link>
         <button type="button" onClick={() => setTheme("light")}>
           Use light theme
         </button>
@@ -83,6 +87,22 @@ beforeEach(() => {
   get.mockReset();
   setTheme.mockReset();
   window.history.replaceState(null, "", "/");
+});
+
+it("loads MCP setup only when navigating to its route", async () => {
+  const user = userEvent.setup();
+  expect(mcpModule.loaded).toBe(false);
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: "Dashboard route" })).toBeVisible();
+  expect(mcpModule.loaded).toBe(false);
+
+  await user.click(screen.getByRole("link", { name: "MCP setup" }));
+
+  expect(await screen.findByRole("heading", { name: "MCP setup route" })).toBeVisible();
+  expect(mcpModule.loaded).toBe(true);
+  expect(screen.getByText("Unlocked workspace")).toBeVisible();
+  expect(get).toHaveBeenCalledTimes(1);
 });
 
 it.each([

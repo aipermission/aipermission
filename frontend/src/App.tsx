@@ -10,7 +10,6 @@ import { SettingsPage } from "./pages/settings";
 import { SecurityPage } from "./pages/security";
 import { HistoryPage } from "./pages/history";
 import { AuditLogsPage } from "./pages/audit-logs";
-import { MCPSetupPage } from "./pages/mcp-setup";
 import { TokensPage } from "./pages/tokens";
 import { ConnectorsPage } from "./pages/connectors";
 import { ProjectsPage } from "./pages/projects";
@@ -18,6 +17,7 @@ import { VaultPage } from "./pages/vault";
 import { UnlockPage, UnlockShell } from "./pages/unlock";
 
 const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ default: module.ConsolePage })));
+const MCPSetupPage = lazy(() => import("./pages/mcp-setup").then((module) => ({ default: module.MCPSetupPage })));
 
 export default function App() {
   const { theme, setTheme } = useTheme();
@@ -62,7 +62,14 @@ export default function App() {
           <Route path="/security" element={<SecurityPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/backup" element={<Navigate to="/settings" replace />} />
-          <Route path="/mcp-setup" element={<MCPSetupPage />} />
+          <Route
+            path="/mcp-setup"
+            element={
+              <Suspense fallback={<Notice>Loading MCP setup...</Notice>}>
+                <MCPSetupPage />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
       </Routes>
