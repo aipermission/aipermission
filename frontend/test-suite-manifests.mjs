@@ -101,6 +101,7 @@ export const asyncStateOwnerTests = {
   ],
   "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": [
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.component.test.tsx",
+    "src/connectors/templates/rabbitmq/peek-session-ownership.component.test.tsx",
   ],
   "src/connectors/templates/_shared/use-connector-mutation-ownership.ts": [
     "src/connectors/templates/_shared/use-connector-mutation-ownership.component.test.tsx",

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRequestGuard } from "../../../lib/request-guard";
 import { currentWorkspaceBinding } from "../../../lib/api";
 import { connectorActionBusy } from "../_shared/action-state";
@@ -45,8 +45,17 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   });
   const [state, setState] = useState({ state: "idle", error: "", message: "" });
   const sessionScopeKey = `${currentWorkspaceBinding()}:${target.ref}:${activeSession.startedAt || "inactive"}`;
-  const requestScopeKey = `${sessionScopeKey}:${vhost}`;
+  const requestScopeKey = JSON.stringify([sessionScopeKey, vhost, activeSession.active]);
   const requestGuard = useRequestGuard(requestScopeKey);
+  const peekOwner = useMemo(() => ({ requestScopeKey, activeQueue }), [requestScopeKey, activeQueue]);
+  const peekOwnerRef = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    peekOwnerRef.current = peekOwner;
+    return () => {
+      peekOwnerRef.current = null;
+      requestGuard.invalidate("peek_messages");
+    };
+  }, [peekOwner, requestGuard]);
   const filteredQueues = useMemo(() => filterQueues(queues, pattern), [queues, pattern]);
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),
@@ -164,7 +173,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   }
 
   async function peekMessages() {
-    if (!activeQueue || publishOwnerRef.current || unresolvedPublish) return;
+    if (!activeSession.active || !activeQueue || peekOwnerRef.current !== peekOwner || publishOwnerRef.current || unresolvedPublish) return;
     try {
       const item = await runRabbitAction({
         actionName: "peek_messages",
@@ -194,7 +203,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
       void refreshQueues();
       return;
     }
-    requestGuard.setScope(`${sessionScopeKey}:${nextVhost}`);
+    requestGuard.setScope(JSON.stringify([sessionScopeKey, nextVhost, activeSession.active]));
     setVhost(nextVhost);
     setVhostDraft(nextVhost);
     setActiveQueue("");
