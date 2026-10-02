@@ -1,10 +1,12 @@
 .PHONY: help hygiene secret-history-check rest-contract rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-darwin-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-types frontend-coverage frontend-changed-coverage frontend-e2e frontend-e2e-real frontend-build frontend-initial-bundle frontend-audit mcp-lint mcp-format-check mcp-test mcp-build mcp-audit mcp-pack placeholder-pack docs-hygiene test build audit release-check docker-up docker-ps
 
+.PHONY: backend-build
+
 help:
 	@printf '%s\n' \
 		'Available targets:' \
 		'  make test            Run backend, frontend, and MCP tests' \
-		'  make build           Build frontend and MCP package' \
+		'  make build           Build backend, frontend, and MCP package' \
 		'  make audit           Run frontend and MCP production audits' \
 		'  make hygiene         Run repository security and maintenance checks' \
 		'  make secret-history-check  Scan current files and Git history for secrets' \
@@ -39,6 +41,9 @@ rest-contract-check:
 
 backend-format-check:
 	sh scripts/go-format-check.sh
+
+backend-build:
+	cd backend && go build ./...
 
 backend-test:
 	cd backend && coverage=$$(mktemp) && trap 'rm -f "$$coverage"' EXIT; go test -coverprofile="$$coverage" ./... && go tool cover -func="$$coverage" | tail -1 && go run ./cmd/coveragecheck -profile "$$coverage"
@@ -160,11 +165,11 @@ docs-hygiene:
 
 test: backend-test frontend-test mcp-test
 
-build: frontend-build mcp-build
+build: backend-build frontend-build mcp-build
 
 audit: frontend-audit mcp-audit
 
-release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-test backend-race backend-vet backend-windows-build backend-darwin-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-test frontend-types frontend-coverage frontend-changed-coverage frontend-build frontend-initial-bundle frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-audit mcp-pack placeholder-pack docs-hygiene
+release-check: hygiene secret-history-check rest-contract-check backend-format-check backend-build backend-test backend-race backend-vet backend-windows-build backend-darwin-build backend-vuln recovery-drill bounded-fuzz connector-conformance frontend-lint frontend-format-check frontend-test-config frontend-async-race frontend-architecture frontend-duplication frontend-shared-duplication frontend-test frontend-types frontend-coverage frontend-changed-coverage frontend-build frontend-initial-bundle frontend-e2e frontend-e2e-real frontend-audit mcp-lint mcp-format-check mcp-test mcp-audit mcp-pack placeholder-pack docs-hygiene
 
 docker-up:
 	docker compose up -d --build

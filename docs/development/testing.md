@@ -23,6 +23,11 @@ make -f Makefile build
 make -f Makefile audit
 ```
 
+`make build` (and root `npm run build`) compiles every backend package before
+building the frontend and MCP package. The native Go build requires the same
+compiler/OpenSSL development dependencies described above; cross-builds alone
+do not replace it. Use `make backend-build` for just this native compilation.
+
 ## Release Candidate Checks
 
 Workflow policy tests use an explicit disposable repository root, including
@@ -58,6 +63,8 @@ This runs:
 - canonical release-note artifact, release-version, and native-dependency
   inventory consistency checks
 - generated OpenAPI route and typed-schema drift
+- native backend source build, in addition to the separate Windows/macOS
+  source cross-builds and native platform runtime jobs
 - architecture guards that keep API child packages transport-only, prohibit
   direct SQL and raw workspace-scope consumption in production API code, trace
   the OpenAPI generator to one canonical route source, and keep backend,
