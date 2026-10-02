@@ -22,11 +22,12 @@ import (
 )
 
 type maintenancePolicy struct {
-	BackendCoverageFloors           map[string]float64                  `json:"backendCoverageFloors"`
-	BackendCoverageDefaultFloor     float64                             `json:"backendCoverageDefaultFloor"`
-	BackendCoverageNeutralPackages  []string                            `json:"backendCoverageNeutralPackages"`
-	BackendCoverageExcludedPackages map[string]coverageExclusion        `json:"backendCoverageExcludedPackages"`
-	BackendCoveragePlatformFiles    map[string]platformCoverageEvidence `json:"backendCoveragePlatformFiles"`
+	BackendCoverageFloors               map[string]float64                  `json:"backendCoverageFloors"`
+	BackendCoverageDefaultFloor         float64                             `json:"backendCoverageDefaultFloor"`
+	BackendCoverageRequireExplicitFloor bool                                `json:"backendCoverageRequireExplicitFloor"`
+	BackendCoverageNeutralPackages      []string                            `json:"backendCoverageNeutralPackages"`
+	BackendCoverageExcludedPackages     map[string]coverageExclusion        `json:"backendCoverageExcludedPackages"`
+	BackendCoveragePlatformFiles        map[string]platformCoverageEvidence `json:"backendCoveragePlatformFiles"`
 }
 
 type platformCoverageEvidence struct {
@@ -47,11 +48,12 @@ type coverageExclusion struct {
 }
 
 type coveragePolicy struct {
-	floors           map[string]float64
-	defaultFloor     float64
-	neutralPackages  map[string]bool
-	excludedPackages map[string]coverageExclusion
-	platformFiles    map[string]platformCoverageEvidence
+	floors               map[string]float64
+	defaultFloor         float64
+	requireExplicitFloor bool
+	neutralPackages      map[string]bool
+	excludedPackages     map[string]coverageExclusion
+	platformFiles        map[string]platformCoverageEvidence
 }
 
 type coverageCount struct {
@@ -184,6 +186,9 @@ func checkCoverage(policy coveragePolicy, counts map[string]coverageCount, packa
 		floor := policy.defaultFloor
 		if explicit, ok := policy.floors[packagePath]; ok {
 			floor = explicit
+		} else if policy.requireExplicitFloor {
+			failures = append(failures, fmt.Sprintf("%s: no explicit coverage floor; measure and review this owner before adding its baseline", packagePath))
+			continue
 		}
 		percent := float64(count.covered) * 100 / float64(count.statements)
 		fmt.Fprintf(output, "%-32s %5.1f%% (floor %.1f%%)\n", packagePath, percent, floor)
@@ -237,6 +242,9 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 	if err := json.Unmarshal(data, &policy); err != nil {
 		return coveragePolicy{}, fmt.Errorf("decode maintenance policy: %w", err)
 	}
+	if !policy.BackendCoverageRequireExplicitFloor {
+		return coveragePolicy{}, fmt.Errorf("backend coverage must require explicit measured owner floors")
+	}
 	if len(policy.BackendCoverageFloors) == 0 {
 		return coveragePolicy{}, fmt.Errorf("maintenance policy defines no backend coverage floors")
 	}
@@ -284,7 +292,8 @@ func readCoveragePolicy(path string) (coveragePolicy, error) {
 	}
 	return coveragePolicy{
 		floors: policy.BackendCoverageFloors, defaultFloor: policy.BackendCoverageDefaultFloor,
-		neutralPackages: neutral, excludedPackages: excluded, platformFiles: platformFiles,
+		requireExplicitFloor: policy.BackendCoverageRequireExplicitFloor,
+		neutralPackages:      neutral, excludedPackages: excluded, platformFiles: platformFiles,
 	}, nil
 }
 

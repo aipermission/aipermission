@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -482,7 +483,7 @@ func TestReadProductionPackagesBindsImportPathsToRepositoryDirectories(t *testin
 
 func TestReadCoverageFloorsUsesCanonicalPolicy(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "maintenance-policy.json")
-	if err := os.WriteFile(path, []byte(`{"backendCoverageDefaultFloor":1,"backendCoverageNeutralPackages":["internal/data"],"backendCoverageExcludedPackages":{"cmd/e2e":{"context":"linux-e2e","reason":"test harness"}},"backendCoveragePlatformFiles":{"internal/db/ownership_windows.go":{"platform":"windows","buildConstraint":"windows","minimumCoverage":100,"tests":[{"package":"example/backend/internal/db","name":"TestOwnership"}]}},"backendCoverageFloors":{"internal/gatewayworkspace":7}}`), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`{"backendCoverageRequireExplicitFloor":true,"backendCoverageDefaultFloor":1,"backendCoverageNeutralPackages":["internal/data"],"backendCoverageExcludedPackages":{"cmd/e2e":{"context":"linux-e2e","reason":"test harness"}},"backendCoveragePlatformFiles":{"internal/db/ownership_windows.go":{"platform":"windows","buildConstraint":"windows","minimumCoverage":100,"tests":[{"package":"example/backend/internal/db","name":"TestOwnership"}]}},"backendCoverageFloors":{"internal/gatewayworkspace":7}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	policy, err := readCoveragePolicy(path)
@@ -490,7 +491,7 @@ func TestReadCoverageFloorsUsesCanonicalPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	platform := policy.platformFiles["internal/db/ownership_windows.go"]
-	if policy.floors["internal/gatewayworkspace"] != 7 || policy.defaultFloor != 1 || !policy.neutralPackages["internal/data"] || policy.excludedPackages["cmd/e2e"].Context != "linux-e2e" || platform.Platform != "windows" || platform.BuildConstraint != "windows" || platform.MinimumCoverage != 100 {
+	if policy.floors["internal/gatewayworkspace"] != 7 || policy.defaultFloor != 1 || !policy.requireExplicitFloor || !policy.neutralPackages["internal/data"] || policy.excludedPackages["cmd/e2e"].Context != "linux-e2e" || platform.Platform != "windows" || platform.BuildConstraint != "windows" || platform.MinimumCoverage != 100 {
 		t.Fatalf("unexpected gateway workspace policy: %+v", policy)
 	}
 }
@@ -514,8 +515,17 @@ func TestReadCoverageFloorsRejectsMissingAndInvalidEntries(t *testing.T) {
 		`{"backendCoverageDefaultFloor":1,"backendCoverageExcludedPackages":{"cmd/e2e":{"context":"host","reason":"test"}},"backendCoverageFloors":{"internal/gatewayworkspace":7}}`,
 		`{"backendCoverageDefaultFloor":1,"backendCoverageExcludedPackages":{"cmd/e2e":{"context":"linux-e2e","reason":""}},"backendCoverageFloors":{"internal/gatewayworkspace":7}}`,
 	} {
+		var candidate map[string]any
+		if err := json.Unmarshal([]byte(content), &candidate); err != nil {
+			t.Fatal(err)
+		}
+		candidate["backendCoverageRequireExplicitFloor"] = true
+		encoded, err := json.Marshal(candidate)
+		if err != nil {
+			t.Fatal(err)
+		}
 		path := filepath.Join(t.TempDir(), "maintenance-policy.json")
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(path, encoded, 0o600); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := readCoveragePolicy(path); err == nil {

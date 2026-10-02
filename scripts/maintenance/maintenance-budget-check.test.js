@@ -18,12 +18,14 @@ test("rejects disabled budgets and broad test markers", () => {
   candidate.backendFanout.familyOwnerMax = 0;
   candidate.frontendArchitecture.testModuleMarkers.push(".jsx");
   candidate.backendCoverageExceptionBaseline = 0;
+  candidate.backendCoverageRequireExplicitFloor = false;
   const failures = validatePolicy(candidate, []);
   assert.ok(failures.some((failure) => failure.includes("positive integer")));
   assert.ok(
     failures.some((failure) => failure.includes("markers must be exactly")),
   );
   assert.ok(failures.includes("backend coverage exception baseline must be 1"));
+  assert.ok(failures.includes("backend coverage must require explicit measured owner floors"));
 });
 
 test("rejects invalid platform coverage evidence", () => {

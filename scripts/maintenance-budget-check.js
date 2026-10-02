@@ -75,6 +75,9 @@ function validatePolicy(candidate = policy, target = failures) {
   if (candidate.backendCoverageExceptionBaseline !== 1) {
     target.push("backend coverage exception baseline must be 1");
   }
+  if (candidate.backendCoverageRequireExplicitFloor !== true) {
+    target.push("backend coverage must require explicit measured owner floors");
+  }
   const allowedMarkers = [".spec.", ".test."];
   const markers = [
     ...(candidate.frontendArchitecture?.testModuleMarkers || []),
