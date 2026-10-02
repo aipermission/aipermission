@@ -4,8 +4,10 @@ import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node
 import { parse } from "espree";
 import ts from "typescript";
 import sourceKind from "../../scripts/maintenance-source-kind.js";
+import importIdentity from "./vite-import-identity.cjs";
 
 const { isTestSource } = sourceKind;
+const { executableImportIdentity } = importIdentity;
 
 const maintenancePolicy = JSON.parse(readFileSync(new URL("../../maintenance-policy.json", import.meta.url), "utf8"));
 const architecturePolicy = maintenancePolicy.frontendArchitecture;
@@ -53,11 +55,18 @@ export function analyzeSourceTree(sourceRoot, options = {}) {
     for (const unresolved of unresolvedModuleLoads(parsed)) {
       failures.push(`${displayPath(sourceRoot, file)} contains ${unresolved}`);
     }
+    const resolvedImports = specifiers.map((specifier) => resolveSourceImport(sourceRoot, file, specifier, fileSet));
     const dependencies = [
-      ...specifiers.map((specifier) => resolveSourceImport(sourceRoot, file, specifier, fileSet)).filter(Boolean),
+      ...resolvedImports.filter(Boolean),
       ...globSpecifiers.flatMap((specifier) => resolveSourceGlob(file, specifier, fileSet)),
     ];
-    const importFanout = new Set([...specifiers.filter((specifier) => !specifier.startsWith(".")), ...dependencies]);
+    const externalImports = specifiers
+      .map((specifier, index) => {
+        const identity = executableImportIdentity(specifier);
+        return identity && !identity.startsWith(".") ? resolvedImports[index] || identity : null;
+      })
+      .filter(Boolean);
+    const importFanout = new Set([...externalImports, ...dependencies]);
     if (importFanout.size > importBudget) {
       failures.push(`${displayPath(sourceRoot, file)} imports ${importFanout.size} modules; budget is ${importBudget}`);
     }
@@ -367,8 +376,9 @@ function connectorTemplateKinds(sourceRoot) {
 }
 
 export function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
-  if (!specifier.startsWith(".") && !specifier.startsWith("/src/")) return null;
-  const base = specifier.startsWith("/src/") ? resolve(sourceRoot, specifier.slice(5)) : resolve(dirname(importer), specifier);
+  const identity = executableImportIdentity(specifier);
+  if (identity === null || (!identity.startsWith(".") && !identity.startsWith("/src/"))) return null;
+  const base = identity.startsWith("/src/") ? resolve(sourceRoot, identity.slice(5)) : resolve(dirname(importer), identity);
   for (const candidate of [
     base,
     ...sourceExtensions.map((extension) => `${base}${extension}`),
@@ -380,8 +390,8 @@ export function resolveSourceImport(sourceRoot, importer, specifier, fileSet) {
 }
 
 export function escapedSourceImport(sourceRoot, importer, specifier) {
-  if (!specifier.startsWith(".") && !specifier.startsWith("/")) return false;
-  const cleanSpecifier = specifier.split(/[?#]/, 1)[0];
+  const cleanSpecifier = executableImportIdentity(specifier);
+  if (cleanSpecifier === null || (!cleanSpecifier.startsWith(".") && !cleanSpecifier.startsWith("/"))) return false;
   let candidate;
   if (cleanSpecifier === "/src" || cleanSpecifier.startsWith("/src/")) {
     candidate = resolve(sourceRoot, cleanSpecifier.replace(/^\/src\/?/, ""));

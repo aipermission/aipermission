@@ -6,6 +6,7 @@ const { parse } = require("espree");
 const ts = require("typescript");
 
 const { isTestSource } = require("../../scripts/maintenance-source-kind");
+const { executableImportIdentity } = require("./vite-import-identity.cjs");
 
 function walk(directory) {
   if (!fs.existsSync(directory)) return [];
@@ -85,9 +86,13 @@ function staticModuleSpecifiers(source, filename = "source.js") {
   return specifiers;
 }
 
-function resolveLocalImport(importer, specifier, files, extensions) {
-  if (!specifier.startsWith(".")) return null;
-  const base = path.resolve(path.dirname(importer), specifier);
+function resolveLocalImport(root, importer, specifier, files, extensions) {
+  const identity = executableImportIdentity(specifier);
+  if (identity === null) return null;
+  const frontendRoot = path.resolve(root, "frontend");
+  const sourceRootImport = identity.startsWith("/src/") && importer.startsWith(frontendRoot + path.sep);
+  if (!identity.startsWith(".") && !sourceRootImport) return null;
+  const base = sourceRootImport ? path.resolve(frontendRoot, "src", identity.slice(5)) : path.resolve(path.dirname(importer), identity);
   const candidates = [base];
   for (const extension of extensions) candidates.push(base + extension);
   for (const extension of extensions) candidates.push(path.join(base, "index" + extension));
@@ -122,7 +127,7 @@ function analyzeProductionTestImports(root, policy) {
       continue;
     }
     for (const specifier of specifiers) {
-      const dependency = resolveLocalImport(file, specifier, files, extensions);
+      const dependency = resolveLocalImport(root, file, specifier, files, extensions);
       if (dependency && entries.get(dependency)?.test) {
         failures.push(`${path.relative(root, file)} imports test support ${path.relative(root, dependency)}`);
       }

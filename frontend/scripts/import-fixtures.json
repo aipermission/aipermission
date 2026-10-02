@@ -1,0 +1,274 @@
+{
+  "executableSuffixes": [
+    "?v=1",
+    "#module",
+    "?v=1#module",
+    "?worker",
+    "?worker&inline",
+    "?sharedworker",
+    "?worker&url",
+    "?url&worker",
+    "?rawness",
+    "?url=value",
+    "?raw#module",
+    "?url#module",
+    "?worker&url#module",
+    "?raw&worker",
+    "?%72aw",
+    "?%75rl"
+  ],
+  "dataSuffixes": [
+    "?raw",
+    "?url",
+    "?v=1&raw",
+    "?url&v=1#module",
+    "#?raw",
+    "#?url",
+    "?url&worker#module",
+    "?raw&worker#module",
+    "?url&%77orker"
+  ],
+  "escapeSuffixes": ["?v=1#module", "?worker", "?worker&url", "?raw#module", "?url#module", "?worker&url#module"],
+  "viteCases": [
+    ["?raw", false],
+    ["?url", false],
+    ["?raw#module", true],
+    ["?url#module", true],
+    ["#?raw", false],
+    ["#?url", false],
+    ["?worker", true],
+    ["?worker&url", true],
+    ["?url&worker", true],
+    ["?worker&url#module", true],
+    ["?url&worker#module", false],
+    ["?raw&worker", true],
+    ["?raw&worker#module", false],
+    ["?sharedworker&url", true],
+    ["?url&sharedworker#module", false],
+    ["?%72aw", true],
+    ["?%75rl", true],
+    ["?url&%77orker", false]
+  ],
+  "viteBuild": {
+    "configFile": false,
+    "envFile": false,
+    "logLevel": "silent",
+    "worker": { "format": "es" },
+    "build": { "write": false, "minify": false, "assetsInlineLimit": 0 }
+  },
+  "importPolicy": {
+    "frontendArchitecture": { "testModuleMarkers": [".test.", ".spec."] },
+    "sourceBudgets": [
+      { "directory": "src", "extensions": [".js"], "classifier": "markers" },
+      { "directory": "test", "extensions": [".js"], "classifier": "all" }
+    ]
+  },
+  "frontendPolicy": {
+    "frontendArchitecture": { "testModuleMarkers": [".test.", ".spec."] },
+    "sourceBudgets": [{ "directory": "frontend/src", "extensions": [".js"], "classifier": "markers" }]
+  },
+  "sources": {
+    "moduleSpecifiers": "\n    import value from \"./imported.js\";\n    export { value as renamed } from \"./named.js\";\n    export * from \"./all.js\";\n    const lazy = import(\"./lazy.js\");\n    const template = import(`./template.js`);\n    const ignored = import(variable);\n  ",
+    "globSpecifiers": "\n    const modules = import.meta.glob(\"./*/index.ts\", { eager: true });\n    const metadata = import.meta.glob([\"./*/metadata.js\", \"./*/catalog.js\"]);\n    const ignored = import.meta.glob(variable);\n  ",
+    "connectorBranches": "\n    const direct = connectorKind === \"redis\";\n    const active = connector.connector_kind;\n    const aliased = active === \"ssh\";\n    switch (connectorKind) { case \"postgres\": break; }\n    const connectorLabels = { kafka: \"Kafka\" };\n  ",
+    "connectorMembership": "\n    const connectorKind = target.connector_kind;\n    const direct = [\"redis\", \"ssh\"].includes(connectorKind);\n    const lookup = new Set([\"postgres\", \"kafka\"]).has(connectorKind);\n  "
+  },
+  "cycleGraph": [
+    ["a", ["b"]],
+    ["b", ["c"]],
+    ["c", ["a"]]
+  ],
+  "trees": {
+    "identity": {
+      "options": { "importBudget": 2 },
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/owner.js": "\n        import \"./dependency.js{{suffix}}\";\n        export * from \"/src/lib/dependency.js{{suffix}}\";\n        import(`../test/helper.js{{suffix}}`);\n      ",
+        "lib/dependency.js": "export const dependency = true;\n",
+        "test/helper.js": "export const helper = true;\n"
+      }
+    },
+    "candidates": {
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/owner.js": "import \"./dependency?v=1\"; import \"./helpers?worker\";",
+        "lib/dependency.js": "import \"./owner.js#module\";",
+        "lib/helpers/index.js": "export const helper = true;\n"
+      }
+    },
+    "data": {
+      "options": { "importBudget": 1 },
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/owner.js": "\n        import \"./dependency.js{{suffix}}\";\n        export * from \"/src/test/helper.js{{suffix}}\";\n        import(`../../outside.js{{suffix}}`);\n      ",
+        "lib/dependency.js": "import \"./owner.js\";",
+        "test/helper.js": "export const helper = true;\n"
+      }
+    },
+    "escape": {
+      "directories": ["connectors/templates"],
+      "files": { "lib/owner.js": "import {{specifier}};" }
+    },
+    "worker-bridge": {
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/owner.js": "import \"./bridge.js?worker&url\";",
+        "lib/bridge.js": "import \"./helper.test.js?raw#module\";",
+        "lib/helper.test.js": "export default true;"
+      }
+    },
+    "declarations": {
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/runtime.js": "export const runtime = true;\n",
+        "lib/runtime.d.ts": "import type { Fixture } from \"../test/helper.test.js\";\n"
+      }
+    },
+    "source-escape": {
+      "directories": ["src/connectors/templates"],
+      "paths": {
+        "sourceRoot": "src",
+        "importer": "src/lib/api.js",
+        "escaped": "escaped-runtime.js",
+        "fakeDependency": "outside/node_modules/runtime.js",
+        "dependency": "node_modules/dependency/index.js"
+      },
+      "files": {
+        "src/lib/api.js": "import \"../../escaped-runtime.js\";\n",
+        "escaped-runtime.js": { "source": "export const escaped = true;\n", "repeat": 600 },
+        "outside/node_modules/runtime.js": "export const fake = true;\n",
+        "node_modules/dependency/index.js": "export const dependency = true;\n"
+      }
+    },
+    "test-bridge": {
+      "files": {
+        "components/panel.js": "export { connector } from \"../test/bridge.js\";\n",
+        "test/bridge.js": "export { connector } from \"../connectors/templates/fixture/model.js\";\n",
+        "connectors/templates/fixture/model.js": "export const connector = \"fixture\";\n"
+      }
+    },
+    "extensions": {
+      "options": { "lineBudget": 1 },
+      "files": {
+        "App.jsx": "import \"./helpers/bridge.mjs\";\n",
+        "helpers/bridge.mjs": "export * from \"../connectors/templates/redis/model.mjs\";\n",
+        "connectors/templates/redis/model.mjs": "export const model = {};\n",
+        "components/a.js": "import \"./b.mjs\";\n",
+        "components/b.mjs": "import \"./a.js\";\n",
+        "components/oversized.mjs": "export const line = 1;\nexport const extra = 2;\n",
+        "components/supported.cjs": "module.exports = {};\n",
+        "components/unsupported.cts": "export const unsupported = true;\n"
+      }
+    },
+    "dynamic": {
+      "files": {
+        "pages/route.js": "const model = import(`../connectors/templates/fixture/model.mjs`);\nconst unknown = import(modulePath);\nconst modules = import.meta.glob([\"./known.js\", dynamicPattern]);\n",
+        "connectors/templates/fixture/model.mjs": "export const model = {};\n"
+      }
+    },
+    "layers": {
+      "files": {
+        "components/panel.js": "import \"../pages/route.js\"; export const kind = connectorKind === \"redis\";\n",
+        "pages/route.js": "import \"../components/panel.js\";\n",
+        "connectors/templates/_shared/helper.js": "export * from \"../redis/model.js\";\n",
+        "connectors/templates/redis/model.js": "export const model = {};\n"
+      }
+    },
+    "lines": {
+      "options": { "lineBudget": 1 },
+      "directories": ["connectors/templates/fixture"],
+      "files": { "oversized.js": "export const one = 1;\nexport const two = 2;\n" }
+    },
+    "test-support": {
+      "directories": ["connectors/templates"],
+      "files": {
+        "lib/fixture.test.js": "import \"./production.js\";\n",
+        "lib/runtime.test.facade.js": "export const value = 1;\n",
+        "lib/production.js": "import \"./fixture.test.js\";\n"
+      }
+    },
+    "test-directory": {
+      "options": { "lineBudget": 1 },
+      "directories": ["connectors/templates"],
+      "files": { "cache.test.fixtures/production.js": "export const one = 1;\nexport const two = 2;\n" }
+    },
+    "glob": {
+      "files": {
+        "connectors/templates/registry.tsx": "const modules = import.meta.glob(\"./*/index.ts\");\n",
+        "connectors/templates/fixture/index.ts": "import \"../registry.tsx\"; import \"../../../pages/route.ts\";\n",
+        "pages/route.ts": "import \"../connectors/templates/fixture/index.ts\";\n"
+      }
+    },
+    "registry": {
+      "files": {
+        "connectors/templates/{{registry}}.ts": "const modules = import.meta.glob(\"./*/index.ts\");\n",
+        "connectors/templates/fixture/index.ts": "import \"../{{registry}}.ts\";\n"
+      }
+    },
+    "test-import": {
+      "files": { "src/owner.js": "{{source}}", "test/helper.test.js": "export const helper = true;\n" }
+    },
+    "import-candidates": {
+      "files": {
+        "src/owner.js": "import {{specifier}};",
+        "test/helper.test.js": "export const helper = true;\n",
+        "test/helpers/index.js": "export const helper = true;\n"
+      }
+    },
+    "import-root": {
+      "directories": ["src", "test"],
+      "files": {
+        "frontend/src/owner.js": "import \"/src/helper.test.js?worker\";",
+        "frontend/src/helper.test.js": "export const helper = true;\n"
+      }
+    },
+    "import-worker-bridge": {
+      "files": {
+        "src/owner.js": "import \"./bridge.js?worker&url\";",
+        "src/bridge.js": "import \"../test/helper.test.js?raw#module\";",
+        "test/helper.test.js": "export default true;"
+      }
+    },
+    "facade": {
+      "directories": ["test"],
+      "files": { "src/owner.js": "import \"./runtime.test.facade.js\";\n", "src/runtime.test.facade.js": "export const helper = true;\n" }
+    },
+    "template": {
+      "files": {
+        "src/owner.js": "const imported = import(`../test/helper.test.js`);\nconst required = require(`../test/other.test.js`);\n",
+        "test/helper.test.js": "export const helper = true;\n",
+        "test/other.test.js": "export const other = true;\n"
+      }
+    },
+    "import-dynamic": {
+      "directories": ["test"],
+      "files": { "src/owner.js": "const modulePath = './unknown.js';\nimport(modulePath);\n" }
+    },
+    "dependencies": {
+      "directories": ["test"],
+      "files": { "src/owner.js": "export const owner = true;\n", "src/node_modules/dependency/index.js": "import(dynamic);\n" }
+    },
+    "vite": {
+      "directories": ["frontend/src/connectors/templates"],
+      "paths": {
+        "frontendRoot": "frontend",
+        "sourceRoot": "frontend/src",
+        "owner": "frontend/src/lib/owner.js",
+        "helper": "frontend/src/lib/helper.test.js",
+        "bridge": "frontend/src/lib/bridge.js"
+      },
+      "files": {
+        "frontend/src/lib/owner.js": "{{source}}",
+        "frontend/src/lib/helper.test.js": "import \"./execution-marker.js\"; export default true;",
+        "frontend/src/lib/execution-marker.js": "globalThis.__viteContractExecuted = \"executed\";"
+      }
+    },
+    "vite-bridge": {
+      "extends": "vite",
+      "files": {
+        "frontend/src/lib/owner.js": "import url from \"./bridge.js?worker&url\"; globalThis.imported = url;",
+        "frontend/src/lib/bridge.js": "import value from \"./helper.test.js?raw#module\"; globalThis.bridge = value;"
+      }
+    }
+  }
+}

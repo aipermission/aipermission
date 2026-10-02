@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import test from "node:test";
+import { data, createFixture, createSourceFixture } from "./import-source-fixtures.mjs";
 
 import {
   analyzeSourceTree,
@@ -14,15 +14,46 @@ import {
   parseModule,
 } from "./architecture-graph.mjs";
 
-function withSourceTree(name, directories, verify) {
-  const root = mkdtempSync(join(tmpdir(), `aipermission-architecture-${name}-`));
-  try {
-    for (const directory of directories) mkdirSync(join(root, directory), { recursive: true });
-    verify(root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+for (const suffix of data.executableSuffixes) {
+  test(`resolves decorated module owners and unsafe test edges: ${suffix}`, (context) => {
+    const { root, result } = createSourceFixture(context, "identity", { suffix });
+    assert.deepEqual(result.graph.get(join(root, "lib/owner.js")), [join(root, "lib/dependency.js"), join(root, "test/helper.js")]);
+    assert.deepEqual(result.failures, [
+      "lib/owner.js imports test/helper.js across forbidden boundary: production modules must not import test support",
+    ]);
+  });
 }
+
+test("decorated imports retain extensionless and directory-index resolution and cycles", (context) => {
+  const { root, result } = createSourceFixture(context, "candidates");
+  assert.deepEqual(result.graph.get(join(root, "lib/owner.js")), [join(root, "lib/dependency.js"), join(root, "lib/helpers/index.js")]);
+  assert.ok(result.failures.some((failure) => failure.startsWith("dependency cycle:")));
+});
+
+for (const suffix of data.dataSuffixes) {
+  test(`data-only imports create no executable dependency or escape: ${suffix}`, (context) => {
+    const { root, result } = createSourceFixture(context, "data", { suffix });
+    assert.deepEqual(result.graph.get(join(root, "lib/owner.js")), []);
+    assert.deepEqual(result.failures, []);
+  });
+}
+
+for (const suffix of data.escapeSuffixes) {
+  test(`decorated executable imports still fail the source escape boundary: ${suffix}`, (context) => {
+    const specifier = `../../outside.js${suffix}`;
+    const { root } = createFixture(context, "escape", { specifier: JSON.stringify(specifier) });
+    assert.deepEqual(analyzeSourceTree(root).failures, [`lib/owner.js imports executable code outside src: ${specifier}`]);
+  });
+}
+
+test("retains the transitive worker bridge edge into raw-hash test support", (context) => {
+  const { root, result } = createSourceFixture(context, "worker-bridge");
+  assert.deepEqual(result.graph.get(join(root, "lib/owner.js")), [join(root, "lib/bridge.js")]);
+  assert.deepEqual(result.graph.get(join(root, "lib/bridge.js")), [join(root, "lib/helper.test.js")]);
+  assert.deepEqual(result.failures, [
+    "lib/bridge.js imports lib/helper.test.js across forbidden boundary: production modules must not import test support",
+  ]);
+});
 
 test("keeps import edges when typed security contracts are analyzed", () => {
   const parsed = parseModule(
@@ -32,66 +63,43 @@ test("keeps import edges when typed security contracts are analyzed", () => {
   assert.deepEqual(moduleSpecifiers(parsed), ["./security-contracts"]);
 });
 
-test("excludes declaration-only files from the runtime architecture graph", () => {
-  withSourceTree("declarations", ["lib", "connectors/templates"], (root) => {
-    writeFileSync(join(root, "lib", "runtime.js"), "export const runtime = true;\n");
-    writeFileSync(join(root, "lib", "runtime.d.ts"), 'import type { Fixture } from "../test/helper.test.js";\n');
-    const result = analyzeSourceTree(root);
-    assert.deepEqual(result.failures, []);
-    assert.equal(
-      result.files.some((file) => file.endsWith("runtime.d.ts")),
-      false,
-    );
-  });
+test("excludes declaration-only files from the runtime architecture graph", (context) => {
+  const { result } = createSourceFixture(context, "declarations");
+  assert.deepEqual(result.failures, []);
+  assert.equal(
+    result.files.some((file) => file.endsWith("runtime.d.ts")),
+    false,
+  );
 });
 import { productionSourceBoundary, productionSourceViolation } from "./production-source-boundary.mjs";
 
 test("collects static imports, re-exports, and literal dynamic imports from the AST", () => {
-  const source = `
-    import value from "./imported.js";
-    export { value as renamed } from "./named.js";
-    export * from "./all.js";
-    const lazy = import("./lazy.js");
-    const template = import(\`./template.js\`);
-    const ignored = import(variable);
-  `;
+  const source = data.sources.moduleSpecifiers;
   assert.deepEqual(moduleSpecifiers(source), ["./imported.js", "./named.js", "./all.js", "./lazy.js", "./template.js"]);
 });
 
-test("rejects executable production modules that escape frontend src", () => {
-  const frontendRoot = mkdtempSync(join(tmpdir(), "aipermission-production-source-"));
-  try {
-    const sourceRoot = join(frontendRoot, "src");
-    mkdirSync(join(sourceRoot, "lib"), { recursive: true });
-    mkdirSync(join(sourceRoot, "connectors", "templates"), { recursive: true });
-    const importer = join(sourceRoot, "lib", "api.js");
-    const escaped = join(frontendRoot, "escaped-runtime.js");
-    const fakeDependency = join(frontendRoot, "outside", "node_modules", "runtime.js");
-    const dependency = join(frontendRoot, "node_modules", "dependency", "index.js");
-    writeFileSync(importer, 'import "../../escaped-runtime.js";\n');
-    writeFileSync(escaped, `${"export const escaped = true;\n".repeat(600)}`);
-    mkdirSync(dirname(fakeDependency), { recursive: true });
-    mkdirSync(dirname(dependency), { recursive: true });
-    writeFileSync(fakeDependency, "export const fake = true;\n");
-    writeFileSync(dependency, "export const dependency = true;\n");
-
-    assert.equal(escapedSourceImport(sourceRoot, importer, "../../escaped-runtime.js"), true);
-    assert.equal(escapedSourceImport(sourceRoot, importer, "../inside.js"), false);
-    assert.equal(productionSourceViolation(escaped, { frontendRoot, sourceRoot }), escaped);
-    assert.equal(productionSourceViolation(fakeDependency, { frontendRoot, sourceRoot }), fakeDependency);
-    assert.equal(productionSourceViolation(dependency, { frontendRoot, sourceRoot }), "");
-    assert.equal(productionSourceViolation(importer, { frontendRoot, sourceRoot }), "");
-    const plugin = productionSourceBoundary({ frontendRoot, sourceRoot });
-    assert.throws(
-      () => plugin.transform.call({ error: (message) => assert.fail(message) }, "", escaped),
-      /Executable production module must live under frontend\/src/,
-    );
-
-    const result = analyzeSourceTree(sourceRoot);
-    assert.ok(result.failures.some((failure) => failure.includes("imports executable code outside src")));
-  } finally {
-    rmSync(frontendRoot, { recursive: true, force: true });
-  }
+test("rejects executable production modules that escape frontend src", (context) => {
+  const {
+    root: frontendRoot,
+    sourceRoot,
+    importer,
+    escaped,
+    fakeDependency,
+    dependency,
+    result,
+  } = createSourceFixture(context, "source-escape");
+  assert.equal(escapedSourceImport(sourceRoot, importer, "../../escaped-runtime.js"), true);
+  assert.equal(escapedSourceImport(sourceRoot, importer, "../inside.js"), false);
+  assert.equal(productionSourceViolation(escaped, { frontendRoot, sourceRoot }), escaped);
+  assert.equal(productionSourceViolation(fakeDependency, { frontendRoot, sourceRoot }), fakeDependency);
+  assert.equal(productionSourceViolation(dependency, { frontendRoot, sourceRoot }), "");
+  assert.equal(productionSourceViolation(importer, { frontendRoot, sourceRoot }), "");
+  const plugin = productionSourceBoundary({ frontendRoot, sourceRoot });
+  assert.throws(
+    () => plugin.transform.call({ error: (message) => assert.fail(message) }, "", escaped),
+    /Executable production module must live under frontend\/src/,
+  );
+  assert.ok(result.failures.some((failure) => failure.includes("imports executable code outside src")));
 });
 
 test("container builds include the production source boundary", () => {
@@ -106,162 +114,87 @@ test("container builds include the production source boundary", () => {
 });
 
 test("collects literal import.meta.glob patterns from the AST", () => {
-  const source = `
-    const modules = import.meta.glob("./*/index.ts", { eager: true });
-    const metadata = import.meta.glob(["./*/metadata.js", "./*/catalog.js"]);
-    const ignored = import.meta.glob(variable);
-  `;
+  const source = data.sources.globSpecifiers;
   assert.deepEqual(moduleGlobSpecifiers(source), ["./*/index.ts", "./*/metadata.js", "./*/catalog.js"]);
 });
 
 test("finds dependency cycles without duplicating the same cycle", () => {
-  const graph = new Map([
-    ["a", ["b"]],
-    ["b", ["c"]],
-    ["c", ["a"]],
-  ]);
+  const graph = new Map(data.cycleGraph);
   assert.deepEqual(dependencyCycles(graph), [["a", "b", "c", "a"]]);
 });
 
 test("detects connector literals in branches, switches, and lookup tables", () => {
-  const source = `
-    const direct = connectorKind === "redis";
-    const active = connector.connector_kind;
-    const aliased = active === "ssh";
-    switch (connectorKind) { case "postgres": break; }
-    const connectorLabels = { kafka: "Kafka" };
-  `;
+  const source = data.sources.connectorBranches;
   assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis", "ssh"]), ["kafka", "postgres", "redis", "ssh"]);
 });
 
 test("detects connector literals in array and Set membership checks", () => {
-  const source = `
-    const connectorKind = target.connector_kind;
-    const direct = ["redis", "ssh"].includes(connectorKind);
-    const lookup = new Set(["postgres", "kafka"]).has(connectorKind);
-  `;
+  const source = data.sources.connectorMembership;
   assert.deepEqual(hardCodedConnectorKinds(source, ["kafka", "postgres", "redis", "ssh"]), ["kafka", "postgres", "redis", "ssh"]);
 });
 
-test("rejects production imports through test-support bridges", () => {
-  withSourceTree("test-bridge", ["components", "test", "connectors/templates/fixture"], (root) => {
-    writeFileSync(join(root, "components/panel.js"), 'export { connector } from "../test/bridge.js";\n');
-    writeFileSync(join(root, "test/bridge.js"), 'export { connector } from "../connectors/templates/fixture/model.js";\n');
-    writeFileSync(join(root, "connectors/templates/fixture/model.js"), 'export const connector = "fixture";\n');
-
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("components/panel.js imports test/bridge.js")));
-    assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
-  });
+test("rejects production imports through test-support bridges", (context) => {
+  const { result } = createSourceFixture(context, "test-bridge");
+  assert.ok(result.failures.some((failure) => failure.includes("components/panel.js imports test/bridge.js")));
+  assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
 });
 
-test("covers supported module extensions and rejects unclassified bridge modules", () => {
-  withSourceTree("extensions", ["helpers", "components", "connectors/templates/redis"], (root) => {
-    writeFileSync(join(root, "App.jsx"), 'import "./helpers/bridge.mjs";\n');
-    writeFileSync(join(root, "helpers/bridge.mjs"), 'export * from "../connectors/templates/redis/model.mjs";\n');
-    writeFileSync(join(root, "connectors/templates/redis/model.mjs"), "export const model = {};\n");
-    writeFileSync(join(root, "components/a.js"), 'import "./b.mjs";\n');
-    writeFileSync(join(root, "components/b.mjs"), 'import "./a.js";\n');
-    writeFileSync(join(root, "components/oversized.mjs"), "export const line = 1;\nexport const extra = 2;\n");
-    writeFileSync(join(root, "components/supported.cjs"), "module.exports = {};\n");
-    writeFileSync(join(root, "components/unsupported.cts"), "export const unsupported = true;\n");
-
-    const result = analyzeSourceTree(root, { lineBudget: 1 });
-    assert.ok(result.files.some((file) => file.endsWith("helpers/bridge.mjs")));
-    assert.ok(result.failures.some((failure) => failure.includes("helpers/bridge.mjs is not in a recognized architecture layer")));
-    assert.ok(result.failures.some((failure) => failure.includes("components/oversized.mjs has 2 lines; budget is 1")));
-    assert.ok(result.files.some((file) => file.endsWith("components/supported.cjs")));
-    assert.ok(result.failures.some((failure) => failure.includes("components/unsupported.cts uses unsupported executable extension .cts")));
-    assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
-  });
+test("covers supported module extensions and rejects unclassified bridge modules", (context) => {
+  const { result } = createSourceFixture(context, "extensions");
+  assert.ok(result.files.some((file) => file.endsWith("helpers/bridge.mjs")));
+  assert.ok(result.failures.some((failure) => failure.includes("helpers/bridge.mjs is not in a recognized architecture layer")));
+  assert.ok(result.failures.some((failure) => failure.includes("components/oversized.mjs has 2 lines; budget is 1")));
+  assert.ok(result.files.some((file) => file.endsWith("components/supported.cjs")));
+  assert.ok(result.failures.some((failure) => failure.includes("components/unsupported.cts uses unsupported executable extension .cts")));
+  assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
 });
 
-test("resolves static template imports and rejects unresolved dynamic module loads", () => {
-  withSourceTree("dynamic", ["pages", "connectors/templates/fixture"], (root) => {
-    writeFileSync(
-      join(root, "pages/route.js"),
-      'const model = import(`../connectors/templates/fixture/model.mjs`);\nconst unknown = import(modulePath);\nconst modules = import.meta.glob(["./known.js", dynamicPattern]);\n',
-    );
-    writeFileSync(join(root, "connectors/templates/fixture/model.mjs"), "export const model = {};\n");
-
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js imports connectors/templates/fixture/model.mjs")));
-    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static dynamic import")));
-    assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static import.meta.glob pattern")));
-  });
+test("resolves static template imports and rejects unresolved dynamic module loads", (context) => {
+  const { result } = createSourceFixture(context, "dynamic");
+  assert.ok(result.failures.some((failure) => failure.includes("pages/route.js imports connectors/templates/fixture/model.mjs")));
+  assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static dynamic import")));
+  assert.ok(result.failures.some((failure) => failure.includes("pages/route.js contains a non-static import.meta.glob pattern")));
 });
 
-test("rejects layer inversions, connector leaks, and source cycles", () => {
-  withSourceTree("layers", ["components", "pages", "connectors/templates/_shared", "connectors/templates/redis"], (root) => {
-    writeFileSync(join(root, "components/panel.js"), 'import "../pages/route.js"; export const kind = connectorKind === "redis";\n');
-    writeFileSync(join(root, "pages/route.js"), 'import "../components/panel.js";\n');
-    writeFileSync(join(root, "connectors/templates/_shared/helper.js"), 'export * from "../redis/model.js";\n');
-    writeFileSync(join(root, "connectors/templates/redis/model.js"), "export const model = {};\n");
-
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("components/panel.js imports pages/route.js")));
-    assert.ok(result.failures.some((failure) => failure.includes("components/panel.js hard-codes connector kind redis")));
-    assert.ok(result.failures.some((failure) => failure.includes("_shared/helper.js imports connectors/templates/redis/model.js")));
-    assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
-  });
+test("rejects layer inversions, connector leaks, and source cycles", (context) => {
+  const { result } = createSourceFixture(context, "layers");
+  assert.ok(result.failures.some((failure) => failure.includes("components/panel.js imports pages/route.js")));
+  assert.ok(result.failures.some((failure) => failure.includes("components/panel.js hard-codes connector kind redis")));
+  assert.ok(result.failures.some((failure) => failure.includes("_shared/helper.js imports connectors/templates/redis/model.js")));
+  assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
 });
 
-test("rejects production modules above the line budget", () => {
-  withSourceTree("lines", ["connectors/templates/fixture"], (root) => {
-    writeFileSync(join(root, "oversized.js"), "export const one = 1;\nexport const two = 2;\n");
-    const result = analyzeSourceTree(root, { lineBudget: 1 });
-    assert.ok(result.failures.some((failure) => failure.includes("oversized.js has 2 lines; budget is 1")));
-  });
+test("rejects production modules above the line budget", (context) => {
+  const { result } = createSourceFixture(context, "lines");
+  assert.ok(result.failures.some((failure) => failure.includes("oversized.js has 2 lines; budget is 1")));
 });
 
-test("classifies only terminal test filename markers as test support", () => {
-  withSourceTree("test-support", ["lib", "connectors/templates"], (root) => {
-    writeFileSync(join(root, "lib", "fixture.test.js"), 'import "./production.js";\n');
-    writeFileSync(join(root, "lib", "runtime.test.facade.js"), "export const value = 1;\n");
-    writeFileSync(join(root, "lib", "production.js"), 'import "./fixture.test.js";\n');
-
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
-    assert.ok(!result.files.some((file) => file.endsWith("fixture.test.js")));
-    assert.ok(result.files.some((file) => file.endsWith("runtime.test.facade.js")));
-  });
+test("classifies only terminal test filename markers as test support", (context) => {
+  const { result } = createSourceFixture(context, "test-support");
+  assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));
+  assert.ok(!result.files.some((file) => file.endsWith("fixture.test.js")));
+  assert.ok(result.files.some((file) => file.endsWith("runtime.test.facade.js")));
 });
 
-test("does not classify production modules by test-like directory names", () => {
-  withSourceTree("test-directory", ["cache.test.fixtures", "connectors/templates"], (root) => {
-    writeFileSync(join(root, "cache.test.fixtures", "production.js"), "export const one = 1;\nexport const two = 2;\n");
-
-    const result = analyzeSourceTree(root, { lineBudget: 1 });
-    assert.ok(result.files.some((file) => file.endsWith("cache.test.fixtures/production.js")));
-    assert.ok(result.failures.some((failure) => failure.includes("cache.test.fixtures/production.js has 2 lines")));
-  });
+test("does not classify production modules by test-like directory names", (context) => {
+  const { result } = createSourceFixture(context, "test-directory");
+  assert.ok(result.files.some((file) => file.endsWith("cache.test.fixtures/production.js")));
+  assert.ok(result.failures.some((failure) => failure.includes("cache.test.fixtures/production.js has 2 lines")));
 });
 
-test("expands glob edges and rejects template imports into registry and page layers", () => {
-  withSourceTree("glob", ["pages", "connectors/templates/fixture"], (root) => {
-    writeFileSync(join(root, "connectors/templates/registry.tsx"), 'const modules = import.meta.glob("./*/index.ts");\n');
-    writeFileSync(join(root, "connectors/templates/fixture/index.ts"), 'import "../registry.tsx"; import "../../../pages/route.ts";\n');
-    writeFileSync(join(root, "pages/route.ts"), 'import "../connectors/templates/fixture/index.ts";\n');
-
-    const result = analyzeSourceTree(root);
-    assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
-    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports connectors/templates/registry.tsx")));
-    assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports pages/route.ts")));
-    assert.ok(result.failures.some((failure) => failure.includes("pages/route.ts imports connectors/templates/fixture/index.ts")));
-    assert.ok(analyzeSourceTree(root, { importBudget: 0 }).failures.some((failure) => failure.includes("registry.tsx imports 1 modules")));
-  });
+test("expands glob edges and rejects template imports into registry and page layers", (context) => {
+  const { root, result } = createSourceFixture(context, "glob");
+  assert.ok(result.failures.some((failure) => failure.includes("dependency cycle:")));
+  assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports connectors/templates/registry.tsx")));
+  assert.ok(result.failures.some((failure) => failure.includes("fixture/index.ts imports pages/route.ts")));
+  assert.ok(result.failures.some((failure) => failure.includes("pages/route.ts imports connectors/templates/fixture/index.ts")));
+  assert.ok(analyzeSourceTree(root, { importBudget: 0 }).failures.some((failure) => failure.includes("registry.tsx imports 1 modules")));
 });
 
-test("native family registrations may not import their captured registry", () => {
+test("native family registrations may not import their captured registry", (context) => {
   for (const registry of ["credential-registry", "connector-family-registry", "console-model-registry", "console-recovery-registry"]) {
-    withSourceTree(registry, ["connectors/templates/fixture"], (root) => {
-      writeFileSync(join(root, `connectors/templates/${registry}.ts`), 'const modules = import.meta.glob("./*/index.ts");\n');
-      writeFileSync(join(root, "connectors/templates/fixture/index.ts"), `import "../${registry}.ts";\n`);
-      const result = analyzeSourceTree(root);
-      assert.ok(result.failures.some((failure) => failure.includes(`fixture/index.ts imports connectors/templates/${registry}.ts`)));
-      assert.ok(
-        !result.failures.some((failure) => failure.includes(`${registry}.ts imports connectors/templates/fixture/index.ts across`)),
-      );
-    });
+    const { result } = createSourceFixture(context, "registry", { registry });
+    assert.ok(result.failures.some((failure) => failure.includes(`fixture/index.ts imports connectors/templates/${registry}.ts`)));
+    assert.ok(!result.failures.some((failure) => failure.includes(`${registry}.ts imports connectors/templates/fixture/index.ts across`)));
   }
 });
