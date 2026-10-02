@@ -307,9 +307,9 @@ export function S3ConfirmDialog({ value, theme, onClose, onConfirm }: S3ConfirmD
         </div>
         {value.danger ? (
           <Notice tone="bad">This action changes object storage state and cannot be undone by AIPermission.</Notice>
-        ) : (
+        ) : value.action ? (
           <Notice tone="warn">Review the object keys before continuing.</Notice>
-        )}
+        ) : null}
         {value.status ? (
           <div role="status">
             <Notice tone="warn">{value.status}</Notice>
@@ -322,11 +322,13 @@ export function S3ConfirmDialog({ value, theme, onClose, onConfirm }: S3ConfirmD
         ) : null}
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={value.pending}>
-            Cancel
+            {value.action ? "Cancel" : "Close"}
           </Button>
-          <Button type="button" variant={value.danger ? "danger" : "default"} onClick={onConfirm} disabled={value.pending}>
-            {value.pending ? "Working..." : value.danger ? "Delete" : "Confirm"}
-          </Button>
+          {value.action ? (
+            <Button type="button" variant={value.danger ? "danger" : "default"} onClick={onConfirm} disabled={value.pending}>
+              {value.pending ? "Working..." : value.danger ? "Delete" : "Confirm"}
+            </Button>
+          ) : null}
         </div>
       </div>
     </Dialog>
