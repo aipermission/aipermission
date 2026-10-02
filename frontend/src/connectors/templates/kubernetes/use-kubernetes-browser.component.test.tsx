@@ -2,42 +2,16 @@ import { connectorActionRequest } from "../../../test/connector-action-fixtures"
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost } from "../../../lib/api.ts";
-import { useKubernetesBrowser } from "./use-kubernetes-browser";
 import { useRolloutRestart } from "./use-rollout-restart";
-import type { KubernetesBrowserProps } from "./use-kubernetes-browser";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import { kubernetesOutputField } from "./resource-output";
+import { completed, pods, browserRenderer, resetBrowserAPI, responseFor } from "../../../test/kubernetes-browser-fixtures";
+import { useKubernetesBrowser } from "./use-kubernetes-browser";
 
 vi.mock("../../../lib/api.ts", () => ({ apiPost: vi.fn() }));
 
-const pods = [
-  { namespace: "default", name: "api-a", node: "worker-1", phase: "Running" },
-  { namespace: "default", name: "api-b", node: "worker-2", phase: "Running" },
-];
-
-beforeEach(() => {
-  vi.mocked(apiPost).mockReset();
-  vi.mocked(apiPost).mockImplementation(async (_path, payload: Record<string, unknown>) =>
-    completed(
-      connectorActionRequest(payload).action_name,
-      responseFor(connectorActionRequest(payload).action_name, connectorActionRequest(payload).input),
-    ),
-  );
-});
-
-function renderBrowser(overrides: Partial<KubernetesBrowserProps> = {}) {
-  const props: KubernetesBrowserProps = {
-    target: { ref: "kubernetes:1:1" },
-    approvals: { data: [] },
-    session: { name: "", active: false },
-    selectedSessionLive: false,
-    onNewLiveSession: vi.fn(),
-    onSelectLiveSessionName: vi.fn(),
-    onRefreshActivity: vi.fn(),
-    ...overrides,
-  };
-  return { ...renderHook((next) => useKubernetesBrowser(next), { initialProps: props }), props };
-}
+beforeEach(resetBrowserAPI);
+const renderBrowser = browserRenderer(useKubernetesBrowser);
 
 it("loads resources and ignores detail from a superseded pod selection", async () => {
   const pending = new Map<string, (_value: ConnectorActionResponse) => void>();
@@ -194,28 +168,6 @@ it("restarts the workload captured by the confirmation dialog", async () => {
   );
   expect(refreshResource).toHaveBeenCalledWith("workloads");
 });
-
-function completed(actionName: string, output: unknown, targetRef = "kubernetes:1:1"): ConnectorActionResponse {
-  return {
-    request_id: 1,
-    status: "completed",
-    target_ref: targetRef,
-    connector_kind: "kubernetes",
-    action_name: actionName,
-    retry_policy: { class: "read_only", guidance: "Safe to retry." },
-    output,
-  };
-}
-
-function responseFor(actionName: string, input: Record<string, unknown>) {
-  const outputs: Record<string, unknown> = {
-    list_namespaces: { namespaces: [{ name: "default" }] },
-    list_workloads: { workloads: [] },
-    list_pods: { pods },
-    get_logs: { logs: `logs for ${input.pod}` },
-  };
-  return outputs[actionName] || {};
-}
 
 it("does not replace an opened console with delayed pod logs", async () => {
   let resolveLogs: ((_value: ConnectorActionResponse) => void) | undefined;
