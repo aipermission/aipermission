@@ -68,15 +68,19 @@ var (
 
 func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTestFixture {
 	t.Helper()
-	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
+	bootstrapDatabase, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "test.db"), "test-password")
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	t.Cleanup(func() {
+		if err := bootstrapDatabase.Close(); err != nil && !strings.Contains(err.Error(), "database is closed") {
+			t.Errorf("close bootstrap database: %v", err)
+		}
+	})
 	secretVault, err := vault.New("test-password")
 	if err != nil {
 		t.Fatalf("new vault: %v", err)
 	}
-	tokenStore := tokens.NewStore(database)
 	catalog := newTestConnectorCatalog(t)
 	for _, option := range catalogOptions {
 		if option != nil {
@@ -89,7 +93,7 @@ func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTes
 		DataPath:       filepath.Join(t.TempDir(), "aipermission.db"),
 		GatewaySecret:  "gateway-secret",
 		AllowedOrigins: []string{"http://localhost:3001"},
-	}, testOpenWorkspaceInput(database),
+	}, testOpenWorkspaceInput(bootstrapDatabase),
 		WithConnectorRegistry(catalog.connectors),
 		WithConnectorAdapterRegistry(catalog.adapters),
 		WithMaintenanceConsole(maintenanceconsole.NewRuntime()),
@@ -97,6 +101,19 @@ func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTes
 	if err != nil {
 		t.Fatalf("new server: %v", err)
 	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), defaultWorkspaceShutdownTimeout)
+		defer cancel()
+		if err := srv.CloseContext(ctx); err != nil {
+			t.Errorf("close API test server: %v", err)
+		}
+	})
+	// Fixture writes must share the runtime's single owned connection pool.
+	if err := bootstrapDatabase.Close(); err != nil {
+		t.Fatalf("close bootstrap database: %v", err)
+	}
+	database := testRuntimeDatabase(t, srv, srv.activeRuntime())
+	tokenStore := tokens.NewStore(database)
 	registerRuntimeTestOwner(srv.activeRuntime(), runtimeTestOwner{
 		workspaceOwner: srv.workspaceOwner, accessOwner: srv.accessOwner,
 		connectorActionOwner: srv.connectorActionOwner, connectorManagementOwner: srv.connectorManagementOwner,
@@ -108,16 +125,6 @@ func newAPITestFixture(t *testing.T, catalogOptions ...testCatalogOption) apiTes
 	sshKeyStore := newFixtureSSHKeyStore(t, srv, srv.activeRuntime())
 	testRuntimeControlState(t, srv, srv.activeRuntime()).SetMCPStarted(true)
 	authorizeTestUISession(srv)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultWorkspaceShutdownTimeout)
-		defer cancel()
-		if err := srv.CloseContext(ctx); err != nil {
-			t.Errorf("close API test server: %v", err)
-		}
-		if err := database.Close(); err != nil && !strings.Contains(err.Error(), "database is closed") {
-			t.Errorf("close API test database: %v", err)
-		}
-	})
 	return apiTestFixture{server: srv, db: database, tokens: tokenStore, sshKeys: sshKeyStore}
 }
 
@@ -128,6 +135,22 @@ func newFixtureSSHKeyStore(t *testing.T, server *Server, runtime *gatewayinfra.W
 	}
 	resources := server.connectorRuntime.CredentialResourceRuntime(runtime, testSSHConnectorKind)
 	return newTestSSHKeyStore(resources.CredentialResources("private_key"))
+}
+
+func TestAPITestFixtureUsesRuntimeOwnedDatabase(t *testing.T) {
+	fixture := newAPITestFixture(t)
+	if fixture.db != testRuntimeDatabase(t, fixture.server, fixture.server.activeRuntime()) {
+		t.Fatal("fixture mutations use a second database pool instead of the runtime owner")
+	}
+	if fixture.db.Stats().MaxOpenConnections != 1 {
+		t.Fatal("fixture database does not preserve the single runtime writer")
+	}
+	if err := fixture.server.CloseContext(t.Context()); err != nil {
+		t.Fatalf("close fixture runtime: %v", err)
+	}
+	if err := fixture.db.PingContext(t.Context()); err == nil || !strings.Contains(err.Error(), "database is closed") {
+		t.Fatalf("fixture database outlives its runtime owner: %v", err)
+	}
 }
 
 func (f apiTestFixture) createKeyAndServer(t *testing.T, name string) testSSHConnectorProfile {
@@ -229,14 +252,11 @@ func performJSONForWorkspace(handler http.Handler, method string, path string, b
 }
 
 func performJSONWithWorkspace(handler http.Handler, method string, path string, token string, body any, includeUICookie bool, workspace *string) *httptest.ResponseRecorder {
-	var reader *bytes.Reader
-	if body == nil {
-		reader = bytes.NewReader(nil)
-	} else {
-		payload, _ := json.Marshal(body)
-		reader = bytes.NewReader(payload)
+	var payload []byte
+	if body != nil {
+		payload, _ = json.Marshal(body)
 	}
-	request := httptest.NewRequest(method, path, reader)
+	request := httptest.NewRequest(method, path, bytes.NewReader(payload))
 	request.Host = "localhost:8080"
 	request.RemoteAddr = "127.0.0.1:12345"
 	if body != nil {
@@ -333,10 +353,7 @@ func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
-	var items []mcpconnector.TargetItem
-	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
+	items := decodeRouteResponse[[]mcpconnector.TargetItem](t, response.Body.Bytes())
 	if len(items) != 0 {
 		t.Fatalf("new token should not see connector targets without permissions: %#v", items)
 	}
@@ -352,10 +369,7 @@ func TestMCPConnectorTargetsRequireValidToken(t *testing.T) {
 
 func TestMCPAuthenticationRejectsMalformedTokenExpiry(t *testing.T) {
 	fixture := newAPITestFixture(t)
-	token, err := fixture.tokens.Create(t.Context(), tokens.CreateRequest{Name: "corrupted-expiry"})
-	if err != nil {
-		t.Fatalf("create token: %v", err)
-	}
+	token := createAPITestToken(t, fixture, t.Context(), "corrupted-expiry")
 	if _, err := fixture.db.Exec(`UPDATE api_tokens SET expires_at = 'not-a-timestamp' WHERE id = ?`, token.ID); err != nil {
 		t.Fatalf("corrupt token expiry: %v", err)
 	}
@@ -386,10 +400,7 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list connector targets failed: %d %s", response.Code, response.Body.String())
 	}
-	var items []mcpconnector.TargetItem
-	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
-		t.Fatalf("decode connector targets: %v", err)
-	}
+	items := decodeRouteResponse[[]mcpconnector.TargetItem](t, response.Body.Bytes())
 	if len(items) != 1 || len(items[0].Metadata) != 0 {
 		t.Fatalf("metadata should be hidden by default: %#v", items)
 	}
@@ -407,9 +418,7 @@ func TestMCPConnectorTargetsExposeMetadataOnlyWhenEnabled(t *testing.T) {
 	if response.Code != http.StatusOK {
 		t.Fatalf("list connector targets with metadata failed: %d %s", response.Code, response.Body.String())
 	}
-	if err := json.Unmarshal(response.Body.Bytes(), &items); err != nil {
-		t.Fatalf("decode connector targets with metadata: %v", err)
-	}
+	items = decodeRouteResponse[[]mcpconnector.TargetItem](t, response.Body.Bytes())
 	if len(items) != 1 {
 		t.Fatalf("expected one connector target, got %#v", items)
 	}
@@ -441,23 +450,16 @@ func TestMCPConnectorActionsOnlyExposeGrantedActions(t *testing.T) {
 	token := createAPITestToken(t, fixture, ctx, "agent")
 	store := connectortargets.NewStore(fixture.db)
 	target, profile := createAPITestPostgresTargetProfile(t, store, testRuntimeVault(t, fixture.server, fixture.server.activeRuntime()), fixture.server.activeRuntime().Identity().WorkspaceID)
-	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
-		TokenID:       token.ID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ActionName:    testPostgresGetSchemasAction,
-		ExecutionRule: connectortargets.ActionPermissionAlwaysRun,
-	}); err != nil {
-		t.Fatalf("set connector permission: %v", err)
-	}
-	if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
-		TokenID:       token.ID,
-		TargetID:      target.ID,
-		ProfileID:     profile.ID,
-		ActionName:    testPostgresReadonlySQLAction,
-		ExecutionRule: connectortargets.ActionPermissionBlocked,
-	}); err != nil {
-		t.Fatalf("set blocked connector permission: %v", err)
+	for action, rule := range map[string]connectortargets.ActionPermissionRule{
+		testPostgresGetSchemasAction:  connectortargets.ActionPermissionAlwaysRun,
+		testPostgresReadonlySQLAction: connectortargets.ActionPermissionBlocked,
+	} {
+		if err := store.SetActionPermission(ctx, connectortargets.SetActionPermissionInput{
+			TokenID: token.ID, TargetID: target.ID, ProfileID: profile.ID,
+			ActionName: action, ExecutionRule: rule,
+		}); err != nil {
+			t.Fatalf("set %s connector permission: %v", action, err)
+		}
 	}
 
 	targetRef := connectors.FormatTargetRef(testPostgresConnectorKind, target.ID, profile.ID)
