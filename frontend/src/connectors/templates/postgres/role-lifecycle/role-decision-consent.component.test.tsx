@@ -3,7 +3,7 @@ import type { ComponentProps, MouseEvent } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost, currentWorkspaceBinding } from "../../../../lib/api";
 import { RoleReconciliationForm } from "./role-reconciliation-form";
-import { roleHistoryPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
+import { deferredRoleHistoryReply, roleHistoryPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
 import { useRoleHistory } from "./use-role-history";
 import type { DatabaseProfile } from "../../_shared/database-model-types";
 import type { RoleDecisionMode } from "./role-reconciliation-contract";
@@ -205,11 +205,8 @@ describe.each(["presence", "cleanup"] as const)("%s submission consent ownership
 
   it("admits one synchronous double invocation, blocks busy handlers and never retries an unknown outcome", async () => {
     const { retained, entry } = await ready(mode);
-    let reject!: (_error: Error) => void;
-    const pending = new Promise<unknown>((_resolve, no) => {
-      reject = no;
-    });
-    post.mockReturnValueOnce(pending);
+    const pending = deferredRoleHistoryReply();
+    post.mockReturnValueOnce(pending.promise);
     act(() => {
       retained();
       retained();
@@ -226,8 +223,8 @@ describe.each(["presence", "cleanup"] as const)("%s submission consent ownership
       input: { expected: entry, ...(mode === "cleanup" ? { confirmed_role_name: entry.record.intent.role_name } : {}) },
     });
     await act(async () => {
-      reject(new Error("Synthetic lost decision acknowledgement"));
-      await pending.catch(() => {});
+      pending.reject(new Error("Synthetic lost decision acknowledgement"));
+      await pending.promise.catch(() => {});
     });
     await waitFor(() => expect(history.busy).toBe(false));
     expect(history.state).toBe("ready");
