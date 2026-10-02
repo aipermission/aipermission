@@ -1456,6 +1456,14 @@ name.
 
 ## Console Sessions
 
+The Console token options, Always counts and warnings, and Messages recipients
+exclude revoked or expired tokens, even when saved grants are permanent. A
+malformed non-empty token expiry is also ineligible. The view updates on token
+expiry without reloading grants; preferred selections and unread notes cannot
+override eligibility. Sending rechecks expiry, and superseded selection/send
+handlers cannot revive a removed token or overwrite a newer selection or draft.
+These views are informational; gateway authorization remains authoritative.
+
 ```txt
 GET    /api/console/sessions
 POST   /api/console/sessions
