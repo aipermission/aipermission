@@ -90,10 +90,13 @@ separately when needed.
 If a token config is committed or shared, revoke that token in the web UI. Re-run setup
 when you intentionally upgrade the package used by that client.
 
-Setup validates the skill source and destination before asking for or writing
-the token. It installs the skill first, then writes the sensitive config. A
-config failure can therefore leave a harmless installed skill, but never a
-token config followed by a failed skill installation.
+Setup validates the skill source and destination before writing the token
+config. It writes the sensitive config first, then installs the prevalidated
+skill. A config failure leaves the skill unchanged. If skill installation
+fails after the config is written, the error names that partial state and the
+config path; keep that config private and complete installation with
+`install-skill` separately. Skill preflight does not guarantee that the later
+installation will succeed.
 
 Full automation can pass the token through stdin:
 

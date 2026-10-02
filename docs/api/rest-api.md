@@ -1010,9 +1010,18 @@ Transfer queue state is visible in the local Transfer Center UI.
     "remote_paths": ["/var/log/syslog", "/var/log/auth.log"],
     "archive_name": "logs.zip"
   },
-  "reason": "Download bounded log files for local inspection."
+  "reason": "Download bounded log files for local inspection.",
+  "idempotency_key": "ssh-core-1-log-download-20260904T120000Z"
 }
 ```
+
+Keep this caller-stable key for the original download submission. If the
+response is lost, invalid, or `outcome_unknown`, do not retry automatically or
+generate a new key. Poll `get_connector_action_request` when a request ID is
+known. If the ID is unavailable, explicitly reconcile by submitting the same
+key with unchanged target/profile, action, input, and reason. This recovers the
+original gateway submission, not a new external attempt; inspect the recorded
+request and external state before deciding whether another attempt is safe.
 
 File-transfer queue and status responses do not include transferred file bytes,
 local temporary paths, or archive staging paths. Explicitly authorized connector
