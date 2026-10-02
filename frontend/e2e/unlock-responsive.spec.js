@@ -1,11 +1,13 @@
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test, installStaticMockRoutes } from "./mock-browser.mjs";
 import AxeBuilder from "@axe-core/playwright";
 
 for (const width of [320, 360]) {
   for (const databasePresent of [true, false]) {
-    test(`@accessibility keeps ${databasePresent ? "unlock" : "setup"} tabs usable at ${width}px`, async ({ page }) => {
+    test(`@accessibility keeps ${databasePresent ? "unlock" : "setup"} tabs usable at ${width}px`, async ({ page, apiIsolation }) => {
       await page.setViewportSize({ width, height: width === 320 ? 568 : 800 });
-      await page.route("http://localhost:8080/api/unlock/status", async (route) => {
+      await installStaticMockRoutes(page, apiIsolation);
+      await apiIsolation.route(page, "http://localhost:8080/api/unlock/status", ["GET"], async (route) => {
         await route.fulfill({
           json: databasePresent
             ? {

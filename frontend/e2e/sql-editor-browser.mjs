@@ -10,17 +10,19 @@ export async function observeSQLBrowserRuntime(page) {
   const nginx = readFileSync(new URL("../nginx.conf", import.meta.url), "utf8");
   const policy = nginx.match(/add_header Content-Security-Policy "([^"]+)"/)[1];
   // The mock API lives on a separate loopback origin; script/worker policy stays unchanged.
-  await page.route("**/", async (route) => {
-    if (!route.request().isNavigationRequest()) return route.continue();
-    const response = await route.fetch();
-    await route.fulfill({
-      response,
-      headers: {
-        ...response.headers(),
-        "content-security-policy": policy.replace("connect-src 'self'", "connect-src 'self' http://localhost:8080"),
-      },
-    });
-  });
+  await page.route(
+    (url) => url.protocol === "http:" && url.hostname === "127.0.0.1" && url.pathname === "/" && !url.search,
+    async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: {
+          ...response.headers(),
+          "content-security-policy": policy.replace("connect-src 'self'", "connect-src 'self' http://localhost:8080"),
+        },
+      });
+    },
+  );
   return errors;
 }
 
