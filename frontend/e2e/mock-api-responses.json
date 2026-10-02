@@ -1,0 +1,430 @@
+{
+  "responses": {
+    "pendingApproval": {
+      "id": 42,
+      "connector_kind": "ssh",
+      "target_id": 1,
+      "target_name": "worker-1",
+      "profile_id": 1,
+      "profile_label": "main",
+      "target_ref": "ssh:1:1",
+      "token_name": "agent",
+      "action_name": "exec",
+      "reason": "Inspect service health",
+      "input": {
+        "command": "uptime"
+      },
+      "preview": {
+        "command": "uptime",
+        "mode": "prompt"
+      },
+      "status": "approval_pending",
+      "approval_context_hash": "approval-context-42",
+      "retry_policy": {
+        "class": "non_idempotent",
+        "guidance": "Inspect state before retrying."
+      },
+      "created_at": "2026-09-07T12:00:00Z"
+    },
+    "sqlTargetProfile": {
+      "ref": "postgres:2:1",
+      "connector_kind": "postgres",
+      "target_id": 2,
+      "profile_id": 1,
+      "target_name": "analytics-db",
+      "profile_label": "admin",
+      "profile_kind": "password",
+      "project_id": 1,
+      "project_name": "Ungrouped",
+      "project_slug": "ungrouped",
+      "status": "active",
+      "created_at": "2026-05-31T00:00:00Z",
+      "updated_at": "2026-05-31T00:00:00Z",
+      "config": {
+        "host": "127.0.0.1",
+        "port": 5432,
+        "database": "analytics"
+      },
+      "public": {
+        "username": "admin"
+      }
+    },
+    "sqlQueryAction": {
+      "name": "query_readonly",
+      "label": "Read query",
+      "description": "Run a bounded read-only query.",
+      "category": "query",
+      "risk": "read"
+    },
+    "unlockedStatus": {
+      "state": "unlocked",
+      "database_id": "default",
+      "database_name": "Default",
+      "unlocked_databases": [
+        {
+          "id": "default",
+          "name": "Default",
+          "current": true
+        }
+      ],
+      "databases": [
+        {
+          "id": "default",
+          "name": "Default",
+          "state": "unlocked",
+          "unlocked": true
+        }
+      ]
+    },
+    "projectScope": {
+      "project_id": 1,
+      "project_name": "Ungrouped",
+      "project_slug": "ungrouped",
+      "enabled": true
+    },
+    "projectCapabilityDefinitions": [
+      {
+        "name": "vault.metadata.read",
+        "label": "Read metadata",
+        "description": "List secret names and bounded non-secret metadata for this project.",
+        "allowed_rules": ["always_run"]
+      },
+      {
+        "name": "vault.item.generate",
+        "label": "Generate items",
+        "description": "Generate and store a new secret value without returning it to the agent.",
+        "allowed_rules": ["approval_required", "always_run"]
+      },
+      {
+        "name": "vault.session.apply",
+        "label": "Apply to sessions",
+        "description": "Restart an eligible connector session with approved Vault items in its environment.",
+        "allowed_rules": ["approval_required", "always_run"]
+      }
+    ],
+    "targetDetail": {
+      "id": 1,
+      "project_id": 1,
+      "project_name": "Ungrouped",
+      "project_slug": "ungrouped",
+      "ref": "ssh:1:1",
+      "connector_kind": "ssh",
+      "name": "worker-1",
+      "config": {
+        "host": "127.0.0.1",
+        "port": 22
+      },
+      "status": "active",
+      "created_at": "2026-05-31T00:00:00Z",
+      "updated_at": "2026-05-31T00:00:00Z",
+      "profiles": [
+        {
+          "id": 1,
+          "target_id": 1,
+          "ref": "ssh:1:1",
+          "connector_kind": "ssh",
+          "kind": "private_key",
+          "label": "main",
+          "public": {
+            "username": "root",
+            "ssh_key_id": 1
+          }
+        }
+      ]
+    },
+    "liveConsoleSession": {
+      "id": 10,
+      "runtime_id": 1,
+      "name": "worker-1 shell",
+      "status": "connected",
+      "transcript": "",
+      "created_at": "2026-09-07T12:00:00Z"
+    },
+    "transferBatch": {
+      "id": 77,
+      "runtime_id": 1,
+      "target_name": "worker-1",
+      "status": "running",
+      "direction": "download",
+      "source": "ui",
+      "total_items": 1,
+      "completed_items": 0,
+      "canceled_items": 0,
+      "failed_items": 0,
+      "transferred_bytes": 0,
+      "items": []
+    }
+  },
+  "staticRoutes": {
+    "/api/status": {
+      "json": {
+        "service": "aipermission",
+        "status": "running",
+        "config": {},
+        "features": []
+      }
+    },
+    "/api/targets": {
+      "json": {
+        "items": [
+          {
+            "ref": "ssh:1:1",
+            "connector_kind": "ssh",
+            "target_id": 1,
+            "profile_id": 1,
+            "runtime_id": 1,
+            "target_name": "worker-1",
+            "profile_label": "main",
+            "profile_kind": "ssh_user",
+            "project_id": 1,
+            "project_name": "Ungrouped",
+            "project_slug": "ungrouped",
+            "status": "active",
+            "created_at": "2026-09-07T12:00:00Z",
+            "updated_at": "2026-09-07T12:00:00Z",
+            "server_id": 1,
+            "config": {
+              "host": "127.0.0.1",
+              "port": 22
+            },
+            "public": {
+              "username": "root",
+              "ssh_key_id": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/connectors": {
+      "json": {
+        "items": [
+          {
+            "kind": "ssh",
+            "label": "SSH",
+            "version": "0.1"
+          }
+        ]
+      }
+    },
+    "/api/connectors/ssh": {
+      "json": {
+        "kind": "ssh",
+        "label": "SSH",
+        "version": "0.1"
+      }
+    },
+    "/api/connector-targets": {
+      "json": {
+        "items": [
+          {
+            "id": 1,
+            "project_id": 1,
+            "project_name": "Ungrouped",
+            "project_slug": "ungrouped",
+            "ref": "ssh:1:1",
+            "connector_kind": "ssh",
+            "name": "worker-1",
+            "config": {
+              "host": "127.0.0.1",
+              "port": 22
+            },
+            "status": "active",
+            "created_at": "2026-05-31T00:00:00Z",
+            "updated_at": "2026-05-31T00:00:00Z"
+          }
+        ]
+      }
+    },
+    "/api/connector-targets/inventory": {
+      "json": {
+        "items": [
+          {
+            "id": 1,
+            "project_id": 1,
+            "project_name": "Ungrouped",
+            "project_slug": "ungrouped",
+            "ref": "ssh:1:1",
+            "connector_kind": "ssh",
+            "name": "worker-1",
+            "config": {
+              "host": "127.0.0.1",
+              "port": 22
+            },
+            "status": "active",
+            "created_at": "2026-05-31T00:00:00Z",
+            "updated_at": "2026-05-31T00:00:00Z",
+            "profiles": [
+              {
+                "id": 1,
+                "target_id": 1,
+                "ref": "ssh:1:1",
+                "connector_kind": "ssh",
+                "kind": "private_key",
+                "label": "main",
+                "public": {
+                  "username": "root",
+                  "ssh_key_id": 1
+                },
+                "vault_session_supported": true,
+                "created_at": "2026-05-31T00:00:00Z",
+                "updated_at": "2026-05-31T00:00:00Z",
+                "actions": [
+                  {
+                    "name": "exec",
+                    "label": "Run command",
+                    "description": "Run a non-interactive command.",
+                    "category": "command",
+                    "risk": "write"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "/api/projects": {
+      "json": {
+        "items": [
+          {
+            "id": 1,
+            "name": "Ungrouped",
+            "slug": "ungrouped",
+            "target_count": 1,
+            "created_at": "2026-05-31T00:00:00Z",
+            "updated_at": "2026-05-31T00:00:00Z"
+          },
+          {
+            "id": 2,
+            "name": "My Project",
+            "slug": "my-project",
+            "target_count": 0,
+            "created_at": "2026-05-31T00:00:00Z",
+            "updated_at": "2026-05-31T00:00:00Z"
+          }
+        ]
+      }
+    },
+    "/api/connector-targets/1": {
+      "json": {
+        "id": 1,
+        "project_id": 1,
+        "project_name": "Ungrouped",
+        "project_slug": "ungrouped",
+        "ref": "ssh:1:1",
+        "connector_kind": "ssh",
+        "name": "worker-1",
+        "config": {
+          "host": "127.0.0.1",
+          "port": 22
+        },
+        "status": "active",
+        "created_at": "2026-05-31T00:00:00Z",
+        "updated_at": "2026-05-31T00:00:00Z",
+        "profiles": [
+          {
+            "id": 1,
+            "target_id": 1,
+            "ref": "ssh:1:1",
+            "connector_kind": "ssh",
+            "kind": "private_key",
+            "label": "main",
+            "public": {
+              "username": "root",
+              "ssh_key_id": 1
+            }
+          }
+        ]
+      }
+    },
+    "/api/connector-targets/1/profiles/1/actions": {
+      "json": {
+        "items": [
+          {
+            "name": "exec",
+            "label": "Run command",
+            "description": "Run a non-interactive command.",
+            "category": "command",
+            "risk": "write"
+          }
+        ]
+      }
+    },
+    "/api/connectors/ssh/credentials": {
+      "json": [
+        {
+          "id": 1,
+          "name": "main",
+          "key_type": "ed25519",
+          "fingerprint": "SHA256:test"
+        }
+      ]
+    },
+    "/api/tokens": {
+      "json": [
+        {
+          "id": 1,
+          "name": "agent",
+          "token_prefix": "aip_test",
+          "created_at": "2026-05-31T00:00:00Z"
+        }
+      ]
+    },
+    "/api/console/sessions": {
+      "json": []
+    },
+    "/api/connector-action-approvals": {
+      "json": []
+    },
+    "/api/connector-action-approvals?status=outcome_unknown": {
+      "headers": {
+        "X-AIPermission-Workspace": "browser-fixture-workspace",
+        "access-control-expose-headers": "X-AIPermission-Workspace"
+      },
+      "json": []
+    },
+    "/api/messages": {
+      "json": []
+    },
+    "/api/settings/redaction-rules": {
+      "json": []
+    },
+    "/api/backup/providers/catalog": {
+      "json": {
+        "items": [
+          {
+            "provider_type": "aipermission_backup",
+            "label": "AIPermission Backup"
+          }
+        ]
+      }
+    },
+    "/api/backup/providers": {
+      "json": {
+        "items": []
+      }
+    },
+    "/api/history-labels": {
+      "json": []
+    },
+    "/api/history/targets": {
+      "json": {
+        "items": []
+      }
+    },
+    "/api/vault-action-approvals?status=approval_pending": {
+      "json": []
+    },
+    "/api/file-transfer-batches?limit=30": {
+      "json": {
+        "items": []
+      }
+    },
+    "/api/backup/freshness": {
+      "status": 503,
+      "json": {
+        "error": "Backup freshness unavailable in mock fixture."
+      }
+    }
+  }
+}

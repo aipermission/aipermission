@@ -236,6 +236,15 @@ every tested unlock/setup tab transition. The checked manifest is ratcheted
 against the base Git revision, so deleting both a critical test and its current
 manifest entry cannot make the same pull request pass.
 
+Mock-browser specs share a deny-by-default API fixture installed before their
+known routes. Unexpected HTTP calls are recorded and aborted; unexpected API
+websockets are closed, and teardown requires an empty unexpected-call log.
+Service workers are blocked. Known routes declare their methods, while named
+JSON response fixtures are deep-cloned per test. The isolation regression uses
+an owned ephemeral loopback server to verify that unknown reads, mutations,
+and websocket connections never reach the wire; only its exact intentional
+probe log is consumed before teardown. These checks do not require a live API.
+
 Postgres and ClickHouse SQL Console browser fixtures include a recent query.
 At 390px and 1920px they assert bounding-box containment and non-overlap for
 query/session controls and save screenshots plus JSON bounds. Keyboard checks
