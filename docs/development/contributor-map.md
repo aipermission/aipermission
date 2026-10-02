@@ -22,6 +22,11 @@ audit, history or credential pipeline. Browser completions must still belong
 to the current draft, dialog, session and request generation; matching an ID
 alone is not enough after switching away and back.
 
+Token-page issuance, revocation, permission refresh and expiry filtering live
+in `frontend/src/components/tokens/use-token-page-controller.ts`; the page owns
+presentation. Its protected page tests exercise the actual controller through
+the rendered UI rather than a second copy of token lifecycle logic.
+
 ## Results And Recovery
 
 | Observation                                                                        | Safe Next Step                                                                                                                                  |

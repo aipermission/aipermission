@@ -143,7 +143,7 @@ export const asyncStateOwnerTests = {
   "src/lib/use-connector-permissions.ts": ["src/lib/use-connector-permissions.component.test.tsx"],
   "src/pages/remote-restore-panel.tsx": ["src/pages/remote-restore-panel.component.test.tsx"],
   "src/pages/projects.tsx": ["src/pages/projects.component.test.tsx"],
-  "src/pages/tokens.tsx": ["src/pages/tokens.component.test.tsx"],
+  "src/components/tokens/use-token-page-controller.ts": ["src/pages/tokens.component.test.tsx"],
   "src/pages/use-security-page-state.ts": ["src/pages/security.component.test.tsx"],
   "src/pages/audit-logs.tsx": ["src/test/activity/audit-logs.component.test.tsx"],
   "src/pages/use-unlock-lifecycle-mutation.ts": [
