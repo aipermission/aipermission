@@ -79,6 +79,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/kafka/use-kafka-writes.ts": ["src/connectors/templates/kafka/use-kafka-browser.component.test.tsx"],
   "src/connectors/templates/kubernetes/use-kubernetes-browser.ts": [
     "src/connectors/templates/kubernetes/use-kubernetes-browser.component.test.tsx",
+    "src/connectors/templates/kubernetes/use-kubernetes-namespace-cache.component.test.tsx",
   ],
   "src/connectors/templates/kubernetes/use-rollout-restart.ts": [
     "src/connectors/templates/kubernetes/use-rollout-restart.component.test.tsx",

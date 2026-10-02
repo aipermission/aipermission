@@ -21,13 +21,15 @@ export interface KubernetesBrowserProps {
 
 export type KubernetesRunActionOptions = Pick<GuardedConnectorActionOptions, "actionName" | "input" | "reason" | "busy" | "channel">;
 
+type ResourceCache = Partial<Record<KubernetesResourceKind, { namespace: string; items: KubernetesResource[] }>>;
+
 export function useKubernetesBrowser(props: KubernetesBrowserProps) {
   const { target, approvals, session, selectedSessionLive, onNewLiveSession, onSelectLiveSessionName, onRefreshActivity } = props;
   const [tab, setTab] = useState<KubernetesResourceKind>("workloads");
   const [namespace, setNamespace] = useState("");
   const [namespaces, setNamespaces] = useState<{ name: string }[]>([]);
   const [filter, setFilter] = useState("");
-  const [resources, setResources] = useState<Partial<Record<KubernetesResourceKind, KubernetesResource[]>>>({});
+  const [resources, setResources] = useState<ResourceCache>({});
   const [selectedKey, setSelectedKey] = useState("");
   const selectedKeyRef = useRef("");
   const [detail, setDetail] = useState<Pick<ConnectorActionResponse, "output"> | null>(null);
@@ -39,7 +41,7 @@ export function useKubernetesBrowser(props: KubernetesBrowserProps) {
   const requestGuard = useRequestGuard(target.ref);
   selectedKeyRef.current = selectedKey;
   const activeTab = resourceTabs.find((item) => item.key === tab) || resourceTabs[0];
-  const activeResources = useMemo(() => resources[tab] || [], [resources, tab]);
+  const activeResources = useMemo(() => scopedResources(resources, tab, namespace), [resources, tab, namespace]);
   const selectedResource = activeResources.find((item) => resourceKey(tab, item) === selectedKey) || null;
   const expectedConsoleName = selectedResource && tab === "pods" ? kubernetesConsoleSessionName(target, selectedResource) : "";
   const selectedPodConsoleLive = Boolean(selectedSessionLive && session?.name === expectedConsoleName);
@@ -126,7 +128,7 @@ export function useKubernetesBrowser(props: KubernetesBrowserProps) {
     });
     if (!item) return;
     const next = kubernetesOutputResources(item.output, config.output);
-    setResources((current) => ({ ...current, [config.key]: next }));
+    setResources((current) => ({ ...current, [config.key]: { namespace: nextNamespace, items: next } }));
     const retainedKey = next.some((entry) => resourceKey(config.key, entry) === selectedKeyRef.current) ? selectedKeyRef.current : "";
     setSelectedKey(retainedKey);
     if (!retainedKey) clearDetail();
@@ -269,6 +271,12 @@ export function useKubernetesBrowser(props: KubernetesBrowserProps) {
     switchTab,
     changeNamespace,
   };
+}
+
+function scopedResources(resources: ResourceCache, tab: KubernetesResourceKind, namespace: string) {
+  // Keep at most one snapshot per kind; nodes belong to the cluster, not the namespace picker.
+  const cached = resources[tab];
+  return cached && (tab === "nodes" || cached.namespace === namespace) ? cached.items : [];
 }
 
 function filterResources(tab: KubernetesResourceKind, resources: KubernetesResource[], filter: string) {
