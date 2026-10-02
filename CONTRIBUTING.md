@@ -21,6 +21,9 @@ of scope for the core project.
 
 ## Development
 
+Start with the short [Contributor Map](docs/development/contributor-map.md)
+for ownership, lifecycle/error handling and native test entry points.
+
 The reviewed contributor toolchain is Go 1.26.6 and Node.js 24.21.0. End users of
 the published MCP package only need the runtime version documented in the
 README; contribution and release checks use these exact repository versions.

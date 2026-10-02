@@ -1,5 +1,8 @@
 # Development Architecture
 
+The [Contributor Map](contributor-map.md) links ownership and recovery decisions
+to the canonical contracts below.
+
 AIPermission is a monorepo because the gateway, frontend, MCP bridge, operator instructions, and docs share one security contract.
 
 ```txt
