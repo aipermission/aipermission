@@ -168,13 +168,16 @@ function validateRequiredCommandMigrations(policy) {
   }
 }
 
-function verifyWorkflows(policy = loadPolicy()) {
-  verifyRequiredWorkflows(policy);
+function verifyWorkflows(policy = loadPolicy(), repositoryRoot = root) {
+  verifyRequiredWorkflows(policy, repositoryRoot);
 }
 
-function verifyRepositoryWorkflows(policy = loadPolicy()) {
-  verifyWorkflows(policy);
-  verifyRepositoryWorkflowRuntimeContracts();
+function verifyRepositoryWorkflows(
+  policy = loadPolicy(),
+  repositoryRoot = root,
+) {
+  verifyWorkflows(policy, repositoryRoot);
+  verifyRepositoryWorkflowRuntimeContracts(repositoryRoot);
 }
 
 function releaseCheckTargets(makefileSource) {
