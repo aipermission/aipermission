@@ -14,6 +14,10 @@
     ],
     "src/components/settings/maintenance-console-panel.tsx": ["src/components/settings/maintenance-console-panel.component.test.tsx"],
     "src/components/tokens/created-token-notice.tsx": ["src/components/tokens/created-token-notice.component.test.tsx"],
+    "src/components/tokens/vault-permission-dialog.tsx": [
+      "src/components/tokens/vault-permission-dialog.component.test.tsx",
+      "src/components/tokens/vault-permission-ownership.component.test.tsx"
+    ],
     "src/components/transfer-center.tsx": ["src/components/transfer-center.component.test.tsx"],
     "src/components/vault/vault-action-approval-dialog.tsx": ["src/components/vault/vault-action-approval-dialog.component.test.tsx"],
     "src/connectors/templates/_shared/network-transport-fields.tsx": [

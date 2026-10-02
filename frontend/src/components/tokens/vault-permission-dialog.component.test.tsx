@@ -163,6 +163,46 @@ describe("VaultPermissionDialog", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
+  it("selects a project and removes temporary expiry when Keep is chosen", async () => {
+    const user = userEvent.setup();
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} />);
+    await screen.findByText("Inject secrets");
+    await user.click(screen.getByRole("button", { name: /My Project.*Vault capabilities/ }));
+    await user.click(screen.getByRole("button", { name: "Always" }));
+    await user.click(screen.getByRole("button", { name: "1h" }));
+    await user.click(screen.getByRole("button", { name: "Keep" }));
+    await user.click(screen.getByRole("button", { name: "Save Vault capabilities" }));
+    await waitFor(() =>
+      expect(apiPut).toHaveBeenCalledWith(
+        "/api/tokens/7/project-capabilities",
+        {
+          capabilities: [{ project_id: 3, capability_name: "vault.inject", execution_rule: "always_run", expires_at: undefined }],
+          expected_revision: "capability-1",
+        },
+        { signal: expect.any(AbortSignal) },
+      ),
+    );
+  });
+
+  it("renders a disabled-only capability when its catalog has no execution rules", async () => {
+    const get = vi.mocked(apiGet).getMockImplementation()!;
+    vi.mocked(apiGet).mockImplementation(async (path, options) => {
+      if (path === "/api/tokens/7/project-capabilities")
+        return {
+          definitions: [{ name: "vault.inject", label: "Inject secrets", description: "Unavailable for execution.", allowed_rules: [] }],
+          items: [],
+          revision: "capability-1",
+        };
+      return get(path, options);
+    });
+    render(<VaultPermissionDialog token={{ id: 7, name: "agent" }} onClose={vi.fn()} />);
+    await screen.findByText("Inject secrets");
+    expect(screen.getByRole("button", { name: "Disabled" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Prompt" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Always" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keep" })).toBeDisabled();
+  });
+
   it("explains when no projects are available for Vault permissions", async () => {
     vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/tokens/7/project-scopes") return { items: [], revision: "scope-empty" };

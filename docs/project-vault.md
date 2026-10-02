@@ -66,6 +66,17 @@ idempotency, context-drift, history, audit, and secret-redaction path without
 opening the approval dialog. Always is an explicit autonomous secret-use grant,
 not a way to expose the secret value to MCP.
 
+The token Vault permission dialog saves a snapshot of the selected capabilities.
+Rule and lifetime edits made while that save is pending remain in the local
+draft. A successful response advances the server revision used by the next
+save, but does not mark newer edits as saved. Submit again to persist those
+edits. Duplicate submissions are ignored while the capability save is pending.
+Failed saves retain the draft without advancing its revision; revision conflicts
+require reloading permissions before retrying. Closing, reopening, or changing
+tokens retires the previous dialog's requests and reloads server state. A token
+list refresh failure after a confirmed save is reported separately and does not
+undo the saved permissions.
+
 Metadata responses contain no Vault values. Revocation is authoritative for
 every metadata read admitted after the revocation commits. A non-secret metadata
 response whose authorization check already completed may finish concurrently
