@@ -315,6 +315,32 @@ it("searches target metadata and invalidates confirmation after every selection 
   expect(apiPost).not.toHaveBeenCalled();
 });
 
+it.each(["failed", "outcome_unknown"])("shows both captured streams and %s diagnostics without another mutation", async (status) => {
+  apiPost.mockResolvedValue({
+    parallelism: 3,
+    items: [
+      {
+        request_id: 41,
+        target_id: 7,
+        target_name: target.name,
+        status,
+        stdout: "Captured standard output",
+        stderr: "Captured standard error",
+        error: "Inspect outcome before retrying",
+      },
+    ],
+  });
+  await startObservationTest();
+  const row = screen.getByRole("button", { name: /Example host/ });
+  expect(row).toHaveTextContent("exit unavailable");
+  expect(row).not.toHaveTextContent("running");
+  await act(async () => row.click());
+  expect(screen.getByText("Captured standard output")).toBeVisible();
+  expect(screen.getByText("Captured standard error")).toBeVisible();
+  expect(screen.getByText("Inspect outcome before retrying")).toBeVisible();
+  expect(apiPost).toHaveBeenCalledOnce();
+});
+
 it("toggles compact result details and exposes captured failure output without rerunning a command", async () => {
   const user = userEvent.setup();
   apiPost.mockResolvedValue({

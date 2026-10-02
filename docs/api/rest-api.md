@@ -1736,7 +1736,10 @@ button. Background recovery only reads known command IDs with bounded,
 workspace-bound requests; it never resubmits a command. Failed result reads
 retain the last execution status and output, display a separate refresh error,
 and permit a later bounded read to recover. Activity-feed refresh failures do
-not change execution outcomes. Closing the dialog aborts its observations, and
+not change execution outcomes. Result details display captured stdout, stderr,
+and outcome diagnostics separately; output on one stream does not hide another
+stream or an unknown-outcome warning. Viewing results never retries a command.
+Closing the dialog aborts its observations, and
 late replies cannot replace a new workspace's draft or results.
 
 The History page uses stable cursor pagination ordered by `(created_at, id)`.

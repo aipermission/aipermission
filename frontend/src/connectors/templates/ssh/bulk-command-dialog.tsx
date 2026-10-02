@@ -375,7 +375,13 @@ function BulkCommandResultRow({ item, selected, onSelect }: { item: BulkCommandI
       </span>
       <span className="flex items-center justify-between gap-2 text-xs text-stone-500">
         <span>#{item.request_id}</span>
-        {typeof item.exit_code === "number" ? <span>exit {item.exit_code}</span> : <span>running</span>}
+        {typeof item.exit_code === "number" ? (
+          <span>exit {item.exit_code}</span>
+        ) : (
+          <span>
+            {isDefinitiveConsoleCommandStatus(item.status) || isUnknownConsoleCommandStatus(item.status) ? "exit unavailable" : "running"}
+          </span>
+        )}
       </span>
       {item.refresh_error ? <span className="text-xs text-amber-700">Result refresh: {item.refresh_error}</span> : null}
     </button>
@@ -390,7 +396,11 @@ function BulkCommandResultDetail({ item }: { item?: BulkCommandItem }) {
       </div>
     );
   }
-  const output = item.stdout || item.stderr || item.error || "";
+  const outputs = [
+    { label: "Standard output", value: item.stdout },
+    { label: "Standard error", value: item.stderr },
+    { label: "Outcome diagnostic", value: item.error },
+  ].filter((output) => output.value);
   return (
     <article className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-2 rounded-md border border-stone-200 p-3">
       <div className="flex min-w-0 items-center justify-between gap-3">
@@ -403,9 +413,22 @@ function BulkCommandResultDetail({ item }: { item?: BulkCommandItem }) {
           <Badge tone={statusTone(item.status)}>{statusLabel(item.status)}</Badge>
         </div>
       </div>
-      <TerminalBlock surface="log" className="min-h-0 p-3 text-xs">
-        {output || "No output captured yet."}
-      </TerminalBlock>
+      <div className="min-h-0 space-y-3 overflow-auto">
+        {outputs.length ? (
+          outputs.map((output) => (
+            <section key={output.label}>
+              <p className="mb-1 text-xs font-semibold text-stone-500">{output.label}</p>
+              <TerminalBlock surface="log" className="p-3 text-xs">
+                {output.value}
+              </TerminalBlock>
+            </section>
+          ))
+        ) : (
+          <TerminalBlock surface="log" className="p-3 text-xs">
+            No output captured yet.
+          </TerminalBlock>
+        )}
+      </div>
     </article>
   );
 }
