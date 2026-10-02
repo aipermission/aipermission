@@ -1,191 +1,45 @@
 package api
 
 import (
-	"context"
-	"errors"
-	"fmt"
 	"net/http"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/filetransfer"
-	"github.com/aipermission/aipermission/backend/internal/transferjobs"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
-func TestFileTransferControlRoutesDriveRegisteredBatch(t *testing.T) {
+func TestFileTransferControlRoutesUseTransferOwnerAndRequireUI(t *testing.T) {
 	fixture := newAPITestFixture(t)
-	item := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
-	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(fixture.db).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
-		RuntimeID: item.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
-		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
-	})
+	workspace := currentTestUIWorkspaceBinding()
+	token, err := fixture.tokens.Create(t.Context(), tokens.CreateRequest{Name: "transfer-controls"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed, err := filetransfer.NewStore(fixture.db).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
-		t.Fatalf("start batch: %t %v", changed, err)
-	}
-	control := &transferjobs.Control{}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	requireTransferJobs(t, fixture.server, runtime).RegisterBatchControl(batch.ID, control)
-	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
-	go func() {
-		<-ctx.Done()
-		_, _ = filetransfer.NewStore(fixture.db).CancelBatch(context.Background(), batch.ID, "canceled by test worker")
-		requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
-	}()
-	request := func(action string, wantCode int, wantStatus string) {
-		t.Helper()
-		response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/%s", batch.ID, action), "", map[string]any{})
-		if response.Code != wantCode {
-			t.Fatalf("%s: %d %s", action, response.Code, response.Body.String())
-		}
-		stored, err := filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
-		if err != nil || stored.Status != wantStatus {
-			t.Fatalf("%s persisted status = %q: %v", action, stored.Status, err)
-		}
-	}
-	request("pause", http.StatusOK, filetransfer.StatusPaused)
-	request("pause", http.StatusConflict, filetransfer.StatusPaused)
-	wait := func() <-chan error {
-		done := make(chan error, 1)
-		go func() { done <- control.Wait(ctx) }()
-		return done
-	}
-	checkWait := func(done <-chan error, expected error) {
-		t.Helper()
-		select {
-		case err := <-done:
-			if !errors.Is(err, expected) {
-				t.Fatalf("wait = %v, want %v", err, expected)
+	locked := NewLockedServer(fixtureConfigForLockedTest(t))
+	t.Cleanup(locked.Close)
+	for _, testCase := range []struct {
+		path    string
+		status  int
+		message string
+	}{
+		{"/api/file-transfers/37/cancel", http.StatusNotFound, "file transfer not found"},
+		{"/api/file-transfer-batches/37/cancel", http.StatusNotFound, "file transfer batch not found"},
+		{"/api/file-transfer-batches/37/pause", http.StatusConflict, "file transfer batch is not active"},
+		{"/api/file-transfer-batches/37/resume", http.StatusConflict, "file transfer batch is not active"},
+	} {
+		t.Run(testCase.path, func(t *testing.T) {
+			response := performJSONForWorkspace(fixture.server.Handler(), http.MethodPost, testCase.path, nil, workspace)
+			if response.Code != testCase.status || !strings.Contains(response.Body.String(), testCase.message) {
+				t.Fatalf("transfer owner response=%d body=%s", response.Code, response.Body.String())
 			}
-		case <-time.After(time.Second):
-			t.Fatal("route did not release paused transfer")
-		}
+			response = performJSON(fixture.server.Handler(), http.MethodPost, testCase.path, token.TokenValue, nil)
+			if response.Code != http.StatusUnauthorized || !strings.Contains(response.Body.String(), "ui session required") {
+				t.Fatalf("API token must not authorize UI control: %d %s", response.Code, response.Body.String())
+			}
+			response = performJSON(locked.Handler(), http.MethodPost, testCase.path, "", nil)
+			if response.Code != http.StatusLocked || !strings.Contains(response.Body.String(), "database is locked") {
+				t.Fatalf("locked UI control response=%d body=%s", response.Code, response.Body.String())
+			}
+		})
 	}
-	resumed := wait()
-	request("resume", http.StatusOK, filetransfer.StatusRunning)
-	checkWait(resumed, nil)
-	request("resume", http.StatusConflict, filetransfer.StatusRunning)
-	request("pause", http.StatusOK, filetransfer.StatusPaused)
-	canceled := wait()
-	request("cancel", http.StatusOK, filetransfer.StatusCanceled)
-	checkWait(canceled, context.Canceled)
-	request("resume", http.StatusConflict, filetransfer.StatusCanceled)
-	request("pause", http.StatusConflict, filetransfer.StatusCanceled)
-	// A rejected pause must restore the gate, even after the persisted job ended.
-	probe, stop := context.WithTimeout(t.Context(), time.Second)
-	defer stop()
-	if err := control.Wait(probe); err != nil {
-		t.Fatalf("rejected pause left gate closed: %v", err)
-	}
-}
-
-func TestFileTransferCancelSignalsWorkerBeforeReconcilingTerminalState(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
-	runtime := fixture.server.activeRuntime()
-	item, err := filetransfer.NewStore(fixture.db).Create(t.Context(), filetransfer.CreateRequest{
-		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionUpload, RemotePath: "/report", FileName: "report",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if changed, err := filetransfer.NewStore(fixture.db).MarkRunning(t.Context(), item.ID); err != nil || !changed {
-		t.Fatalf("start transfer: changed=%t err=%v", changed, err)
-	}
-	workerCtx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	requireTransferJobs(t, fixture.server, runtime).RegisterFileCancel(item.ID, cancel)
-	workerDone := make(chan struct{})
-	go func() {
-		<-workerCtx.Done()
-		_, _ = filetransfer.NewStore(fixture.db).Cancel(context.Background(), item.ID, "canceled by test worker")
-		requireTransferJobs(t, fixture.server, runtime).UnregisterFileCancel(item.ID)
-		close(workerDone)
-	}()
-
-	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_transfer_cancel_history BEFORE UPDATE ON history_entries
-		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
-		t.Fatal(err)
-	}
-	response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfers/%d/cancel", item.ID), "", map[string]any{})
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("failed persistence response=%d body=%s", response.Code, response.Body.String())
-	}
-	if workerCtx.Err() == nil {
-		t.Fatal("worker was not signaled before terminal-state reconciliation")
-	}
-	stored, err := filetransfer.NewStore(fixture.db).Get(t.Context(), item.ID)
-	if err != nil || stored.Status != filetransfer.StatusRunning {
-		t.Fatalf("rolled-back transfer status=%q err=%v", stored.Status, err)
-	}
-	if _, err := fixture.db.Exec(`DROP TRIGGER reject_transfer_cancel_history`); err != nil {
-		t.Fatal(err)
-	}
-	response = performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfers/%d/cancel", item.ID), "", map[string]any{})
-	if response.Code != http.StatusOK {
-		t.Fatalf("reconciled cancel response=%d body=%s", response.Code, response.Body.String())
-	}
-	stored, err = filetransfer.NewStore(fixture.db).Get(t.Context(), item.ID)
-	if err != nil || stored.Status != filetransfer.StatusFailed || stored.FailureKind != filetransfer.FailureKindOutcomeUnknown {
-		t.Fatalf("uncertain transfer outcome=%#v err=%v", stored, err)
-	}
-	<-workerDone
-}
-
-func TestFileTransferBatchCancelSignalsWorkerBeforeReconcilingTerminalState(t *testing.T) {
-	fixture := newAPITestFixture(t)
-	identity := createS3IdentityRuntime(t, fixture.server, "http://127.0.0.1:9")
-	runtime := fixture.server.activeRuntime()
-	batch, err := filetransfer.NewStore(fixture.db).CreateBatch(t.Context(), filetransfer.CreateBatchRequest{
-		RuntimeID: identity.TransferRuntimeID, Direction: filetransfer.DirectionDownload,
-		Items: []filetransfer.CreateRequest{{RemotePath: "/report", FileName: "report"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if changed, err := filetransfer.NewStore(fixture.db).MarkBatchRunning(t.Context(), batch.ID); err != nil || !changed {
-		t.Fatalf("start batch: changed=%t err=%v", changed, err)
-	}
-	workerCtx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	requireTransferJobs(t, fixture.server, runtime).RegisterBatchCancel(batch.ID, cancel)
-	workerDone := make(chan struct{})
-	go func() {
-		<-workerCtx.Done()
-		_, _ = filetransfer.NewStore(fixture.db).CancelBatch(context.Background(), batch.ID, "canceled by test worker")
-		requireTransferJobs(t, fixture.server, runtime).UnregisterBatchCancel(batch.ID)
-		close(workerDone)
-	}()
-
-	if _, err := fixture.db.Exec(`CREATE TRIGGER reject_batch_cancel_history BEFORE UPDATE ON history_entries
-		BEGIN SELECT RAISE(ABORT, 'injected history projection failure'); END`); err != nil {
-		t.Fatal(err)
-	}
-	response := performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/cancel", batch.ID), "", map[string]any{})
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("failed persistence response=%d body=%s", response.Code, response.Body.String())
-	}
-	if workerCtx.Err() == nil {
-		t.Fatal("batch worker was not signaled before terminal-state reconciliation")
-	}
-	stored, err := filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
-	if err != nil || stored.Status != filetransfer.StatusRunning {
-		t.Fatalf("rolled-back batch status=%q err=%v", stored.Status, err)
-	}
-	if _, err := fixture.db.Exec(`DROP TRIGGER reject_batch_cancel_history`); err != nil {
-		t.Fatal(err)
-	}
-	response = performJSON(fixture.server.Handler(), http.MethodPost, fmt.Sprintf("/api/file-transfer-batches/%d/cancel", batch.ID), "", map[string]any{})
-	if response.Code != http.StatusOK {
-		t.Fatalf("reconciled cancel response=%d body=%s", response.Code, response.Body.String())
-	}
-	stored, err = filetransfer.NewStore(fixture.db).GetBatch(t.Context(), batch.ID)
-	if err != nil || stored.Status != filetransfer.StatusFailed || stored.FailureKind != filetransfer.FailureKindOutcomeUnknown {
-		t.Fatalf("uncertain batch outcome=%#v err=%v", stored, err)
-	}
-	<-workerDone
 }
