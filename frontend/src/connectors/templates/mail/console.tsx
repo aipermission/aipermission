@@ -13,6 +13,8 @@ import { MessageDetail } from "./message-detail";
 import { DeleteMessageDialog, MoveMessageDialog, RetryUnknownSubmissionDialog } from "./message-dialogs";
 import { targetEndpoint } from "./model";
 import { useMailWorkspace } from "./use-mail-workspace";
+import type { MailComposeOutcome } from "./use-mail-compose";
+import type { MailActionResult } from "./action-result-dialog";
 import type { MailActionItem, MailRunnerState } from "./action-types";
 import { structuredConsoleSlotSession } from "../_shared/console-slot-session";
 import { mailConsoleTarget } from "./console-target";
@@ -32,7 +34,8 @@ interface MailToolbarProps {
   smtpEnabled: boolean;
   busy: boolean;
   outboundPending: boolean;
-  onResult: () => void;
+  outboundOutcome: MailComposeOutcome | null;
+  onResult: (_result: MailActionResult) => void;
   onRefresh: () => unknown;
   onCompose: () => void;
   borderClass: string;
@@ -75,7 +78,7 @@ export function MailConnectorConsoleTemplate({
     );
   }
 
-  const composeError = ["send_message", "reply_message"].includes(runner.state.result?.actionName || "") ? runner.state.error : "";
+  const composeError = compose.outcome?.error || "";
   return (
     <div className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] ${styles.panel}`}>
       <MailToolbar
@@ -87,7 +90,8 @@ export function MailConnectorConsoleTemplate({
         smtpEnabled={workspace.smtpEnabled}
         busy={workspace.busy}
         outboundPending={workspace.outboundPending}
-        onResult={() => runner.state.result && runner.openResultDialog(runner.state.result)}
+        outboundOutcome={compose.outcome}
+        onResult={runner.openResultDialog}
         onRefresh={mailbox.refreshMailbox}
         onCompose={workspace.openCompose}
         borderClass={styles.border}
@@ -155,6 +159,7 @@ export function MailConnectorConsoleTemplate({
       )}
       <div className={`grid gap-2 border-t px-3 py-2 ${styles.border}`}>
         {runner.state.error ? <Notice tone="bad">{runner.state.error}</Notice> : null}
+        {composeError && composeError !== runner.state.error ? <Notice tone="bad">{composeError}</Notice> : null}
         <MailEndpointFooter target={target} mutedClass={styles.muted} />
       </div>
       <ComposeDialog
@@ -191,7 +196,10 @@ export function MailConnectorConsoleTemplate({
 }
 
 function MailToolbar(props: MailToolbarProps) {
-  const { target, latestAction, state, resultClass, imapEnabled, smtpEnabled, busy, outboundPending } = props;
+  const { target, latestAction, state, resultClass, imapEnabled, smtpEnabled, busy, outboundPending, outboundOutcome } = props;
+  const acceptedOutcome = outboundOutcome && !outboundOutcome.error ? outboundOutcome : null;
+  const result = acceptedOutcome || state.result;
+  const message = acceptedOutcome?.summary || state.message;
   return (
     <div className={`flex min-w-0 items-center justify-between gap-3 border-b px-3 py-2 ${props.borderClass}`}>
       <div className="flex min-w-0 items-center gap-2">
@@ -201,15 +209,15 @@ function MailToolbar(props: MailToolbarProps) {
             {latestAction.action_name}
           </Badge>
         ) : null}
-        {state.message ? (
+        {message ? (
           <button
             type="button"
             className={`flex h-7 max-w-72 items-center gap-1.5 overflow-hidden rounded-md border px-2 text-left text-xs ${resultClass}`}
-            onClick={props.onResult}
-            title={state.message}
+            onClick={() => result && props.onResult(result)}
+            title={message}
           >
             <CircleCheck className="h-3.5 w-3.5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{state.message}</span>
+            <span className="min-w-0 flex-1 truncate">{message}</span>
             <ChevronRight className="h-3.5 w-3.5 shrink-0" />
           </button>
         ) : null}

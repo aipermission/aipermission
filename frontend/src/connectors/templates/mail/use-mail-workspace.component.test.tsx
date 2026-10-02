@@ -249,3 +249,95 @@ function actionResponse(actionName: string) {
     output: outputs[actionName] || {},
   });
 }
+
+it.each(["completed", "failed", "outcome_unknown"] as const)(
+  "keeps an outbound %s outcome separate from an in-flight Archive search",
+  async (status) => {
+    const { result, rerender, props } = renderWorkspace();
+    await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
+    act(() => result.current.openCompose());
+    post.mockResolvedValueOnce(
+      connectorActionFixture({ target_ref: target.ref, action_name: "send_message", request_id: 41, status: "approval_pending" }),
+    );
+    const fields = { to: ["one@example.test"], cc: [], bcc: [], subject: "Review", text_body: "Ready", html_body: "" };
+    await act(async () => result.current.compose.submitMessage(fields));
+    act(() => result.current.compose.closeCompose());
+    let finishSearch: ((_value: ReturnType<typeof actionResponse>) => void) | undefined;
+    post.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishSearch = resolve;
+      }),
+    );
+    let browsing: Promise<void> | undefined;
+    act(() => {
+      browsing = result.current.mailbox.selectFolder("Archive");
+    });
+    const signal = post.mock.calls.at(-1)?.[2]?.signal;
+    const state = result.current.runner.state;
+    const count = post.mock.calls.length;
+    rerender({
+      ...props,
+      approvals: {
+        data: [
+          {
+            id: 41,
+            target_ref: target.ref,
+            action_name: "send_message",
+            status,
+            error: status === "completed" ? "" : "SMTP outcome failed",
+            output: status === "outcome_unknown" ? { submission_status: "submission_unknown", message_id: "unknown" } : {},
+          },
+        ],
+      },
+    });
+    await waitFor(() => expect(result.current.compose.outcome?.item?.status).toBe(status));
+    expect(result.current.runner.state).toEqual(state);
+    expect(result.current.runner.state.state).toBe("loading");
+    expect(signal?.aborted).toBe(false);
+    expect(post.mock.calls).toHaveLength(count);
+    const outcome = result.current.compose.outcome;
+    await act(async () => {
+      finishSearch?.(actionResponse("search_messages"));
+      await browsing;
+    });
+    expect(result.current.compose.outcome).toEqual(outcome);
+    expect(result.current.mailbox.selectedFolder).toBe("Archive");
+  },
+);
+
+it("does not let an older pending submission replace a newer outbound outcome", async () => {
+  const { result, rerender, props } = renderWorkspace();
+  await waitFor(() => expect(result.current.mailbox.messages).toHaveLength(1));
+  act(() => result.current.openCompose());
+  post.mockResolvedValueOnce(
+    connectorActionFixture({ target_ref: target.ref, action_name: "send_message", request_id: 41, status: "approval_pending" }),
+  );
+  const fields = { to: ["one@example.test"], cc: [], bcc: [], subject: "Review", text_body: "Ready", html_body: "" };
+  await act(async () => result.current.compose.submitMessage(fields));
+  await act(async () => result.current.compose.submitMessage({ ...fields, subject: "Newer attempt" }));
+  const outcome = result.current.compose.outcome;
+  expect(outcome?.item?.status).toBe("completed");
+  const state = result.current.runner.state;
+  rerender({
+    ...props,
+    approvals: {
+      data: [
+        {
+          id: 41,
+          target_ref: target.ref,
+          action_name: "send_message",
+          status: "outcome_unknown",
+          error: "Old SMTP result unknown",
+          output: { submission_status: "submission_unknown", message_id: "old-message" },
+        },
+      ],
+    },
+  });
+  await waitFor(() => expect(result.current.runner.pendingActions).toEqual({}));
+  expect(result.current.compose.outcome).toEqual(outcome);
+  expect(result.current.runner.state).toEqual(state);
+  expect(result.current.compose.compose.open).toBe(false);
+  expect(result.current.compose.compose.submissionUnknown).toBeUndefined();
+  act(() => result.current.openCompose());
+  expect(result.current.compose.outcome).toBeNull();
+});

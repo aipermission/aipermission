@@ -1,11 +1,20 @@
-import { useEffect, useState } from "react";
-import { connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
-import { addressValues, replySubject, replyText, submissionDraftFingerprint, unknownSubmissionRetryDecision } from "./helpers";
+import { useEffect, useRef, useState } from "react";
+import { connectorActionError, connectorActionPending, connectorActionRequestID } from "../_shared/action-result";
+import {
+  addressValues,
+  mailActionSummary,
+  replySubject,
+  replyText,
+  submissionDraftFingerprint,
+  unknownSubmissionRetryDecision,
+} from "./helpers";
+import { errorMessage } from "../../../lib/errors";
 import { MailActionFailure } from "./use-mail-action-runner";
 import { readMailSubmissionUnknown } from "./message-output";
 import type { MailComposeDraft, MailMessage, MailSubmittedFields } from "./message-types";
 import type { MailRetryDialog } from "./message-dialogs";
-import type { MailActionResolution, MailPendingAction, RunMailAction } from "./action-types";
+import type { MailActionItem, MailActionResolution, MailPendingAction, MailPendingContext, RunMailAction } from "./action-types";
+import type { MailActionResult } from "./action-result-dialog";
 
 interface MailComposeProps {
   scopeKey: string;
@@ -14,6 +23,7 @@ interface MailComposeProps {
   runMailAction: RunMailAction;
 }
 type RetryState = MailRetryDialog & { fields: MailSubmittedFields | null };
+export type MailComposeOutcome = MailActionResult & { error: string };
 
 const emptyCompose: MailComposeDraft = { open: false, reply: false, form: {} };
 const emptyRetry: RetryState = { open: false, fields: null, messageID: "" };
@@ -21,19 +31,31 @@ const emptyRetry: RetryState = { open: false, fields: null, messageID: "" };
 export function useMailCompose({ scopeKey, selectedMessage, outboundPending, runMailAction }: MailComposeProps) {
   const [compose, setCompose] = useState(emptyCompose);
   const [retryDialog, setRetryDialog] = useState(emptyRetry);
+  const [outcome, setOutcome] = useState<MailComposeOutcome | null>(null);
+  // Mailbox reads cannot replace the latest outbound submission's presentation.
+  const submissionOwner = useRef<MailPendingContext | null>(null);
 
   useEffect(() => {
+    submissionOwner.current = null;
     setCompose(emptyCompose);
     setRetryDialog(emptyRetry);
+    setOutcome(null);
+    return () => {
+      submissionOwner.current = null;
+    };
   }, [scopeKey]);
 
   function openCompose() {
     if (outboundPending) return;
+    submissionOwner.current = null;
+    setOutcome(null);
     setCompose({ open: true, reply: false, form: {} });
   }
 
   function openReply() {
     if (outboundPending || !selectedMessage) return;
+    submissionOwner.current = null;
+    setOutcome(null);
     setCompose({
       open: true,
       reply: true,
@@ -57,8 +79,10 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
     }
     const input: Record<string, unknown> = { ...fields };
     if (compose.reply && compose.messageRef) input.message_ref = compose.messageRef;
+    const context = { fields, reply: compose.reply, messageRef: compose.messageRef, draftFingerprint };
+    submissionOwner.current = context;
+    setOutcome(null);
     try {
-      const context = { fields, reply: compose.reply, messageRef: compose.messageRef, draftFingerprint };
       const item = await runMailAction(
         actionName,
         input,
@@ -66,13 +90,16 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
         "sending",
         context,
       );
-      if (!item) return;
+      if (!item || submissionOwner.current !== context) return;
       if (connectorActionPending(item)) {
         setCompose((current) => ({ ...current, form: fields, pendingRequestID: connectorActionRequestID(item) }));
         return;
       }
+      showOutcome(actionName, item);
       closeAfterSuccess();
     } catch (error) {
+      if (submissionOwner.current !== context) return;
+      showOutcome(actionName, error instanceof MailActionFailure ? error.actionItem : null, errorMessage(error, "Mail action failed."));
       const submissionUnknown =
         error instanceof MailActionFailure ? readMailSubmissionUnknown(error.actionItem.output, draftFingerprint) : null;
       if (submissionUnknown) {
@@ -86,7 +113,9 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
 
   function resolvePending(pending: MailPendingAction, resolution: MailActionResolution) {
     const { actionName, context } = pending;
-    if (actionName !== "send_message" && actionName !== "reply_message") return;
+    if ((actionName !== "send_message" && actionName !== "reply_message") || submissionOwner.current !== context) return;
+    const error = connectorActionError(resolution.item, "Mail submission was not approved or could not be completed.");
+    showOutcome(actionName, resolution.item, error);
     if (resolution.state === "completed") {
       closeAfterSuccess();
       return;
@@ -101,6 +130,10 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
     });
   }
 
+  function showOutcome(actionName: string, item: MailActionItem | null, error = "") {
+    setOutcome({ actionName, item, error, summary: error || mailActionSummary(actionName, item) });
+  }
+
   function closeAfterSuccess() {
     setCompose(emptyCompose);
     setRetryDialog(emptyRetry);
@@ -109,6 +142,7 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
   return {
     compose,
     retryDialog,
+    outcome,
     openCompose,
     openReply,
     submitMessage,
