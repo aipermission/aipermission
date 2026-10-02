@@ -261,8 +261,18 @@ new internal import fan-out or dependency cycles. The frontend gate builds an
 AST-derived graph that includes static imports, re-exports, static template
 imports, and literal `import.meta.glob` edges. Non-static module loads fail
 closed. The graph, ESLint, and maintenance budgets read the same supported
-source-extension inventory from the frontend architecture policy. The gate caps
-production modules at 550 lines, rejects unclassified source layers, enforces
+source-extension inventory from the frontend architecture policy. Static module
+imports resolve query/hash-decorated paths to their source owner, including
+Vite `?worker` and `?sharedworker` imports (also with `&inline` or `&url`).
+The production/test import boundary uses the same identity rules and resolves
+frontend `/src/` imports. Plain `?raw` and `?url` imports are data-only: they do
+not execute the referenced source or create executable graph/escape edges.
+Flags match the full Vite module ID literally, before query/hash removal for
+owner resolution; percent-encoded flag names are not decoded. Worker matching
+takes precedence over data-only matching. Thus `?raw#module` and `?url#module`
+execute source, while `#?raw` and `?url&worker#module` are data-only. These
+semantics are checked against offline Vite builds with `write: false`.
+The gate caps production modules at 550 lines, rejects unclassified source layers, enforces
 layer direction, and rejects connector-kind literals used for branching or
 lookup maps outside concrete connector templates.
 `internal/api` has no source, package, function, or dependency fan-out budget

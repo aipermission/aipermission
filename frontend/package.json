@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "lint:suppressions": "eslint . --prune-suppressions",
     "test:architecture": "npm run test:production-imports && node --experimental-strip-types --test scripts/architecture-graph.test.mjs src/lib/connector-registry-runtime.test.ts src/lib/smoke/connector-templates.smoke.test.ts && node scripts/architecture-budget.mjs",
-    "test:production-imports": "node --test scripts/production-test-import-check.test.cjs && node scripts/production-test-import-check.cjs",
+    "test:production-imports": "node --test scripts/production-test-import-check.test.cjs scripts/vite-import-identity.test.mjs && node scripts/production-test-import-check.cjs",
     "test:duplication": "node scripts/duplication-budget.mjs",
     "test:duplication:shared": "node scripts/shared-duplication-budget.mjs",
     "format": "prettier --write .",
