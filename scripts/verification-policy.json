@@ -134,6 +134,7 @@
     "secret-history-check",
     "rest-contract-check",
     "backend-format-check",
+    "backend-build",
     "backend-test",
     "backend-race",
     "backend-vet",
@@ -172,6 +173,7 @@
     "secret-history-check": "1daf217982ad4572e018e7a4fc1b62a1ae986e24067abc92a56877c67bd025f7",
     "rest-contract-check": "5a892c27cffed10407c082836b08f6349056df7a9819833d77fa9b9b5f18e8e3",
     "backend-format-check": "7e08d83b34d9718094401ba9da68d9c8b8c5c654c7f2160ac5f7eaae985b1ce3",
+    "backend-build": "c2a394774a459d48645d46fa404607ba0fb739e5aca7d5a245018fd5750d0c46",
     "backend-test": "348452a07c3a2c62fd45a9dbed71e21262693ca03fe13c8fc4a39ad8950be9e1",
     "backend-race": "b56440758388fdb268ee328d037aec17a4b840492574c4ab32d9f31b27446b1e",
     "backend-vet": "e14a19f50ab878814f3b3e81abeaa175ffd544f71de4381a9b2ce92ae59d4604",
@@ -204,7 +206,7 @@
     "mcp-pack": "20b1b0edb68b6a7ca1427147c92515291e09fecd200ef1d79bccb9bab75fbbe8",
     "placeholder-pack": "d827715046b9eb45130cd192e6f7a7b6899d357bc5a1cef08020bcfb5aa57b58",
     "docs-hygiene": "2e5f8bae6dc3db56ee7ab91103992ec2c48f6bc7b05d685ac5f502c0d0e9b3d6",
-    "$makefile": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de"
+    "$makefile": "1bc77da611f6c8faa88b23d89144ca8644c28cd3c8252a72c223f9edf2b22877"
   },
   "required_checks": [
     {
