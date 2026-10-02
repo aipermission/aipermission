@@ -128,3 +128,41 @@ it("keeps binary hex cells unchanged in rendering, clipboard, and downloads", as
   await user.click(screen.getByTitle("Download result JSON"));
   expect(downloadJSON).toHaveBeenCalledWith(value, "binary.json");
 });
+
+it.each(["=1+1", "+SUM(1)", "-1+2", "@SUM(1)", "  =1", "\t=1", "\r\n+1", "\ufeff@SUM(1)", "\u0085=1"])(
+  "exports spreadsheet formula-like header and cell %j as text while keeping JSON lossless",
+  async (dangerous) => {
+    const user = userEvent.setup();
+    const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    const value = { columns: [dangerous, "number"], rows: [{ [dangerous]: dangerous, number: -42 }] };
+    render(<SQLOutputBlock title="Rows" value={value} theme="dark" filenamePrefix="safe" />);
+    const safe = `'${dangerous}`;
+    const tsv = safe.replace(/[\t\r\n]/g, " ");
+    await user.click(screen.getByTitle("Copy rows as TSV"));
+    expect(clipboard).toHaveBeenLastCalledWith(`${tsv}\tnumber\n${tsv}\t-42`);
+    await user.click(screen.getByTitle("Download rows as CSV"));
+    const csv = /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+    expect(await exportedCSV()).toBe(`${csv},number\n${csv},-42`);
+    await user.click(screen.getByTitle("Copy result JSON"));
+    expect(clipboard).toHaveBeenLastCalledWith(JSON.stringify(value, null, 2));
+    await user.click(screen.getByTitle("Download result JSON"));
+    expect(downloadJSON).toHaveBeenLastCalledWith(value, "safe.json");
+    expect(screen.getAllByRole("cell")[0].textContent).toBe(dangerous);
+  },
+);
+
+it("keeps TSV headers and cells inside one cell even with tabs and line breaks", async () => {
+  const user = userEvent.setup();
+  const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+  const column = "name\tpart\r\nother";
+  render(
+    <SQLOutputBlock
+      title="Rows"
+      value={{ columns: [column], rows: [{ [column]: "first\nsecond\rthird\tlast" }] }}
+      theme="light"
+      filenamePrefix="rows"
+    />,
+  );
+  await user.click(screen.getByTitle("Copy rows as TSV"));
+  expect(clipboard).toHaveBeenLastCalledWith("name part  other\nfirst second third last");
+});

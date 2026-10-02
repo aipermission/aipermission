@@ -163,21 +163,29 @@ function formatCell(value: unknown): string {
 }
 
 function rowsToClipboardText(columns: string[], rows: SQLRow[]): string {
-  return [
-    columns.join("\t"),
-    ...rows.map((row) => columns.map((column) => formatCell(row?.[column]).replaceAll("\t", " ")).join("\t")),
-  ].join("\n");
+  return [columns.map(tsvCell).join("\t"), ...rows.map((row) => columns.map((column) => tsvCell(row?.[column])).join("\t"))].join("\n");
 }
 
 function rowsToCSVText(columns: string[], rows: SQLRow[]): string {
-  return [columns.map(csvCell).join(","), ...rows.map((row) => columns.map((column) => csvCell(formatCell(row?.[column]))).join(","))].join(
-    "\n",
-  );
+  return [columns.map(csvCell).join(","), ...rows.map((row) => columns.map((column) => csvCell(row?.[column])).join(","))].join("\n");
 }
 
 function csvCell(value: unknown): string {
-  const text = String(value ?? "");
+  const text = spreadsheetCell(value);
   return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function tsvCell(value: unknown): string {
+  return spreadsheetCell(value).replace(/[\t\r\n]/g, " ");
+}
+
+function spreadsheetCell(value: unknown): string {
+  const text = formatCell(value);
+  // Spreadsheet text exports must not turn untrusted strings into formulas.
+  if (typeof value === "number") return text;
+  let start = 0;
+  while (start < text.length && (text.charCodeAt(start) <= 31 || /[\s\p{White_Space}]/u.test(text[start]))) start += 1;
+  return start < text.length && "=+-@".includes(text[start]) ? `'${text}` : text;
 }
 
 function downloadText(text: string, filename: string, type: string): void {
