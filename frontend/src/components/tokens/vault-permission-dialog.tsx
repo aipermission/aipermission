@@ -1,167 +1,37 @@
-import { useEffect, useMemo, useState } from "react";
-import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { apiGet, apiPut } from "../../lib/api";
-import { updateTokenProjectVisibility } from "../../lib/project-scopes";
-import { tokenProjectScopeSnapshot } from "../../lib/gateway-contracts/security-contracts";
+import { useMemo } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import type { TokenProjectScope } from "../../lib/gateway-contracts/security-contracts";
 import { ConnectorRuleButton } from "../connectors/connector-rule-button";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Dialog } from "../ui/dialog";
 import { Notice } from "../ui/notice";
-import { expiresAtFromLifetime, permissionLifetimeLabel } from "../../lib/permissions";
-import {
-  vaultCapabilitiesFromDraft,
-  vaultCapabilityDraftFromItems,
-  vaultCapabilityKey,
-  vaultCapabilitySnapshot,
-} from "../../lib/vault-capabilities";
-import type { VaultCapabilityDefinition, VaultCapabilityDraft, VaultCapabilityGrant } from "../../lib/vault-capabilities";
-import { useRequestGuard } from "../../lib/request-guard";
+import { permissionLifetimeLabel } from "../../lib/permissions";
+import { vaultCapabilityKey } from "../../lib/vault-capabilities";
+import type { VaultCapabilityDefinition, VaultCapabilityDraft } from "../../lib/vault-capabilities";
+import { useVaultPermissionEditor } from "./use-vault-permission-editor";
+import type { VaultPermissionLoad as Load, VaultPermissionSave as Save } from "./use-vault-permission-editor";
 
-type Load = {
-  state: "idle" | "loading" | "ready" | "error";
-  projects: TokenProjectScope[];
-  definitions: VaultCapabilityDefinition[];
-  capabilities: VaultCapabilityGrant[];
-  scopeRevision: string;
-  capabilityRevision: string;
-  error: string | null;
-};
-type Save = { state: "idle" | "saving" | "ready" | "error"; error: string | null };
 type Props = { token: { id: number; name: string } | null; onClose: () => void; onSaved?: () => void | Promise<void> };
-type Guard = ReturnType<typeof useRequestGuard>;
-type LoadSetter = Dispatch<SetStateAction<Load>>;
-
-const emptyLoad: Load = {
-  state: "idle",
-  projects: [],
-  definitions: [],
-  capabilities: [],
-  scopeRevision: "",
-  capabilityRevision: "",
-  error: null,
-};
 
 export function VaultPermissionDialog({ token, onClose, onSaved }: Props) {
-  const [load, setLoad] = useState<Load>(emptyLoad);
-  const [scopeDraft, setScopeDraft] = useState<Record<number, boolean>>({});
-  const [capabilityDraft, setCapabilityDraft] = useState<VaultCapabilityDraft>({});
-  const [selectedProjectID, setSelectedProjectID] = useState(0);
-  const [scopeSave, setScopeSave] = useState<Save>({ state: "idle", error: null });
-  const [save, setSave] = useState<Save>({ state: "idle", error: null });
-  const tokenID = token?.id;
-  const requests = useRequestGuard(`vault-permission-dialog:${tokenID || "closed"}`);
-
-  useEffect(() => {
-    if (!tokenID) {
-      setLoad(emptyLoad);
-      setScopeDraft({});
-      setCapabilityDraft({});
-      setSelectedProjectID(0);
-      setScopeSave({ state: "idle", error: null });
-      setSave({ state: "idle", error: null });
-      return;
-    }
-    void loadVaultPermissionData({ tokenID, requests, setLoad, setScopeDraft, setCapabilityDraft });
-  }, [tokenID, requests]);
-
+  const {
+    load,
+    scopeDraft,
+    capabilityDraft,
+    selectedProjectID,
+    setSelectedProjectID,
+    scopeSave,
+    save,
+    toggleProjectScope,
+    setCapabilityRule,
+    setCapabilityLifetime,
+    saveCapabilities,
+  } = useVaultPermissionEditor(token?.id, onSaved);
   const selectedProject = useMemo(
     () => load.projects.find((project) => project.project_id === selectedProjectID) || null,
     [load.projects, selectedProjectID],
   );
-
-  useEffect(() => {
-    if (load.state !== "ready") return;
-    if (selectedProjectID && load.projects.some((project) => project.project_id === selectedProjectID)) return;
-    setSelectedProjectID(load.projects[0]?.project_id || 0);
-  }, [load.state, load.projects, selectedProjectID]);
-
-  async function toggleProjectScope(projectID: number, enabled: boolean) {
-    if (!tokenID || scopeSave.state === "saving") return;
-    requests.invalidate("load");
-    const request = requests.begin("scope-save");
-    const previousDraft = scopeDraft;
-    const nextDraft = { ...scopeDraft, [projectID]: enabled };
-    setScopeDraft(nextDraft);
-    setScopeSave({ state: "saving", error: null });
-    try {
-      const projectsWithDraft = load.projects.map((project) => ({
-        ...project,
-        enabled: Boolean(nextDraft[project.project_id]),
-      }));
-      const result = await updateTokenProjectVisibility(tokenID, projectsWithDraft, projectID, enabled, {
-        expectedRevision: load.scopeRevision,
-        signal: request.signal,
-      });
-      if (!request.isCurrent()) return;
-      const projects = result.items;
-      setLoad((current) => ({ ...current, projects, scopeRevision: result.revision }));
-      setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
-      setScopeSave({ state: "ready", error: null });
-      await onSaved?.();
-    } catch (error) {
-      if (!request.isCurrent()) return;
-      setScopeDraft(previousDraft);
-      setScopeSave({ state: "error", error: errorMessage(error) });
-    } finally {
-      request.complete();
-    }
-  }
-
-  function setCapabilityRule(projectID: number, capabilityName: string, executionRule: string) {
-    const key = vaultCapabilityKey(projectID, capabilityName);
-    setCapabilityDraft((current) => ({
-      ...current,
-      [key]: executionRule
-        ? { execution_rule: executionRule, expires_at: current[key]?.expires_at || "" }
-        : { execution_rule: "", expires_at: "" },
-    }));
-  }
-
-  function setCapabilityLifetime(projectID: number, capabilityName: string, lifetime: string) {
-    const key = vaultCapabilityKey(projectID, capabilityName);
-    setCapabilityDraft((current) => ({
-      ...current,
-      [key]: {
-        execution_rule: current[key]?.execution_rule || "",
-        expires_at: lifetime === "permanent" ? "" : expiresAtFromLifetime(lifetime),
-      },
-    }));
-  }
-
-  async function saveCapabilities(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!tokenID) return;
-    requests.invalidate("load");
-    const request = requests.begin("capability-save");
-    setSave({ state: "saving", error: null });
-    try {
-      const capabilities = vaultCapabilitiesFromDraft(load.projects, load.definitions, capabilityDraft);
-      const response = await apiPut(
-        `/api/tokens/${tokenID}/project-capabilities`,
-        { capabilities, expected_revision: load.capabilityRevision },
-        { signal: request.signal },
-      );
-      if (!request.isCurrent()) return;
-      const result = vaultCapabilitySnapshot(response);
-      const { definitions, items } = result;
-      setLoad((current) => ({
-        ...current,
-        definitions,
-        capabilities: items,
-        capabilityRevision: result.revision,
-      }));
-      setCapabilityDraft(vaultCapabilityDraftFromItems(items, definitions));
-      setSave({ state: "ready", error: null });
-      await onSaved?.();
-    } catch (error) {
-      if (!request.isCurrent()) return;
-      setSave({ state: "error", error: errorMessage(error) });
-    } finally {
-      request.complete();
-    }
-  }
 
   const selectedCount = Object.values(capabilityDraft).filter((permission) => Boolean(permission?.execution_rule)).length;
 
@@ -288,50 +158,6 @@ export function VaultPermissionDialog({ token, onClose, onSaved }: Props) {
   );
 }
 
-async function loadVaultPermissionData({
-  tokenID,
-  requests,
-  setLoad,
-  setScopeDraft,
-  setCapabilityDraft,
-}: {
-  tokenID: number;
-  requests: Guard;
-  setLoad: LoadSetter;
-  setScopeDraft: Dispatch<SetStateAction<Record<number, boolean>>>;
-  setCapabilityDraft: Dispatch<SetStateAction<VaultCapabilityDraft>>;
-}) {
-  const request = requests.begin("load");
-  setLoad((current) => ({ ...current, state: "loading", error: null }));
-  try {
-    const [projectScopes, projectCapabilities] = await Promise.all([
-      apiGet(`/api/tokens/${tokenID}/project-scopes`, { signal: request.signal }),
-      apiGet(`/api/tokens/${tokenID}/project-capabilities`, { signal: request.signal }),
-    ]);
-    if (!request.isCurrent()) return;
-    const { items: projects, revision: scopeRevision } = tokenProjectScopeSnapshot(projectScopes);
-    const { definitions, items: capabilities, revision: capabilityRevision } = vaultCapabilitySnapshot(projectCapabilities);
-    setLoad({
-      state: "ready",
-      projects,
-      definitions,
-      capabilities,
-      scopeRevision,
-      capabilityRevision,
-      error: null,
-    });
-    setScopeDraft(Object.fromEntries(projects.map((project) => [project.project_id, Boolean(project.enabled)])));
-    setCapabilityDraft(vaultCapabilityDraftFromItems(capabilities, definitions));
-  } catch (error) {
-    if (!request.isCurrent()) return;
-    setLoad({ ...emptyLoad, state: "error", error: errorMessage(error) });
-    setScopeDraft({});
-    setCapabilityDraft({});
-  } finally {
-    request.complete();
-  }
-}
-
 function VaultDialogNotices({ load, scopeSave, save }: { load: Load; scopeSave: Save; save: Save }) {
   return (
     <>
@@ -341,9 +167,10 @@ function VaultDialogNotices({ load, scopeSave, save }: { load: Load; scopeSave: 
       </Notice>
       {load.state === "loading" ? <Notice>Loading project Vault permissions...</Notice> : null}
       {load.state === "error" ? <Notice tone="bad">{load.error}</Notice> : null}
-      {scopeSave.state === "error" ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
-      {save.state === "error" ? <Notice tone="bad">{save.error}</Notice> : null}
+      {scopeSave.error ? <Notice tone="bad">{scopeSave.error}</Notice> : null}
+      {save.error ? <Notice tone="bad">{save.error}</Notice> : null}
       {save.state === "ready" ? <Notice tone="good">Project Vault capabilities saved.</Notice> : null}
+      {save.state === "unsaved" ? <Notice tone="warn">Submitted Vault capabilities saved. Newer edits are not saved.</Notice> : null}
       {load.state === "ready" && load.projects.length === 0 ? <Notice>Create a project before granting Vault capabilities.</Notice> : null}
     </>
   );
@@ -474,8 +301,4 @@ function vaultRuleGridClass(ruleCount: number) {
   if (ruleCount >= 2) return "grid-cols-3";
   if (ruleCount === 1) return "grid-cols-2";
   return "grid-cols-1";
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Vault permission request failed.";
 }

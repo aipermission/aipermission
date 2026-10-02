@@ -489,11 +489,17 @@
       "functions": 100,
       "lines": 100
     },
+    "src/components/tokens/use-vault-permission-editor.ts": {
+      "statements": 97.35,
+      "branches": 89.7,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/tokens/vault-permission-dialog.tsx": {
-      "statements": 88.54,
-      "branches": 83.49,
-      "functions": 89.47,
-      "lines": 93.45
+      "statements": 100,
+      "branches": 98.46,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/transfer-center.tsx": {
       "statements": 87.96,

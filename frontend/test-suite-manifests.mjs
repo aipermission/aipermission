@@ -48,7 +48,10 @@ export const asyncStateOwnerTests = {
   "src/components/settings/use-backup-provider-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
   "src/components/settings/use-backup-record-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
   "src/components/tokens/connector-permission-dialog.tsx": ["src/components/tokens/connector-permission-dialog.component.test.tsx"],
-  "src/components/tokens/vault-permission-dialog.tsx": ["src/components/tokens/vault-permission-dialog.component.test.tsx"],
+  "src/components/tokens/use-vault-permission-editor.ts": [
+    "src/components/tokens/use-vault-permission-editor.component.test.tsx",
+    "src/components/tokens/vault-permission-ownership.component.test.tsx",
+  ],
   "src/components/transfer-center.tsx": ["src/components/transfer-center.component.test.tsx"],
   "src/components/use-gateway-activity-resources.ts": [
     "src/components/use-gateway-resources.component.test.tsx",
