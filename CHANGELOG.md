@@ -63,6 +63,14 @@ and this project uses semantic versioning for public releases.
 - Review MCP SDK 1.31.0 issuer binding and frontend Node types, TypeScript parser and
   jscpd updates in maintainer-authored commits; preserve local-only tooling and existing
   duplication limits.
+- Separate deep PostgreSQL role-history cursor regressions from repeated full-page
+  rendering while preserving wire-valid pagination, UI navigation assertions and
+  unchanged coverage thresholds.
+- Isolate workspace snapshot lock tests from encrypted runtime startup latency, with
+  deterministic snapshot and staging lock probes and unchanged timeout limits.
+- Exercise real TCP backpressure with a larger bounded payload without coupling socket
+  deadline checks to thousands of display-filter calls; retain client eviction, healthy
+  output, pong traffic and command completion assertions.
 
 ### Notes
 
