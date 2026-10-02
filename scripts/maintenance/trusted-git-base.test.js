@@ -1,20 +1,17 @@
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { temporaryRoot } = require("./test-fixtures");
 const { eventBase, resolveTrustedBase } = require("../trusted-git-base");
 
+const base = "a".repeat(40),
+  head = "b".repeat(40);
+
 function withGitHubEvent(t, eventName, event) {
-  const directory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "aipermission-event-"),
-  );
+  const directory = temporaryRoot(t, { "event.json": JSON.stringify(event) });
   const eventPath = path.join(directory, "event.json");
-  fs.writeFileSync(eventPath, JSON.stringify(event));
   const names = ["GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"];
-  const previous = Object.fromEntries(
-    names.map((name) => [name, process.env[name]]),
-  );
+  const previous = Object.fromEntries(names.map((name) => [name, process.env[name]]));
   Object.assign(process.env, {
     GITHUB_ACTIONS: "true",
     GITHUB_EVENT_NAME: eventName,
@@ -24,7 +21,6 @@ function withGitHubEvent(t, eventName, event) {
     for (const [key, value] of Object.entries(previous))
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
-    fs.rmSync(directory, { recursive: true, force: true });
   });
 }
 
@@ -36,9 +32,17 @@ function fakeGit(responses) {
   };
 }
 
+function resolveBase(configured, gitCommand, environment) {
+  return resolveTrustedBase({
+    configured,
+    gitCommand,
+    environment,
+    variable: "POLICY_BASE",
+    root: ".",
+  });
+}
+
 test("GitHub ratchets derive their base from the event payload", (t) => {
-  const base = "a".repeat(40),
-    head = "b".repeat(40);
   withGitHubEvent(t, "pull_request", { pull_request: { base: { sha: base } } });
   assert.equal(eventBase(), base);
   const gitCommand = fakeGit({
@@ -46,78 +50,32 @@ test("GitHub ratchets derive their base from the event payload", (t) => {
     "rev-parse HEAD^{commit}": head,
     [`merge-base --is-ancestor ${base} ${head}`]: "",
   });
-  assert.equal(
-    resolveTrustedBase({
-      configured: "HEAD",
-      variable: "POLICY_BASE",
-      root: ".",
-      gitCommand,
-    }),
-    base,
-  );
+  assert.equal(resolveBase("HEAD", gitCommand), base);
 });
 
 test("GitHub ratchets reject a zero push predecessor", (t) => {
   withGitHubEvent(t, "push", { before: "0".repeat(40) });
-  assert.throws(
-    () =>
-      resolveTrustedBase({
-        configured: "ignored",
-        variable: "POLICY_BASE",
-        root: ".",
-      }),
-    /non-zero base commit/,
-  );
+  assert.throws(() => resolveBase("ignored"), /non-zero base commit/);
 });
 
 test("workflow dispatch accepts only an explicit immutable base commit", (t) => {
-  const base = "a".repeat(40),
-    head = "b".repeat(40);
   withGitHubEvent(t, "workflow_dispatch", {});
   const gitCommand = fakeGit({
     [`rev-parse ${base}^{commit}`]: base,
     "rev-parse HEAD^{commit}": head,
     [`merge-base --is-ancestor ${base} ${head}`]: "",
   });
-  assert.equal(
-    resolveTrustedBase({
-      configured: base,
-      variable: "POLICY_BASE",
-      root: ".",
-      gitCommand,
-    }),
-    base,
-  );
-  assert.throws(
-    () =>
-      resolveTrustedBase({
-        configured: "",
-        variable: "POLICY_BASE",
-        root: ".",
-        gitCommand,
-      }),
-    /immutable workflow_dispatch base commit/,
-  );
+  assert.equal(resolveBase(base, gitCommand), base);
+  assert.throws(() => resolveBase("", gitCommand), /immutable workflow_dispatch base commit/);
 });
 
 test("local ratchets ignore inherited GitHub Actions context", () => {
-  const head = "b".repeat(40),
-    parent = "a".repeat(40);
   const gitCommand = fakeGit({
     "merge-base HEAD origin/main": head,
     [`rev-parse ${head}^{commit}`]: head,
     "rev-parse HEAD^{commit}": head,
-    "rev-parse HEAD^^{commit}": parent,
-    [`merge-base --is-ancestor ${parent} ${head}`]: "",
+    "rev-parse HEAD^^{commit}": base,
+    [`merge-base --is-ancestor ${base} ${head}`]: "",
   });
-  assert.equal(
-    resolveTrustedBase({
-      configured: "",
-      variable: "POLICY_BASE",
-      root: ".",
-      gitCommand,
-      environment: {},
-    }),
-    parent,
-  );
+  assert.equal(resolveBase("", gitCommand, {}), base);
 });
