@@ -4,6 +4,7 @@ import { parseCommandFlags } from "./cli-flags.js";
 import { adaptMCPServerConfig, resolveMCPConfigTarget, resolveSkillTarget } from "./client-registry.js";
 import { buildMCPServerConfig, inspectProjectConfigProtection, sanitizeName } from "./init.js";
 import { validateSkill } from "./install-skill.js";
+import { parseJSONCConfig } from "./jsonc-config.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { assertPrivateFilePermissions, assertTrustedFilePath } from "./private-file.js";
 
@@ -58,7 +59,10 @@ async function inspectConfig(target, name, options) {
       await inspectProjectConfigProtection(target.path, options.projectDir || target.trustedRoot);
     }
     const contents = await fs.readFile(target.path, "utf8");
-    const server = target.format === "json" ? readJSONServer(contents, target.rootKey, name) : readTOMLServer(contents, name);
+    const server =
+      target.format === "json"
+        ? readJSONServer(contents, target.rootKey, name, target.client === "vscode")
+        : readTOMLServer(contents, name);
     if (!server) return check(false, "MCP config", `server ${name} is missing from ${target.path}`);
     validateServer(target.client, server);
     return check(true, "MCP config", `valid at ${target.path}`);
@@ -79,10 +83,10 @@ async function inspectSkill(target) {
   }
 }
 
-function readJSONServer(contents, rootKey, name) {
+function readJSONServer(contents, rootKey, name, jsonc) {
   let root;
   try {
-    root = JSON.parse(contents);
+    root = jsonc ? parseJSONCConfig(contents) : JSON.parse(contents);
   } catch {
     throw new Error("JSON parsing failed; no file contents were included in this diagnostic");
   }

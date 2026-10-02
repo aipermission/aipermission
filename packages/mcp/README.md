@@ -43,7 +43,9 @@ setup when you intentionally upgrade a client. Use `init` when you only want the
 MCP config, or `install-skill` when you only want the skill.
 VS Code `.vscode/mcp.json` may contain JSONC comments and trailing commas;
 setup updates only the selected server entry while keeping unrelated entries
-and comments. Setup validates the skill before writing the config, then installs
+and comments. `doctor` reads that same JSONC format without editing the file;
+other JSON clients remain strict JSON, and invalid config diagnostics omit file
+contents. Setup validates the skill before writing the config, then installs
 it. If skill installation fails after the config is written, the error names
 that partial state so you can run `install-skill` separately.
 
