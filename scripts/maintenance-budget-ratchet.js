@@ -40,6 +40,9 @@ function policySnapshot(input) {
     snapshot["backend.coverage.exceptionBaseline"] =
       policy.backendCoverageExceptionBaseline;
   }
+  if (policy.backendCoverageRequireExplicitFloor === true) {
+    snapshot["coverage.backend.explicit-floor"] = 0;
+  }
   for (const extension of policy.frontendArchitecture.sourceExtensions) {
     snapshot[`coverage.frontend.extension.${extension}`] = 0;
   }

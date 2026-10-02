@@ -136,6 +136,17 @@ The reviewed backend coverage floors are enforced by
 `backend/cmd/coveragecheck` after the full package test run. That command is the
 consumer; `maintenance-policy.json` is the single source of truth for numeric
 thresholds. Both `internal/*` and executable `cmd/*` packages are inventoried.
+Every measured executable owner now requires an explicit reviewed floor;
+the historical default number is not a fallback for an unregistered package.
+Adding a package without its measured floor fails even with 100% coverage.
+The 101 previously default-only owners have package-local measured baselines,
+with small margins below the recorded run and no decrease to existing floors.
+This freezes observed coverage, not a claim that every owner has adequate
+failure-path coverage. Low baselines still identify debt: behavioral tests,
+not a percentage-only increase, must justify stronger assurance. Cross-package
+integration coverage complements rather than replaces the package-local run.
+The frontend changed-owner inventory also has no zero-valued owner floors;
+its full per-owner measurement remains part of the final candidate gate.
 The policy protects transport, gateway-owner, audit, connector, session, token,
 Vault, storage, and command packages. Runtime scopes and critical owner floors
 include failure-path tests; a new security-sensitive package must be added once

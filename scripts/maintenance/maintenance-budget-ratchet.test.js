@@ -123,6 +123,10 @@ test("permits removing a completed ownership migration marker", () => {
     )
   ];
   assert.deepEqual(budgetIncreases(base, current), []);
+  delete current["coverage.backend.explicit-floor"];
+  assert.deepEqual(budgetIncreases(base, current), [
+    "coverage.backend.explicit-floor was removed from the current maintenance budget",
+  ]);
 });
 
 test("ratchets tooling and native runtime test inventories", () => {
