@@ -597,6 +597,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/components/use-app-shell-controller.ts": {
+      "statements": 98.11,
+      "branches": 95.23,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/use-database-lifecycle.ts": {
       "statements": 92.59,
       "branches": 100,
