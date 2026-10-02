@@ -1,8 +1,10 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useLayoutEffect } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPost } from "../../lib/api";
 import { useConsoleMessages } from "./use-console-messages";
 import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts.ts";
+import { eligibilityTokens, tokenEligibilityNow } from "../../test/console-permissions/token-eligibility-fixtures";
 
 vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
 
@@ -286,6 +288,197 @@ describe("useConsoleMessages", () => {
     expect(preventDefault).toHaveBeenCalledOnce();
     expect(apiPost).not.toHaveBeenCalled();
     expect(result.current.state.state).toBe("idle");
+  });
+});
+
+describe("console message token eligibility", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(tokenEligibilityNow);
+    vi.mocked(apiGet).mockReset().mockResolvedValue([]);
+    vi.mocked(apiPost).mockReset().mockResolvedValue({});
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it.each(eligibilityTokens.slice(2))("cannot prefer or dispatch to $name tokens", async (token) => {
+    const { result } = renderHook(() => useConsoleMessages(baseProps({ selectedTokenOptions: [token] })));
+    await act(async () => result.current.open(token.id));
+    expect(result.current.tokenID).toBe("");
+    act(() => {
+      result.current.setTokenID(String(token.id));
+      result.current.setText("Keep draft");
+    });
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("Keep draft");
+  });
+
+  it("skips an expired preferred and unread token in favor of the first eligible unread scope", async () => {
+    const selectedUnreadMessages = [
+      { ...message(1, "expired scope"), token_id: 7 },
+      { ...message(2, "active scope"), token_id: 6 },
+    ];
+    const { result } = renderHook(() => useConsoleMessages(baseProps({ selectedTokenOptions: eligibilityTokens, selectedUnreadMessages })));
+    await act(async () => result.current.open(7));
+    expect(result.current.tokenID).toBe("6");
+    act(() => result.current.setText("Active scope only"));
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).toHaveBeenCalledWith("/api/messages", expect.objectContaining({ token_id: 6 }), expect.anything());
+  });
+
+  it("does not dispatch from an expired unread scope when no token is eligible", async () => {
+    const { result } = renderHook(() =>
+      useConsoleMessages(
+        baseProps({
+          selectedTokenOptions: [],
+          selectedUnreadMessages: [{ ...message(1, "expired scope"), token_id: 7 }],
+        }),
+      ),
+    );
+    await act(async () => result.current.open());
+    act(() => result.current.setText("No recipient"));
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(result.current.tokenID).toBe("");
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it.each(eligibilityTokens.slice(0, 2))("preserves preferred selection and sending for $name tokens", async (token) => {
+    const { result } = renderHook(() => useConsoleMessages(baseProps({ selectedTokenOptions: eligibilityTokens })));
+    await act(async () => result.current.open(token.id));
+    expect(result.current.tokenID).toBe(String(token.id));
+    act(() => result.current.setText("Valid recipient"));
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).toHaveBeenCalledWith("/api/messages", expect.objectContaining({ token_id: token.id }), expect.anything());
+  });
+
+  it("clears a selected token on live expiry while preserving the draft", async () => {
+    const props = baseProps({ selectedTokenOptions: [eligibilityTokens[1]] });
+    const { result } = renderHook(() => useConsoleMessages(props));
+    await act(async () => result.current.open(6));
+    act(() => result.current.setText("Keep draft"));
+    act(() => vi.advanceTimersByTime(1001));
+    expect(result.current.tokenID).toBe("");
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("Keep draft");
+  });
+
+  it("checks the exact expiry boundary again at dispatch before the clock rerenders", async () => {
+    const { result } = renderHook(() => useConsoleMessages(baseProps({ selectedTokenOptions: [eligibilityTokens[1]] })));
+    act(() => {
+      result.current.setTokenID("6");
+      result.current.setText("At boundary");
+    });
+    vi.setSystemTime(tokenEligibilityNow + 1000);
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a still-active token when the first option expires before open", async () => {
+    const { result } = renderHook(() =>
+      useConsoleMessages(baseProps({ selectedTokenOptions: [eligibilityTokens[1], eligibilityTokens[0]] })),
+    );
+    vi.setSystemTime(tokenEligibilityNow + 1000);
+    await act(async () => result.current.open(6));
+    expect(result.current.tokenID).toBe("5");
+  });
+
+  it("rejects a preferred identity absent from the current permission options", async () => {
+    const { result, rerender } = renderHook((props) => useConsoleMessages(props), { initialProps: baseProps() });
+    await act(async () => result.current.open(99));
+    expect(result.current.tokenID).toBe("5");
+    act(() => result.current.setText("Removed permission"));
+    rerender(baseProps({ selectedTokenOptions: [] }));
+    expect(result.current.tokenID).toBe("");
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { label: "removed", options: [] },
+    { label: "revoked", options: [{ ...eligibilityTokens[0], revoked_at: "2026-08-01T11:00:00Z" }] },
+    { label: "replacement expiry", options: [{ ...eligibilityTokens[0], expires_at: "2026-08-01T11:00:00Z" }] },
+  ])("rejects retained handlers after the selected token is $label", async ({ options }) => {
+    const initialProps = baseProps({ selectedTokenOptions: [eligibilityTokens[0]] });
+    const { result, rerender } = renderHook((props) => useConsoleMessages(props), { initialProps });
+    act(() => {
+      result.current.setTokenID("5");
+      result.current.setText("Original draft");
+    });
+    const retained = { open: result.current.open, submit: result.current.submit };
+    rerender({ ...initialProps, selectedTokenOptions: options });
+    await act(async () => retained.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("Original draft");
+    act(() => result.current.setText("Current draft"));
+    await act(async () => {
+      retained.open(5);
+      await retained.submit({ preventDefault: vi.fn() });
+    });
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.tokenID).toBe("");
+    expect(result.current.text).toBe("Current draft");
+  });
+
+  it("does not revive retained handlers after same-object option removal and re-add", async () => {
+    const initialProps = baseProps({ selectedTokenOptions: eligibilityTokens.slice(0, 2) });
+    const { result, rerender } = renderHook((props) => useConsoleMessages(props), { initialProps });
+    act(() => {
+      result.current.setTokenID("5");
+      result.current.setText("Original draft");
+    });
+    const retained = { open: result.current.open, submit: result.current.submit };
+    rerender({ ...initialProps, selectedTokenOptions: [eligibilityTokens[1]] });
+    rerender(initialProps);
+    await act(async () => retained.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("Original draft");
+    act(() => {
+      result.current.setTokenID("6");
+      result.current.setText("Current draft");
+    });
+    await act(async () => {
+      retained.open(5);
+      await retained.submit({ preventDefault: vi.fn() });
+    });
+    expect(apiGet).not.toHaveBeenCalled();
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.tokenID).toBe("6");
+    expect(result.current.text).toBe("Current draft");
+
+    await act(async () => result.current.submit({ preventDefault: vi.fn() }));
+    expect(apiPost).toHaveBeenCalledWith(
+      "/api/messages",
+      expect.objectContaining({ token_id: 6, message: "Current draft" }),
+      expect.anything(),
+    );
+  });
+
+  it("rejects a retained submit during the layout commit that replaces token eligibility", async () => {
+    let retainedSubmit: ReturnType<typeof useConsoleMessages>["submit"] | undefined;
+    const initialProps = baseProps({ selectedTokenOptions: [eligibilityTokens[0]] });
+    const { result, rerender } = renderHook(
+      (props) => {
+        const messages = useConsoleMessages(props);
+        useLayoutEffect(() => {
+          if (props.selectedTokenOptions.length === 0) void retainedSubmit?.({ preventDefault: vi.fn() });
+        }, [props.selectedTokenOptions]);
+        return messages;
+      },
+      { initialProps },
+    );
+    act(() => {
+      result.current.setTokenID("5");
+      result.current.setText("Current draft");
+    });
+    retainedSubmit = result.current.submit;
+    rerender({ ...initialProps, selectedTokenOptions: [] });
+    await act(async () => {});
+    expect(apiPost).not.toHaveBeenCalled();
+    expect(result.current.text).toBe("Current draft");
   });
 });
 

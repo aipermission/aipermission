@@ -1,9 +1,10 @@
-import { renderHook } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
-import { useConsolePermissionView } from "../../components/console/use-console-permission-view";
+import { act, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { deriveConsolePermissionView, useConsolePermissionView } from "../../components/console/use-console-permission-view";
 import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts.ts";
+import { eligibilityTokens, tokenEligibilityBoundary, tokenEligibilityNow } from "./token-eligibility-fixtures";
 
-const now = Date.parse("2026-08-01T12:00:00Z");
+const now = tokenEligibilityNow;
 const profiles = [
   { target_id: 4, profile_id: 7 },
   { target_id: 4, profile_id: 8 },
@@ -33,6 +34,56 @@ function permission(tokenID: number, overrides: Partial<Permission> = {}): Permi
 }
 
 describe("useConsolePermissionView", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("excludes expired, invalid and revoked tokens even with permanent Always grants", () => {
+    const connectorPermissions = Object.fromEntries(eligibilityTokens.map((token) => [token.id, [permission(token.id)]]));
+    const { result } = renderHook(() =>
+      useConsolePermissionView({ connectorPermissions, mcpEnabled: true, now, profiles, target, tokens: eligibilityTokens }),
+    );
+
+    expect(result.current.selectedTokenOptions.map((token) => token.id)).toEqual([5, 6]);
+    expect(result.current.alwaysRunTokenPermissions.map(({ token }) => token.id)).toEqual([5, 6]);
+    expect(result.current.showAlwaysRunWarning).toBe(true);
+    expect(result.current.temporaryAlwaysRunLabels).toEqual([]);
+  });
+
+  it("removes the last Always token and warning on live expiry without a grant reload", () => {
+    const connectorPermissions = { 6: [permission(6)] };
+    const tokenItems = [eligibilityTokens[1]];
+    const { result, rerender } = renderHook(() =>
+      useConsolePermissionView({ connectorPermissions, mcpEnabled: true, now, profiles, target, tokens: tokenItems }),
+    );
+    expect(result.current.selectedTokenOptions).toHaveLength(1);
+    expect(result.current.showAlwaysRunWarning).toBe(true);
+
+    const boundary = Date.parse(tokenEligibilityBoundary);
+    const exactView = deriveConsolePermissionView({
+      connectorPermissions,
+      mcpEnabled: true,
+      now: boundary,
+      profiles,
+      target,
+      tokens: tokenItems,
+    });
+    expect(exactView.selectedTokenOptions).toEqual([]);
+    expect(exactView.alwaysRunTokenPermissions).toEqual([]);
+    expect(exactView.showAlwaysRunWarning).toBe(false);
+
+    act(() => vi.advanceTimersByTime(1001));
+    expect(result.current.selectedTokenOptions).toEqual([]);
+    expect(result.current.alwaysRunTokenPermissions).toEqual([]);
+    expect(result.current.showAlwaysRunWarning).toBe(false);
+
+    vi.setSystemTime(boundary);
+    rerender();
+    expect(result.current.selectedTokenOptions).toEqual([]);
+  });
+
   it("keeps effective permissions bound to the selected target profile", () => {
     const connectorPermissions = {
       1: [permission(1, { profile_id: 7, action_name: "wrong-profile" }), permission(1, { execution_rule: "approval_required" })],

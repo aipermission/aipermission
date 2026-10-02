@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
 import { runtimeMessagesResponse } from "../../lib/gateway-contracts/activity-resource-contracts.ts";
 import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts.ts";
 import { errorMessage } from "../../lib/errors.ts";
+import { isActiveToken } from "../../lib/token-status";
+import { useTokenExpiryClock } from "../../lib/use-token-expiry-clock";
 
 type MessageState = { state: "idle" | "loading" | "ready" | "sending" | "error"; data: RuntimeMessage[]; error: string | null };
 type Props = {
@@ -13,7 +15,7 @@ type Props = {
   selectedRuntimeTarget: { id: number; name?: string } | null;
   selectedSession: { id?: number };
   selectedSessionLive: boolean;
-  selectedTokenOptions: { id: number; name: string }[];
+  selectedTokenOptions: { id: number; name: string; revoked_at?: string | null; expires_at?: string | null }[];
   selectedUnreadMessages: RuntimeMessage[];
 };
 const idleState: MessageState = { state: "idle", data: [], error: null };
@@ -31,7 +33,15 @@ export function useConsoleMessages({
   const [state, setState] = useState(idleState);
   const [text, setText] = useState("");
   const draftRevision = useRef(0);
-  const [tokenID, setTokenID] = useState("");
+  const [selectedTokenID, setTokenID] = useState("");
+  const handlers = useRef<{
+    open?: (_tokenID?: string | number) => void;
+    submit?: (_event: Pick<FormEvent<HTMLFormElement>, "preventDefault">) => Promise<void>;
+  }>({});
+  const now = useTokenExpiryClock(selectedTokenOptions);
+  const activeTokenOptions = useMemo(() => selectedTokenOptions.filter((token) => isActiveToken(token, now)), [selectedTokenOptions, now]);
+  const selectedToken = activeTokenOptions.find((token) => String(token.id) === selectedTokenID);
+  const tokenID = selectedToken ? selectedTokenID : "";
   const runtimeID = selectedRuntimeTarget?.id ? String(selectedRuntimeTarget.id) : "";
   const requests = useRequestGuard(`console-messages:${runtimeID || "none"}`);
 
@@ -63,15 +73,22 @@ export function useConsoleMessages({
   }, [requests, runtimeID]);
 
   const open = useCallback(
-    (preferredTokenID: string | number = "") => {
-      const unreadToken = selectedUnreadMessages[0]?.token_id;
-      const firstToken = selectedTokenOptions[0];
-      const nextTokenID = preferredTokenID || unreadToken || tokenID || firstToken?.id || "";
+    function openMessages(preferredTokenID: string | number = "") {
+      if (handlers.current.open !== openMessages) return;
+      const currentNow = Date.now();
+      const currentTokenOptions = activeTokenOptions.filter((token) => isActiveToken(token, currentNow));
+      const candidates = [
+        preferredTokenID,
+        ...selectedUnreadMessages.map((message) => message.token_id),
+        tokenID,
+        currentTokenOptions[0]?.id,
+      ];
+      const nextTokenID = candidates.find((id) => currentTokenOptions.some((token) => String(token.id) === String(id)));
       setTokenID(nextTokenID ? String(nextTokenID) : "");
       setOpen(true);
       void load();
     },
-    [load, selectedTokenOptions, selectedUnreadMessages, tokenID],
+    [activeTokenOptions, load, selectedUnreadMessages, tokenID],
   );
 
   const close = useCallback(() => {
@@ -94,9 +111,17 @@ export function useConsoleMessages({
   }, []);
 
   const submit = useCallback(
-    async (event: Pick<FormEvent<HTMLFormElement>, "preventDefault">) => {
+    async function submitMessage(event: Pick<FormEvent<HTMLFormElement>, "preventDefault">) {
       event.preventDefault();
-      if (!runtimeID || !text.trim() || !tokenID) return;
+      if (
+        handlers.current.submit !== submitMessage ||
+        !runtimeID ||
+        !text.trim() ||
+        !tokenID ||
+        !selectedToken ||
+        !isActiveToken(selectedToken)
+      )
+        return;
       const submittedDraftRevision = draftRevision.current;
       const request = requests.begin("send");
       setState((current) => ({ ...current, state: "sending", error: null }));
@@ -122,8 +147,16 @@ export function useConsoleMessages({
         request.complete();
       }
     },
-    [load, loadMessages, requests, runtimeID, selectedSession.id, selectedSessionLive, text, tokenID],
+    [load, loadMessages, requests, runtimeID, selectedSession.id, selectedSessionLive, selectedToken, text, tokenID],
   );
+
+  // Only handlers from the committed view may change selection or dispatch.
+  useLayoutEffect(() => {
+    handlers.current = { open, submit };
+    return () => {
+      handlers.current = {};
+    };
+  }, [open, submit]);
 
   return { close, isOpen, load, open, setText: updateText, setTokenID, state, submit, text, tokenID };
 }

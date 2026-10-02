@@ -5,9 +5,11 @@ import {
   selectedConnectorProfileID,
 } from "../../lib/connector-permissions";
 import { effectiveRule, permissionLifetimeLabel } from "../../lib/permissions";
+import { isActiveToken } from "../../lib/token-status";
+import { useTokenExpiryClock } from "../../lib/use-token-expiry-clock";
 import type { TokenActionPermission } from "../../lib/gateway-contracts/security-contracts.ts";
 
-type Token = { id: number; name: string; revoked_at?: string };
+type Token = { id: number; name: string; revoked_at?: string | null; expires_at?: string | null };
 type Permission = Pick<
   TokenActionPermission,
   "target_id" | "profile_id" | "action_name" | "execution_rule" | "expires_at" | "project_enabled"
@@ -29,9 +31,11 @@ export function useConsolePermissionView<Item extends Token>({
   target,
   tokens,
 }: Props<Item>) {
+  const tokenNow = useTokenExpiryClock(tokens);
+  const permissionNow = Math.max(now, tokenNow);
   return useMemo(
-    () => deriveConsolePermissionView({ connectorPermissions, mcpEnabled, now, profiles, target, tokens }),
-    [connectorPermissions, mcpEnabled, now, profiles, target, tokens],
+    () => deriveConsolePermissionView({ connectorPermissions, mcpEnabled, now: permissionNow, profiles, target, tokens }),
+    [connectorPermissions, mcpEnabled, permissionNow, profiles, target, tokens],
   );
 }
 
@@ -46,7 +50,7 @@ export function deriveConsolePermissionView<Item extends Token>({
   if (!target) return emptyPermissionView;
 
   const selectedTokenOptions = tokens.filter((token) => {
-    if (token.revoked_at) return false;
+    if (!isActiveToken(token, now)) return false;
     const profileID = selectedConnectorProfileID(token.id, target, profiles);
     return effectiveConnectorTargetProfilePermissions(connectorPermissions[token.id] || [], target, profileID, now).some(
       (permission) => permission.project_enabled !== false,
