@@ -118,6 +118,18 @@ detail, explicit read/unread controls, move/archive/delete actions, reply, and
 compose. SMTP-only profiles receive a compose-focused workspace and do not
 attempt IMAP folder or message actions.
 
+A pending mailbox mutation can settle after navigation. Its completion refreshes
+the source list only while the folder, search, page, and message selection are
+still owned by that attempt and no newer Mail action owns the workspace status.
+Older completions still invalidate the source folder's cached counts, but do not
+reload the list, interrupt a newer send or reply, or replace its delivery status
+and unknown-submission retry safeguards.
+
+The latest outgoing submission keeps its acceptance or failure outcome visible
+across mailbox navigation. Failed or unknown pending submissions reopen their
+draft with the outcome error; unknown submissions still require explicit retry
+confirmation. A newer submission replaces the previous outcome.
+
 Outgoing mail supports plain text and a small basic formatted editor. The
 formatted mode produces a sanitized HTML alternative together with a visible
 plain-text fallback. It is not a raw HTML editor. Incoming HTML is converted to

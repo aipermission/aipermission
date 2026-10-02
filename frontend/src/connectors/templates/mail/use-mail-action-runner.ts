@@ -15,7 +15,7 @@ interface MailActionRunnerProps {
   approvals?: { data: MailActionItem[] } | null;
   scopeKey: string;
   onRefreshActivity?: () => unknown;
-  onResolution?: (_pending: MailPendingAction, _resolution: MailActionResolution) => unknown;
+  onResolution?: (_pending: MailPendingAction, _resolution: MailActionResolution, _ownsRunner: boolean) => unknown;
 }
 type Request = ReturnType<ReturnType<typeof createRequestGuard>["begin"]>;
 
@@ -33,24 +33,30 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
   const requestGeneration = useRef(0);
   const currentScope = useRef(scopeKey);
   const requests = useRequestGuard(`mail-actions:${scopeKey}`);
-  const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution) =>
-    onResolution?.(pending, resolution),
+  const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution, ownsRunner: boolean) =>
+    onResolution?.(pending, resolution, ownsRunner),
   );
   const reconcileForEffect = useEffectEvent(async (pending: MailPendingAction, resolution: MailActionResolution) => {
     const { actionName, generation, scope } = pending;
     const { item } = resolution;
     if (scope !== currentScope.current) return;
-    if (browserActions.has(actionName) && generation !== requestGeneration.current) return;
+    const ownsRunner = generation === requestGeneration.current;
+    if (browserActions.has(actionName) && !ownsRunner) return;
+    // Mutations still reconcile offscreen, but only the latest action owns status.
+    if (!ownsRunner) {
+      await resolveForEffect(pending, resolution, ownsRunner);
+      return;
+    }
     if (resolution.state !== "completed") {
       const fallback = `${String(actionName || "Mail action").replaceAll("_", " ")} was not approved or could not be completed.`;
       const summary = item.error || item.display_text || fallback;
       setState({ state: "error", error: connectorActionError(item, fallback), message: "", result: { actionName, summary, item } });
-      await resolveForEffect(pending, resolution);
+      await resolveForEffect(pending, resolution, ownsRunner);
       return;
     }
     const summary = mailActionSummary(actionName, item);
     setState({ state: "idle", error: "", message: summary, result: { actionName, summary, item } });
-    await resolveForEffect(pending, resolution);
+    await resolveForEffect(pending, resolution, ownsRunner);
   });
   const activeItems = useMemo(
     () => (approvals?.data || []).filter((item) => item.target_ref === target.ref),

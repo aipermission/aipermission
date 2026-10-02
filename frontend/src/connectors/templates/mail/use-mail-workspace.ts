@@ -26,9 +26,9 @@ export function useMailWorkspace({ target, approvals, session, onRefreshActivity
   let mailbox: ReturnType<typeof useMailMailbox>;
   let compose: ReturnType<typeof useMailCompose>;
 
-  async function resolvePending(pending: MailPendingAction, resolution: MailActionResolution) {
+  async function resolvePending(pending: MailPendingAction, resolution: MailActionResolution, ownsRunner: boolean) {
     if (outboundActions.has(pending.actionName)) compose.resolvePending(pending, resolution);
-    else await mailbox.resolvePending(pending, resolution);
+    else await mailbox.resolvePending(pending, resolution, ownsRunner);
   }
 
   const runner = useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution: resolvePending });
