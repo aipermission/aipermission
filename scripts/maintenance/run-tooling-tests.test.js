@@ -1,33 +1,21 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { temporaryRoot } = require("./test-fixtures");
 
-const {
-  discoverTestFiles,
-  resolveTestRoots,
-  run,
-  verifyTestInventory,
-} = require("../run-tooling-tests");
-
-function temporaryRoot(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "aipermission-tooling-"));
-  t.after(() => fs.rmSync(root, { force: true, recursive: true }));
-  return root;
-}
+const { discoverTestFiles, resolveTestRoots, run, verifyTestInventory } = require("../run-tooling-tests");
 
 test("tooling test discovery is deterministic and includes nested files", (t) => {
-  const root = temporaryRoot(t);
+  const root = temporaryRoot(t, {
+    "first/z.test.js": "",
+    "first/helper.js": "",
+    "first/nested/hidden.test.js": "",
+    "second/a.spec.mjs": "",
+    "second/also.test.cjs": "",
+  });
   const first = path.join(root, "first");
   const second = path.join(root, "second");
-  fs.mkdirSync(path.join(first, "nested"), { recursive: true });
-  fs.mkdirSync(second);
-  fs.writeFileSync(path.join(first, "z.test.js"), "");
-  fs.writeFileSync(path.join(first, "helper.js"), "");
-  fs.writeFileSync(path.join(first, "nested", "hidden.test.js"), "");
-  fs.writeFileSync(path.join(second, "a.spec.mjs"), "");
-  fs.writeFileSync(path.join(second, "also.test.cjs"), "");
 
   assert.deepEqual(discoverTestFiles([second, first]), [
     path.join(first, "nested", "hidden.test.js"),
@@ -35,51 +23,34 @@ test("tooling test discovery is deterministic and includes nested files", (t) =>
     path.join(second, "a.spec.mjs"),
     path.join(second, "also.test.cjs"),
   ]);
-  assert.throws(
-    () => discoverTestFiles([temporaryRoot(t)]),
-    /no tooling tests discovered/,
-  );
+  assert.throws(() => discoverTestFiles([temporaryRoot(t)]), /no tooling tests discovered/);
 });
 
 test("tooling test inventory rejects missing and unregistered files", (t) => {
-  const root = temporaryRoot(t);
+  const root = temporaryRoot(t, {
+    "scripts/ci/first.test.js": "",
+    "scripts/ci/nested/second.test.js": "",
+  });
   const owner = path.join(root, "scripts", "ci");
-  fs.mkdirSync(path.join(owner, "nested"), { recursive: true });
   const first = path.join(owner, "first.test.js");
   const nested = path.join(owner, "nested", "second.test.js");
-  fs.writeFileSync(first, "");
-  fs.writeFileSync(nested, "");
 
-  assert.throws(
-    () =>
-      verifyTestInventory(
-        [first],
-        [owner],
-        ["scripts/ci/first.test.js", "scripts/ci/nested/second.test.js"],
-        root,
-      ),
-    /missing: scripts\/ci\/nested\/second\.test\.js/,
-  );
-  assert.throws(
-    () =>
-      verifyTestInventory(
-        [first, nested],
-        [owner],
-        ["scripts/ci/first.test.js"],
-        root,
-      ),
-    /unregistered: scripts\/ci\/nested\/second\.test\.js/,
-  );
+  const inventory = ["scripts/ci/first.test.js", "scripts/ci/nested/second.test.js"];
+  for (const [files, expected, error] of [
+    [[first], inventory, /missing: scripts\/ci\/nested\/second\.test\.js/],
+    [[first, nested], inventory.slice(0, 1), /unregistered: scripts\/ci\/nested\/second\.test\.js/],
+  ]) {
+    assert.throws(() => verifyTestInventory(files, [owner], expected, root), error);
+  }
 });
 
 test("tooling runner discovers tests outside configured roots and fails closed", (t) => {
-  const root = temporaryRoot(t);
+  const root = temporaryRoot(t, {
+    "scripts/ci/first.test.js": "",
+    "scripts/unwired/hidden.spec.mjs": "",
+  });
   const owner = path.join(root, "scripts", "ci");
   const outside = path.join(root, "scripts", "unwired", "hidden.spec.mjs");
-  fs.mkdirSync(owner, { recursive: true });
-  fs.mkdirSync(path.dirname(outside), { recursive: true });
-  fs.writeFileSync(path.join(owner, "first.test.js"), "");
-  fs.writeFileSync(outside, "");
 
   const options = {
     repositoryRoot: root,
@@ -87,39 +58,27 @@ test("tooling runner discovers tests outside configured roots and fails closed",
     expected: ["scripts/ci/first.test.js"],
     spawnSync: () => assert.fail("runner spawned an unregistered test"),
   };
-  assert.throws(
-    () => run([owner], options),
-    /unregistered: scripts\/unwired\/hidden\.spec\.mjs/,
-  );
+  assert.throws(() => run([owner], options), /unregistered: scripts\/unwired\/hidden\.spec\.mjs/);
   fs.rmSync(outside);
   fs.symlinkSync(path.join(owner, "first.test.js"), outside);
-  assert.throws(
-    () => run([owner], options),
-    /tooling test symlink is not allowed/,
-  );
+  assert.throws(() => run([owner], options), /tooling test symlink is not allowed/);
 });
 test("tooling runner validates the full inventory and executes only the requested roots", (t) => {
-  const root = temporaryRoot(t);
-  const configured = ["ci", "maintenance", "release"].map((owner) =>
-    path.join(root, "scripts", owner),
-  );
-  for (const owner of configured) fs.mkdirSync(owner, { recursive: true });
+  const owners = ["ci", "maintenance", "release"];
+  const root = temporaryRoot(t, Object.fromEntries(owners.map((owner) => [`scripts/${owner}/owner.test.js`, ""])));
+  const configured = owners.map((owner) => path.join(root, "scripts", owner));
   const files = configured.map((owner) => path.join(owner, "owner.test.js"));
-  for (const file of files) fs.writeFileSync(file, "");
   let invocation;
   const status = run([configured[0]], {
-    repositoryRoot: root, configured, expected: files.map((file) => path.relative(root, file).replaceAll(path.sep, "/")),
+    repositoryRoot: root,
+    configured,
+    expected: files.map((file) => path.relative(root, file).replaceAll(path.sep, "/")),
     spawnSync: (command, args) => ((invocation = { command, args }), { status: 0 }),
   });
   assert.equal(status, 0);
-  assert.deepEqual(invocation, { command: process.execPath, args: ["--test", files[0]] });
-  assert.throws(
-    () =>
-      resolveTestRoots(
-        [path.join(root, "scripts", "unregistered")],
-        root,
-        configured,
-      ),
-    /unregistered tooling test root/,
-  );
+  assert.deepEqual(invocation, {
+    command: process.execPath,
+    args: ["--test", files[0]],
+  });
+  assert.throws(() => resolveTestRoots([path.join(root, "scripts", "unregistered")], root, configured), /unregistered tooling test root/);
 });

@@ -44,6 +44,8 @@ make -f Makefile release-check
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
+  (source and package line budgets warn at 85% and 90% utilization; warnings
+  never change the hard limits or turn an over-budget failure into success)
 - pinned Gitleaks scanning across current files and complete Git history, with
   exact synthetic-fixture fingerprints in `.gitleaksignore` and a narrow
   semantic allowlist for generated SHA-256 recipe digests in `.gitleaks.toml`
