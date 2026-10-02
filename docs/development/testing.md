@@ -25,6 +25,13 @@ make -f Makefile audit
 
 ## Release Candidate Checks
 
+Workflow policy tests use an explicit disposable repository root, including
+local composite actions and alternate Makefile fixtures. They never write
+synthetic workflows or actions into the checkout being verified; overlapping
+tests and separate verifier processes therefore keep independent inputs.
+Local action paths are checked for both lexical and symlink escapes from the
+canonical repository root.
+
 ```bash
 make -f Makefile release-check
 ```

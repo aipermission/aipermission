@@ -1,5 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
+const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const test = require("node:test");
 const {
@@ -16,14 +18,6 @@ const {
   workflowJobs,
 } = require("../verification-policy");
 
-const fixture = path.join(__dirname, "../..", "fixture.yml");
-const localActionFixture = path.join(
-  __dirname,
-  "../..",
-  ".github",
-  "actions",
-  "verification-fixture",
-);
 const gatePolicy = {
   required_checks: [
     {
@@ -39,22 +33,34 @@ const workflow = (steps, extra = "") =>
   `name: Fixture\njobs:\n  gate:\n    name: Gate\n    steps:\n${steps}\n${extra}`;
 
 function useFixture(t) {
-  t.after(() => fs.rmSync(fixture, { force: true }));
-  return (source) => fs.writeFileSync(fixture, source);
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "aipermission-workflow-fixture-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  return Object.assign(
+    (source) => fs.writeFileSync(path.join(root, "fixture.yml"), source),
+    {
+      root,
+      actionPath: path.join(root, ".github", "actions", "verification-fixture"),
+      verify: (policy = gatePolicy) => verifyWorkflows(policy, root),
+    },
+  );
 }
 
-function writeLocalActionFixture(t, source) {
-  t.after(() =>
-    fs.rmSync(localActionFixture, { recursive: true, force: true }),
-  );
-  fs.mkdirSync(localActionFixture, { recursive: true });
-  fs.writeFileSync(path.join(localActionFixture, "action.yml"), source);
+function writeLocalActionFixture(write, source) {
+  fs.mkdirSync(write.actionPath, { recursive: true });
+  fs.writeFileSync(path.join(write.actionPath, "action.yml"), source);
 }
+const localActionWorkflow = workflow(
+  "      - uses: ./.github/actions/verification-fixture\n      - run: node verify.js",
+);
+const safeLocalAction =
+  "name: Safe fixture\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo safe\n";
 const check = (overrides = {}) => ({
-  ...gatePolicy.required_checks[0],
+  ...structuredClone(gatePolicy.required_checks[0]),
   ...overrides,
 });
-const completePolicy = (required_checks) => ({
+const completePolicy = (required_checks = [check()]) => ({
   required_checks,
   local_release_targets: ["hygiene"],
   local_release_recipe_hashes: {},
@@ -72,64 +78,43 @@ test("local release checks exactly match the verification policy", () => {
     local_release_targets: targets,
     local_release_recipe_hashes: localReleaseRecipeHashes(valid, targets),
   };
-  assert.doesNotThrow(() => verifyLocalReleaseTargets(policy, valid));
-  assert.throws(
-    () => verifyLocalReleaseTargets(policy, valid.replace(" hygiene", "")),
-    /differ from verification policy/,
-  );
-  assert.throws(
-    () =>
-      verifyLocalReleaseTargets(
-        policy,
-        valid.replace("backend-test:\n\ttrue", "backend-test:\n\tfalse"),
-      ),
-    /target recipes differ from verification policy/,
-  );
-  assert.throws(
-    () => verifyLocalReleaseTargets(policy, `${valid}\nhygiene:\n\tfalse\n`),
-    /duplicate hygiene target definitions/,
-  );
-  assert.throws(
-    () =>
-      verifyLocalReleaseTargets(policy, `${valid}\nhygiene bypass:\n\tfalse\n`),
-    /duplicate hygiene target definitions/,
-  );
-  assert.throws(
-    () => verifyLocalReleaseTargets(policy, `${valid}\nhygiene&:\n\tfalse\n`),
-    /duplicate hygiene target definitions/,
-  );
-  assert.throws(
-    () =>
-      verifyLocalReleaseTargets(
-        policy,
-        `${valid}\nbypass \\\n+  hygiene:\n\tfalse\n`,
-      ),
-    /duplicate hygiene target definitions/,
-  );
-  assert.throws(
-    () =>
-      verifyLocalReleaseTargets(
-        policy,
-        `${valid}\nrelease-check: hygiene backend-test\n`,
-      ),
-    /duplicate release-check target definitions/,
-  );
-  assert.throws(
-    () => verifyLocalReleaseTargets(policy, `SHELL := /bin/true\n${valid}`),
-    /target recipes differ from verification policy/,
-  );
-  assert.throws(
-    () => verifyLocalReleaseTargets(policy, `include override.mk\n${valid}`),
-    /must not include mutable external makefiles/,
-  );
-  assert.throws(
-    () =>
-      verifyLocalReleaseTargets(
-        policy,
-        `$(eval include override.mk)\n${valid}`,
-      ),
-    /must not generate rules with eval/,
-  );
+  const verify = (source) => verifyLocalReleaseTargets(policy, source);
+  assert.doesNotThrow(() => verify(valid));
+  for (const [source, pattern] of [
+    [valid.replace(" hygiene", ""), /differ from verification policy/],
+    [
+      valid.replace("backend-test:\n\ttrue", "backend-test:\n\tfalse"),
+      /target recipes differ from verification policy/,
+    ],
+    [`${valid}\nhygiene:\n\tfalse\n`, /duplicate hygiene target definitions/],
+    [
+      `${valid}\nhygiene bypass:\n\tfalse\n`,
+      /duplicate hygiene target definitions/,
+    ],
+    [`${valid}\nhygiene&:\n\tfalse\n`, /duplicate hygiene target definitions/],
+    [
+      `${valid}\nbypass \\\n+  hygiene:\n\tfalse\n`,
+      /duplicate hygiene target definitions/,
+    ],
+    [
+      `${valid}\nrelease-check: hygiene backend-test\n`,
+      /duplicate release-check target definitions/,
+    ],
+    [
+      `SHELL := /bin/true\n${valid}`,
+      /target recipes differ from verification policy/,
+    ],
+    [
+      `include override.mk\n${valid}`,
+      /must not include mutable external makefiles/,
+    ],
+    [
+      `$(eval include override.mk)\n${valid}`,
+      /must not generate rules with eval/,
+    ],
+  ]) {
+    assert.throws(() => verify(source), pattern);
+  }
 });
 test("workflow parser scopes commands to their owning job", () => {
   const jobs = workflowJobs(
@@ -141,6 +126,32 @@ test("workflow parser scopes commands to their owning job", () => {
 });
 test("repository workflows bound runtime and cancel only stale PR runs", () => {
   assert.doesNotThrow(() => verifyRepositoryWorkflows());
+});
+test("an invalid held fixture cannot affect another fixture or a separate repository verifier", (t) => {
+  const invalid = useFixture(t);
+  const valid = useFixture(t);
+  invalid(workflow("      - run: node verify.js"));
+  valid(workflow("      - run: node verify.js"));
+  fs.writeFileSync(
+    path.join(invalid.root, "GNUmakefile"),
+    "release-check:\n\tfalse\n",
+  );
+  assert.notEqual(invalid.root, valid.root);
+  assert.throws(() => invalid.verify(), /alternate root make entrypoint/);
+  assert.doesNotThrow(() => valid.verify());
+  const result = spawnSync(
+    process.execPath,
+    [
+      path.resolve(__dirname, "../verification-policy.js"),
+      "--verify-workflows",
+    ],
+    {
+      timeout: 10000,
+      encoding: "utf8",
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(fs.existsSync(path.join(invalid.root, "GNUmakefile")), true);
 });
 test("workflow verification accepts only active exact commands", (t) => {
   const write = useFixture(t);
@@ -159,11 +170,11 @@ test("workflow verification accepts only active exact commands", (t) => {
   ];
   for (const steps of rejected) {
     write(workflow(steps));
-    rejects(() => verifyWorkflows(gatePolicy), /missing required command/);
+    rejects(() => write.verify(), /missing required command/);
   }
   for (const scalar of ["|", ">"]) {
     write(workflow(`      - run: ${scalar}\n          node verify.js`));
-    assert.doesNotThrow(() => verifyWorkflows(gatePolicy));
+    assert.doesNotThrow(() => write.verify());
   }
 });
 
@@ -175,7 +186,7 @@ test("workflow verification rejects dynamic check identities", (t) => {
       "  collision:\n    name: ${{ 'Gate' }}\n    steps:\n      - run: echo collision\n",
     ),
   );
-  assert.throws(() => verifyWorkflows(gatePolicy), /dynamic check name/);
+  assert.throws(() => write.verify(), /dynamic check name/);
 });
 
 test("workflow verification rejects inherited shell bypasses", (t) => {
@@ -183,12 +194,12 @@ test("workflow verification rejects inherited shell bypasses", (t) => {
   write(
     "name: Fixture\ndefaults:\n  run:\n    shell: true {0}\njobs:\n  gate:\n    name: Gate\n    steps:\n      - run: node verify.js\n",
   );
-  assert.throws(() => verifyWorkflows(gatePolicy), /missing required command/);
+  assert.throws(() => write.verify(), /missing required command/);
 
   write(
     "name: Fixture\njobs:\n  gate:\n    name: Gate\n    defaults:\n      run:\n        shell: true {0}\n    steps:\n      - run: node verify.js\n",
   );
-  assert.throws(() => verifyWorkflows(gatePolicy), /missing required command/);
+  assert.throws(() => write.verify(), /missing required command/);
 });
 
 test("workflow verification locks environment and working directory", (t) => {
@@ -201,7 +212,7 @@ test("workflow verification locks environment and working directory", (t) => {
   write(
     workflow("      - run: node verify.js\n        working-directory: scripts"),
   );
-  assert.doesNotThrow(() => verifyWorkflows(contextualPolicy));
+  assert.doesNotThrow(() => write.verify(contextualPolicy));
 
   for (const source of [
     workflow("      - run: node verify.js\n        working-directory: other"),
@@ -217,7 +228,7 @@ test("workflow verification locks environment and working directory", (t) => {
     ),
   ]) {
     write(source);
-    assert.throws(() => verifyWorkflows(contextualPolicy));
+    assert.throws(() => write.verify(contextualPolicy));
   }
 });
 
@@ -227,10 +238,7 @@ test("workflow verification rejects conditional required jobs", (t) => {
     write(
       `name: Fixture\njobs:\n  gate:\n    name: Gate\n    ${setting}\n    steps:\n      - run: node verify.js\n`,
     );
-    rejects(
-      () => verifyWorkflows(gatePolicy),
-      /must be unconditional and fail closed/,
-    );
+    rejects(() => write.verify(), /must be unconditional and fail closed/);
   }
 });
 
@@ -241,7 +249,7 @@ test("workflow verification rejects compile-only Go test evidence", (t) => {
       "      - run: go test -exec=true ./...\n      - run: node verify.js",
     ),
   );
-  assert.throws(() => verifyWorkflows(gatePolicy), /compile-only go test/);
+  assert.throws(() => write.verify(), /compile-only go test/);
 });
 
 test("external workflow actions require immutable pins", () => {
@@ -257,38 +265,24 @@ test("external workflow actions require immutable pins", () => {
     "actions/checkout@deadbeef",
   ])
     assert.throws(() => verify(reference), /full 40-character commit SHA/);
-  assert.throws(
-    () =>
-      verifyActionPinsInSource(
-        "steps:\n  - { uses: actions/checkout@v4 }\n",
-        "fixture.yml",
-      ),
-    /full 40-character commit SHA/,
-  );
-  assert.throws(
-    () =>
-      verifyActionPinsInSource(
-        "steps:\n  - uses: actions/checkout@v4 # mutable\n",
-        "fixture.yml",
-      ),
-    /full 40-character commit SHA/,
-  );
+  for (const source of [
+    "steps:\n  - { uses: actions/checkout@v4 }\n",
+    "steps:\n  - uses: actions/checkout@v4 # mutable\n",
+  ]) {
+    assert.throws(
+      () => verifyActionPinsInSource(source, "fixture.yml"),
+      /full 40-character commit SHA/,
+    );
+  }
   assert.throws(() => verify("docker://alpine:latest"), /sha256 digest/);
   assert.doesNotThrow(() => verify(`docker://alpine@sha256:${"a".repeat(64)}`));
 });
 
 test("required jobs recursively reject unsafe local composite actions", (t) => {
   const write = useFixture(t);
-  const requiredWorkflow = workflow(
-    "      - uses: ./.github/actions/verification-fixture\n      - run: node verify.js",
-  );
-  write(requiredWorkflow);
-
-  writeLocalActionFixture(
-    t,
-    "name: Safe fixture\nruns:\n  using: composite\n  steps:\n    - shell: bash\n      run: echo safe\n",
-  );
-  assert.doesNotThrow(() => verifyWorkflows(gatePolicy));
+  write(localActionWorkflow);
+  writeLocalActionFixture(write, safeLocalAction);
+  assert.doesNotThrow(() => write.verify());
 
   for (const unsafeStep of [
     "    - shell: bash\n      run: echo 'GOFLAGS=-run=^$' >> $GITHUB_ENV\n",
@@ -298,42 +292,57 @@ test("required jobs recursively reject unsafe local composite actions", (t) => {
     "    - shell: python\n      run: print('unsafe')\n",
   ]) {
     fs.writeFileSync(
-      path.join(localActionFixture, "action.yml"),
+      path.join(write.actionPath, "action.yml"),
       `name: Unsafe fixture\nruns:\n  using: composite\n  steps:\n${unsafeStep}`,
     );
     assert.throws(
-      () => verifyWorkflows(gatePolicy),
+      () => write.verify(),
       /environment|persistent|bash|unconditional/,
     );
   }
 });
 
+test("required jobs resolve aliased roots without accepting local action escapes", (t) => {
+  const write = useFixture(t);
+  const outside = useFixture(t);
+  const alias = path.join(outside.root, "repository-alias");
+  const verifyAlias = () => verifyWorkflows(gatePolicy, alias);
+  fs.symlinkSync(write.root, alias, "dir");
+  writeLocalActionFixture(write, safeLocalAction);
+  write(localActionWorkflow);
+  assert.doesNotThrow(verifyAlias);
+  write(workflow("      - uses: ./../outside\n      - run: node verify.js"));
+  assert.throws(verifyAlias, /escapes the repository/);
+  fs.symlinkSync(outside.root, path.join(write.root, "outside-link"), "dir");
+  fs.writeFileSync(
+    path.join(outside.root, "action.yml"),
+    "name: Outside action\n",
+  );
+  write(workflow("      - uses: ./outside-link\n      - run: node verify.js"));
+  assert.throws(verifyAlias, /escapes the repository/);
+});
+
 test("required jobs reject local action escapes and cycles", (t) => {
   const write = useFixture(t);
   write(workflow("      - uses: ./../outside\n      - run: node verify.js"));
-  assert.throws(() => verifyWorkflows(gatePolicy), /escapes the repository/);
+  assert.throws(() => write.verify(), /escapes the repository/);
 
   writeLocalActionFixture(
-    t,
+    write,
     "name: Cyclic fixture\nruns:\n  using: composite\n  steps:\n    - uses: ./.github/actions/verification-fixture\n",
   );
-  write(
-    workflow(
-      "      - uses: ./.github/actions/verification-fixture\n      - run: node verify.js",
-    ),
-  );
-  assert.throws(() => verifyWorkflows(gatePolicy), /local action cycle/);
+  write(localActionWorkflow);
+  assert.throws(() => write.verify(), /local action cycle/);
 });
 
 test("workflow verification rejects alternate root make entrypoints", (t) => {
   const write = useFixture(t);
   write(workflow("      - run: node verify.js"));
   for (const filename of ["GNUmakefile", "makefile"]) {
-    const alternate = path.join(__dirname, "../..", filename);
-    t.after(() => fs.rmSync(alternate, { force: true }));
+    const alternate = path.join(write.root, filename);
     fs.writeFileSync(alternate, "release-check:\n\ttrue\n");
     assert.throws(
-      () => verifyWorkflows(gatePolicy),
+      () => write.verify(),
       new RegExp(`alternate root make entrypoint ${filename}`),
     );
     fs.rmSync(alternate);
@@ -359,26 +368,20 @@ test("verification policy ratchet rejects removed gates and tests", () => {
 });
 
 test("verification policy permits only an exact declared check migration", () => {
-  const previous = completePolicy([
-    check({
-      workflow: "old.yml",
-      job: "matrix",
-      job_name: "Gate (${{ matrix.kind }})",
-    }),
-  ]);
+  const from = {
+    workflow: "old.yml",
+    job: "matrix",
+    job_name: "Gate (${{ matrix.kind }})",
+  };
+  const to = { workflow: "new.yml", job: "static", job_name: "Gate" };
+  const previous = completePolicy([check(from)]);
   const current = {
-    ...completePolicy([
-      check({ workflow: "new.yml", job: "static", job_name: "Gate" }),
-    ]),
+    ...completePolicy([check(to)]),
     required_check_migrations: [
       {
         name: "Gate",
-        from: {
-          workflow: "old.yml",
-          job: "matrix",
-          job_name: "Gate (${{ matrix.kind }})",
-        },
-        to: { workflow: "new.yml", job: "static", job_name: "Gate" },
+        from,
+        to,
         reason: "Use one stable protected check identity.",
       },
     ],
@@ -402,7 +405,7 @@ test("verification policy permits only an exact declared check migration", () =>
 });
 
 test("verification policy ratchets command working directories", () => {
-  const previous = completePolicy(structuredClone(gatePolicy.required_checks));
+  const previous = completePolicy();
   previous.required_checks[0].command_working_directories = {
     "node verify.js": "scripts",
   };
@@ -418,20 +421,18 @@ test("verification policy ratchets command working directories", () => {
 test("verification policy permits only an exact command migration", () => {
   const policy = {
     required_checks: [
-      {
-        name: "Gate",
+      check({
         workflow: "old.yml",
         job: "compile",
-        job_name: "Gate",
         commands: ["node retained.js"],
-      },
-      {
+      }),
+      check({
         name: "Native Gate",
         workflow: "new.yml",
         job: "native",
         job_name: "Native Gate",
         commands: ["node native.js"],
-      },
+      }),
     ],
     required_command_migrations: [
       {
@@ -447,17 +448,12 @@ test("verification policy permits only an exact command migration", () => {
   };
   const previous = structuredClone(policy);
   previous.required_checks = [
-    {
-      name: "Gate",
-      workflow: "old.yml",
-      job: "compile",
-      job_name: "Gate",
+    check({
+      ...policy.required_checks[0],
       commands: ["node compile-only.js", "node retained.js"],
-    },
+      command_working_directories: { "node compile-only.js": "legacy" },
+    }),
   ];
-  previous.required_checks[0].command_working_directories = {
-    "node compile-only.js": "legacy",
-  };
   const preauthorized = structuredClone(policy);
   preauthorized.required_checks = structuredClone(previous.required_checks);
   assert.doesNotThrow(() => validateRequiredCommandMigrations(preauthorized));
@@ -473,7 +469,7 @@ test("verification policy permits only an exact command migration", () => {
 });
 
 test("verification policy ratchets local release target recipes", () => {
-  const previous = completePolicy(structuredClone(gatePolicy.required_checks));
+  const previous = completePolicy();
   previous.local_release_recipe_hashes = { hygiene: "a".repeat(64) };
   const current = structuredClone(previous);
   current.local_release_recipe_hashes.hygiene = "b".repeat(64);
@@ -493,7 +489,7 @@ test("verification policy permits only a preauthorized recipe migration", () => 
     reason:
       "Replace one local release recipe with reviewed equivalent evidence.",
   };
-  const previous = completePolicy(structuredClone(gatePolicy.required_checks));
+  const previous = completePolicy();
   previous.local_release_recipe_hashes = { hygiene: from };
   previous.local_release_recipe_migrations = [migration];
   const current = structuredClone(previous);
@@ -520,27 +516,20 @@ test("verification policy permits only a preauthorized recipe migration", () => 
 });
 
 test("verification policy rejects candidate-authored migrations", () => {
-  const previous = completePolicy(structuredClone(gatePolicy.required_checks));
-
-  const moved = structuredClone(previous);
-  moved.required_checks[0] = {
-    ...moved.required_checks[0],
+  const previous = completePolicy();
+  const from = { workflow: "fixture.yml", job: "gate", job_name: "Gate" };
+  const to = {
     workflow: "replacement.yml",
     job: "replacement",
+    job_name: "Gate",
   };
+  const moved = structuredClone(previous);
+  moved.required_checks[0] = check(to);
   moved.required_check_migrations = [
     {
       name: "Gate",
-      from: {
-        workflow: "fixture.yml",
-        job: "gate",
-        job_name: "Gate",
-      },
-      to: {
-        workflow: "replacement.yml",
-        job: "replacement",
-        job_name: "Gate",
-      },
+      from,
+      to,
       reason: "Candidate-authored migration must not authorize itself.",
     },
   ];

@@ -1,8 +1,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { parseDocument } = require("yaml");
+const { workflowFiles, workflowManifestFiles } = require("./workflow-files");
 
-const root = path.resolve(__dirname, "..");
+const repositoryRoot = path.resolve(__dirname, "..");
 
 function plainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -162,9 +163,17 @@ function workflowSetupNodeVersions(source, sourcePath = "workflow") {
     job.steps.forEach((step, index) => {
       if (!plainObject(step) || typeof step.uses !== "string") return;
       if (!step.uses.startsWith("actions/setup-node@")) return;
-      const version = plainObject(step.with) ? step.with["node-version"] : undefined;
-      if (version != null && typeof version !== "string" && typeof version !== "number") {
-        throw new Error(`${sourcePath} job ${jobID} step ${index + 1} node-version must be a string or number`);
+      const version = plainObject(step.with)
+        ? step.with["node-version"]
+        : undefined;
+      if (
+        version != null &&
+        typeof version !== "string" &&
+        typeof version !== "number"
+      ) {
+        throw new Error(
+          `${sourcePath} job ${jobID} step ${index + 1} node-version must be a string or number`,
+        );
       }
       versions.push(version == null ? undefined : String(version));
     });
@@ -227,33 +236,6 @@ function verifyActionPinsInSource(source, sourcePath) {
   });
 }
 
-function workflowFiles() {
-  const roots = [
-    path.join(root, ".github", "workflows"),
-    path.join(root, ".github", "actions"),
-  ];
-  const files = [];
-  const visit = (directory) => {
-    if (!fs.existsSync(directory)) return;
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const absolute = path.join(directory, entry.name);
-      if (entry.isDirectory()) visit(absolute);
-      else if (/\.ya?ml$/i.test(entry.name)) files.push(absolute);
-    }
-  };
-  roots.forEach(visit);
-  return files.sort();
-}
-
-function workflowManifestFiles() {
-  const directory = path.join(root, ".github", "workflows");
-  return fs
-    .readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.ya?ml$/i.test(entry.name))
-    .map((entry) => path.join(directory, entry.name))
-    .sort();
-}
-
 function hasPullRequestTrigger(workflow) {
   const trigger = workflow.on;
   if (trigger === "pull_request") return true;
@@ -274,7 +256,8 @@ function verifyWorkflowRuntimeContract(source, sourcePath = "workflow") {
     throw new Error(`${sourcePath} concurrency group must be a string`);
   }
   if (hasPullRequestTrigger(workflow)) {
-    const expectedGroup = "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}";
+    const expectedGroup =
+      "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}";
     if (concurrency.group !== expectedGroup) {
       throw new Error(
         `${sourcePath} pull-request concurrency group must equal the canonical workflow and run identity expression`,
@@ -293,8 +276,13 @@ function verifyWorkflowRuntimeContract(source, sourcePath = "workflow") {
       `${sourcePath} non-PR runs must not cancel work already in progress`,
     );
   }
-  if (path.basename(sourcePath) === "publish-mcp.yml" && concurrency.group !== "publish-mcp") {
-    throw new Error(`${sourcePath} must serialize every npm publication in the publish-mcp group`);
+  if (
+    path.basename(sourcePath) === "publish-mcp.yml" &&
+    concurrency.group !== "publish-mcp"
+  ) {
+    throw new Error(
+      `${sourcePath} must serialize every npm publication in the publish-mcp group`,
+    );
   }
   if (!plainObject(workflow.jobs)) {
     throw new Error(`${sourcePath} must define jobs`);
@@ -309,15 +297,15 @@ function verifyWorkflowRuntimeContract(source, sourcePath = "workflow") {
   }
 }
 
-function verifyRepositoryWorkflowRuntimeContracts() {
-  for (const file of workflowManifestFiles()) {
+function verifyRepositoryWorkflowRuntimeContracts(root = repositoryRoot) {
+  for (const file of workflowManifestFiles(root)) {
     const relative = path.relative(root, file);
     verifyWorkflowRuntimeContract(fs.readFileSync(file, "utf8"), relative);
   }
 }
 
-function verifyExternalActionPins() {
-  for (const file of workflowFiles()) {
+function verifyExternalActionPins(root = repositoryRoot) {
+  for (const file of workflowFiles(root)) {
     verifyActionPinsInSource(
       fs.readFileSync(file, "utf8"),
       path.relative(root, file),
@@ -325,7 +313,7 @@ function verifyExternalActionPins() {
   }
 }
 
-function verifyCanonicalMakeEntrypoint() {
+function verifyCanonicalMakeEntrypoint(root) {
   for (const filename of ["GNUmakefile", "makefile"]) {
     if (fs.existsSync(path.join(root, filename))) {
       throw new Error(
@@ -335,15 +323,15 @@ function verifyCanonicalMakeEntrypoint() {
   }
 }
 
-function verifyRequiredJobLocalActions(contract, sourcePath, jobID) {
+function verifyRequiredJobLocalActions(contract, sourcePath, jobID, root) {
   for (const step of contract.steps) {
     if (!step.uses.startsWith("./")) continue;
-    verifyLocalCompositeAction(step.uses, sourcePath, jobID, []);
+    verifyLocalCompositeAction(step.uses, sourcePath, jobID, [], root);
   }
 }
 
-function verifyLocalCompositeAction(reference, sourcePath, jobID, stack) {
-  const actionPath = resolveLocalActionPath(reference, sourcePath);
+function verifyLocalCompositeAction(reference, sourcePath, jobID, stack, root) {
+  const actionPath = resolveLocalActionPath(reference, sourcePath, root);
   const relativePath = path.relative(root, actionPath);
   if (stack.includes(relativePath)) {
     throw new Error(
@@ -388,19 +376,19 @@ function verifyLocalCompositeAction(reference, sourcePath, jobID, stack) {
       }
     }
     if (typeof step.uses === "string" && step.uses.startsWith("./")) {
-      verifyLocalCompositeAction(step.uses, sourcePath, jobID, nextStack);
+      verifyLocalCompositeAction(step.uses, sourcePath, jobID, nextStack, root);
     }
   });
 }
 
-function resolveLocalActionPath(reference, sourcePath) {
+function resolveLocalActionPath(reference, sourcePath, root) {
   if (!/^\.\/[A-Za-z0-9._/-]+$/.test(reference)) {
     throw new Error(
       `${sourcePath} has an invalid local action reference ${reference}`,
     );
   }
-  const candidate = path.resolve(root, reference.slice(2));
-  assertContainedPath(candidate, sourcePath, reference);
+  const candidate = path.resolve(fs.realpathSync(root), reference.slice(2));
+  assertContainedPath(candidate, sourcePath, reference, root);
   let actionPath = candidate;
   if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
     const manifests = ["action.yml", "action.yaml"]
@@ -419,11 +407,11 @@ function resolveLocalActionPath(reference, sourcePath) {
     );
   }
   const realPath = fs.realpathSync(actionPath);
-  assertContainedPath(realPath, sourcePath, reference);
+  assertContainedPath(realPath, sourcePath, reference, root);
   return realPath;
 }
 
-function assertContainedPath(candidate, sourcePath, reference) {
+function assertContainedPath(candidate, sourcePath, reference, root) {
   const relative = path.relative(fs.realpathSync(root), candidate);
   if (
     relative === "" ||
@@ -436,9 +424,9 @@ function assertContainedPath(candidate, sourcePath, reference) {
   }
 }
 
-function verifyRequiredWorkflows(policy) {
-  verifyCanonicalMakeEntrypoint();
-  verifyExternalActionPins();
+function verifyRequiredWorkflows(policy, root = repositoryRoot) {
+  verifyCanonicalMakeEntrypoint(root);
+  verifyExternalActionPins(root);
   const parsed = new Map();
   for (const gate of policy.required_checks) {
     if (
@@ -486,7 +474,7 @@ function verifyRequiredWorkflows(policy) {
         `${gate.workflow} required job ${gate.job} must be unconditional and fail closed`,
       );
     }
-    verifyRequiredJobLocalActions(contract, gate.workflow, gate.job);
+    verifyRequiredJobLocalActions(contract, gate.workflow, gate.job, root);
     if (
       contract.hasEnvironment ||
       contract.steps.some(
