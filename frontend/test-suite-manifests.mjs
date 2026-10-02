@@ -146,7 +146,10 @@ export const asyncStateOwnerTests = {
     "src/pages/unlock.component.test.tsx",
     "src/pages/use-unlock-lifecycle-mutation.component.test.ts",
   ],
-  "src/pages/use-history-page-state.ts": ["src/test/activity/history.component.test.tsx"],
+  "src/pages/use-history-page-state.ts": [
+    "src/test/activity/history.component.test.tsx",
+    "src/test/activity/history-detail-label-ownership.component.test.tsx",
+  ],
 };
 
 export const asyncStateTestIncludes = [...new Set(Object.values(asyncStateOwnerTests).flat())]

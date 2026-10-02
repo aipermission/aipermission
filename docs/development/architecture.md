@@ -335,6 +335,12 @@ methods. The registry checks capture provenance and connector/catalog identity;
 common consumers cannot access form defaults or mutation methods through it.
 Presentation decoding must not manufacture persistence or runtime identities.
 
+History detail reads own one dialog opening, including when the same entry is
+closed and reopened. A late detail response may fill in the entry's full data,
+but it cannot replace labels changed by a successful attach/detach while that
+read was pending. A failed detail read leaves the existing preview and newer
+labels intact. Switching entries or closing the dialog retires the prior read.
+
 ## MCP Package
 
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:
