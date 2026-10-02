@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { promisify } from "node:util";
 import { parse as parseTOML } from "smol-toml";
 import { parse as parseJSONC } from "jsonc-parser";
 
@@ -35,10 +33,10 @@ import {
 import { normalizeLocalAPIURL } from "../../src/local-url.js";
 import { parseCommandFlags } from "../../src/cli-flags.js";
 import { inspectClientSetup } from "../../src/doctor.js";
+import { git, initGitRepository } from "./git-fixtures.js";
 
 const require = createRequire(import.meta.url);
 const packageMetadata = require("../../package.json");
-const execFileAsync = promisify(execFile);
 
 test("TOML setup and doctor preserve null-prototype config records across updates", async (t) => {
   const homeDir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-toml-records-"));
@@ -67,17 +65,6 @@ test("TOML setup and doctor preserve null-prototype config records across update
   }
   assert.equal(Object.prototype.note, undefined);
 });
-
-async function git(cwd, ...args) {
-  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], { encoding: "utf8", windowsHide: true });
-  return stdout.trim();
-}
-
-async function initGitRepository(dir) {
-  await git(dir, "init");
-  await git(dir, "config", "user.name", "AIPermission Tests");
-  await git(dir, "config", "user.email", "tests@aipermission.local");
-}
 
 test("parseFlags supports kebab-case, inline values, and booleans", () => {
   assert.deepEqual(parseFlags(["--provider", "codex", "--api-url=http://localhost:3210/", "--name", "main", "--print", "--force"]), {
