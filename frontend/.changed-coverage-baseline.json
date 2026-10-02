@@ -9,12 +9,6 @@
     "lines": 75
   },
   "files": {
-    "src/components/tokens/use-token-page-controller.ts": {
-      "statements": 96.25,
-      "branches": 77.77,
-      "functions": 100,
-      "lines": 100
-    },
     "src/App.tsx": {
       "statements": 100,
       "branches": 100,
@@ -34,10 +28,10 @@
       "lines": 100
     },
     "src/components/app-shell.tsx": {
-      "statements": 89.09,
-      "branches": 75,
-      "functions": 78.57,
-      "lines": 92
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/app-sidebar.tsx": {
       "statements": 90.32,
@@ -196,8 +190,8 @@
       "lines": 100
     },
     "src/components/console/use-console-messages.ts": {
-      "statements": 98.64,
-      "branches": 89.74,
+      "statements": 98.92,
+      "branches": 95.12,
       "functions": 100,
       "lines": 100
     },
@@ -495,6 +489,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/components/tokens/use-token-page-controller.ts": {
+      "statements": 96.25,
+      "branches": 77.77,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/tokens/use-vault-permission-editor.ts": {
       "statements": 97.35,
       "branches": 89.7,
@@ -599,7 +599,7 @@
     },
     "src/components/use-app-shell-controller.ts": {
       "statements": 98.11,
-      "branches": 95.23,
+      "branches": 95.45,
       "functions": 100,
       "lines": 100
     },
@@ -706,8 +706,8 @@
       "lines": 98.09
     },
     "src/connectors/editor/capture-credential-family.tsx": {
-      "statements": 94.66,
-      "branches": 87.75,
+      "statements": 96.62,
+      "branches": 91.66,
       "functions": 100,
       "lines": 100
     },
@@ -802,10 +802,10 @@
       "lines": 100
     },
     "src/connectors/editor/use-credential-profile-editor.ts": {
-      "statements": 94.36,
-      "branches": 83.33,
+      "statements": 95.04,
+      "branches": 91.3,
       "functions": 100,
-      "lines": 93.75
+      "lines": 95.55
     },
     "src/connectors/editor/use-family-command-host.ts": {
       "statements": 100,
@@ -1030,10 +1030,10 @@
       "lines": 90.9
     },
     "src/connectors/templates/_shared/sql-query-form.tsx": {
-      "statements": 57.14,
-      "branches": 75,
-      "functions": 50,
-      "lines": 57.14
+      "statements": 100,
+      "branches": 91.66,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/_shared/sql-request-detail.tsx": {
       "statements": 80,
@@ -1043,7 +1043,7 @@
     },
     "src/connectors/templates/_shared/sql-result-output.tsx": {
       "statements": 100,
-      "branches": 85,
+      "branches": 89.36,
       "functions": 100,
       "lines": 100
     },
@@ -1084,10 +1084,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/use-sql-console.ts": {
-      "statements": 87.17,
-      "branches": 67.39,
-      "functions": 85,
-      "lines": 90
+      "statements": 90.52,
+      "branches": 72,
+      "functions": 86.95,
+      "lines": 91.89
     },
     "src/connectors/templates/_shared/use-sql-metadata.ts": {
       "statements": 82.85,
@@ -1504,10 +1504,10 @@
       "lines": 100
     },
     "src/connectors/templates/kubernetes/use-kubernetes-browser.ts": {
-      "statements": 88.19,
-      "branches": 71,
-      "functions": 87.87,
-      "lines": 93.02
+      "statements": 92.02,
+      "branches": 78.64,
+      "functions": 88.23,
+      "lines": 93.12
     },
     "src/connectors/templates/kubernetes/use-rollout-restart.ts": {
       "statements": 100,
@@ -1546,10 +1546,10 @@
       "lines": 100
     },
     "src/connectors/templates/mail/console.tsx": {
-      "statements": 62.5,
-      "branches": 74.46,
-      "functions": 36.36,
-      "lines": 65.21
+      "statements": 100,
+      "branches": 96.49,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/mail/credential-family.tsx": {
       "statements": 100,
@@ -1624,28 +1624,28 @@
       "lines": 94.73
     },
     "src/connectors/templates/mail/use-mail-action-runner.ts": {
-      "statements": 92.85,
-      "branches": 78.84,
-      "functions": 85.71,
-      "lines": 94.11
+      "statements": 95.09,
+      "branches": 81.48,
+      "functions": 95.23,
+      "lines": 96.62
     },
     "src/connectors/templates/mail/use-mail-compose.ts": {
-      "statements": 80.39,
-      "branches": 57.77,
-      "functions": 69.23,
-      "lines": 90.69
+      "statements": 94.28,
+      "branches": 83.63,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/mail/use-mail-workspace.ts": {
-      "statements": 88.46,
-      "branches": 87.5,
-      "functions": 90.9,
-      "lines": 85.71
+      "statements": 100,
+      "branches": 93.75,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/mail/use-mailbox.ts": {
-      "statements": 90.13,
-      "branches": 72.22,
-      "functions": 94.59,
-      "lines": 89.16
+      "statements": 98.87,
+      "branches": 90.62,
+      "functions": 100,
+      "lines": 98.58
     },
     "src/connectors/templates/native-family-registry.ts": {
       "statements": 100,
@@ -1901,7 +1901,7 @@
     },
     "src/connectors/templates/rabbitmq/use-rabbitmq-browser.ts": {
       "statements": 100,
-      "branches": 91.83,
+      "branches": 93,
       "functions": 100,
       "lines": 100
     },
@@ -2056,10 +2056,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/dialogs.tsx": {
-      "statements": 38.88,
-      "branches": 74.13,
-      "functions": 12.5,
-      "lines": 46.15
+      "statements": 100,
+      "branches": 87.5,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/s3/endpoint-footer.tsx": {
       "statements": 100,
@@ -2140,14 +2140,14 @@
       "lines": 100
     },
     "src/connectors/templates/s3/use-s3-browser.ts": {
-      "statements": 90.64,
-      "branches": 76,
+      "statements": 91.44,
+      "branches": 79.16,
       "functions": 95.23,
-      "lines": 96.61
+      "lines": 96.92
     },
     "src/connectors/templates/s3/use-s3-object-delete.ts": {
-      "statements": 93.33,
-      "branches": 85.71,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -2170,10 +2170,10 @@
       "lines": 100
     },
     "src/connectors/templates/ssh/bulk-command-dialog.tsx": {
-      "statements": 92.39,
-      "branches": 81.88,
-      "functions": 95.91,
-      "lines": 96.94
+      "statements": 92.48,
+      "branches": 83.46,
+      "functions": 96.07,
+      "lines": 96.99
     },
     "src/connectors/templates/ssh/bulk-command-inputs.tsx": {
       "statements": 87.5,
@@ -2776,10 +2776,10 @@
       "lines": 100
     },
     "src/pages/tokens.tsx": {
-      "statements": 86.95,
-      "branches": 81.48,
-      "functions": 77.08,
-      "lines": 87.5
+      "statements": 94.59,
+      "branches": 82.53,
+      "functions": 92,
+      "lines": 94.11
     },
     "src/pages/unlock-create-panel.tsx": {
       "statements": 100,
@@ -2806,10 +2806,10 @@
       "lines": 100
     },
     "src/pages/use-history-page-state.ts": {
-      "statements": 88.19,
-      "branches": 67.69,
-      "functions": 81.63,
-      "lines": 92
+      "statements": 95.26,
+      "branches": 77.46,
+      "functions": 92,
+      "lines": 97.74
     },
     "src/pages/use-security-page-state.ts": {
       "statements": 97.82,
