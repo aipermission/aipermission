@@ -9,6 +9,12 @@
     "lines": 75
   },
   "files": {
+    "src/components/tokens/use-token-page-controller.ts": {
+      "statements": 96.25,
+      "branches": 77.77,
+      "functions": 100,
+      "lines": 100
+    },
     "src/App.tsx": {
       "statements": 100,
       "branches": 100,

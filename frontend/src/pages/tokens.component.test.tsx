@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiPost as realPost } from "../lib/api";
@@ -29,7 +29,13 @@ const connectorPermissions = {
   load: vi.fn(async (_tokens: GatewayToken[]) => ({})),
 };
 
-vi.mock("../lib/api", async () => ({ ...(await vi.importActual("../lib/api")), apiPost: vi.fn() }));
+vi.mock("../lib/api", async () => ({
+  ...(await vi.importActual("../lib/api")),
+  apiPost: vi.fn(),
+  apiGet: vi.fn(async () => {
+    throw new Error("Permission fixture unavailable.");
+  }),
+}));
 vi.mock("../lib/gateway-context", () => ({ useGateway: () => gateway }));
 vi.mock("../lib/use-connector-permissions", () => ({
   useConnectorPermissions: () => ({
@@ -87,6 +93,29 @@ describe("TokensPage", () => {
     expect(apiPost).toHaveBeenCalledWith("/api/tokens", expect.objectContaining({ name: "review-agent", expires_at: expect.any(String) }));
     expect(await screen.findByText("Token created.")).toBeVisible();
     expect(gateway.loadTokens).toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Dismiss generated token" }));
+    expect(screen.queryByText("review-agent token created.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Add token" }));
+    await user.click(screen.getByRole("button", { name: "Close drawer" }));
+    expect(screen.queryByRole("heading", { name: "Add API token" })).not.toBeInTheDocument();
+    expect(apiPost).toHaveBeenCalledOnce();
+  });
+
+  it("opens and closes token dialogs without dispatching a token mutation", async () => {
+    const user = userEvent.setup();
+    render(<TokensPage />);
+    for (const name of ["Connectors", "Vault", "Install", "Revoke"]) {
+      await user.click(screen.getByRole("button", { name }));
+      const dialog = within(screen.getByRole("dialog"));
+      if (name === "Install") {
+        expect(dialog.getByRole("heading", { name: "Install maintenance" })).toBeVisible();
+        await user.click(dialog.getByRole("button", { name: "Custom / copy-paste" }));
+        expect(dialog.getByText(/Custom prints portable config/)).toBeVisible();
+      }
+      await user.click(dialog.getByRole("button", { name: "Close dialog" }));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(apiPost).not.toHaveBeenCalled();
+    }
   });
 
   it("keeps the creation form open when a response has no show-once token", async () => {
