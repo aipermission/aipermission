@@ -118,9 +118,9 @@
   "local_release_recipe_migrations": [
     {
       "target": "$makefile",
-      "from": "e61649a3914b4a42b5902fed6be24ee8e01f14e060b57cf37beb4cd72e7d8f19",
-      "to": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de",
-      "reason": "Add the required macOS source cross-build and pin local vulnerability scanning so the release gate mirrors CI."
+      "from": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de",
+      "to": "1bc77da611f6c8faa88b23d89144ca8644c28cd3c8252a72c223f9edf2b22877",
+      "reason": "Preauthorize the next release's native backend-build target in both build and release-check; retain every existing protected recipe and gate."
     },
     {
       "target": "backend-vuln",
