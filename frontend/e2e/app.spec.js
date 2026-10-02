@@ -583,49 +583,86 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
 
 test("@high-risk keeps structured sessions isolated while switching connector profiles", async ({ page }, testInfo) => {
   const browserErrors = await observeSQLBrowserRuntime(page);
-  const manualQueries = [];
-  const profiles = [postgresTargetProfile(1, "admin"), postgresTargetProfile(2, "readonly")];
-  await page.unroute("http://localhost:8080/api/targets");
-  await page.route("http://localhost:8080/api/targets", async (route) => route.fulfill({ json: { items: profiles } }));
-  await page.route("http://localhost:8080/api/connector-targets/2/profiles/*/actions", async (route) => {
-    await route.fulfill({ json: { items: [postgresQueryAction()] } });
-  });
-  await page.route("http://localhost:8080/api/connector-actions/local-run", async (route) => {
-    const request = route.request().postDataJSON();
-    if (request.reason === "manual Postgres console query") manualQueries.push(request);
-    await route.fulfill({
-      json: {
-        request_id: 7,
-        target_ref: request.target_ref,
-        connector_kind: "postgres",
-        action_name: request.action_name,
-        status: "completed",
-        retry_policy: { class: "read_only", guidance: "Read-only fixture." },
-        output: { rows: [] },
-      },
+  for (const [kind, label] of [
+    ["postgres", "Postgres"],
+    ["clickhouse", "ClickHouse"],
+  ]) {
+    const manualQueries = [];
+    const profiles = [sqlTargetProfile(kind, 1, "admin"), sqlTargetProfile(kind, 2, "readonly")];
+    await page.unroute("http://localhost:8080/api/targets");
+    await page.route("http://localhost:8080/api/targets", async (route) => route.fulfill({ json: { items: profiles } }));
+    await page.unroute("http://localhost:8080/api/connector-action-approvals");
+    await page.route("http://localhost:8080/api/connector-action-approvals", async (route) => {
+      await route.fulfill({
+        json: [
+          {
+            ...pendingApproval(),
+            connector_kind: kind,
+            target_id: 2,
+            target_name: "analytics-db",
+            target_ref: `${kind}:2:1`,
+            profile_label: "admin",
+            action_name: "query_readonly",
+            reason: `manual ${label} console query`,
+            input: { sql: "SELECT 2", max_rows: 100 },
+            preview: { sql: "SELECT 2", max_rows: 100 },
+            status: "completed",
+            retry_policy: { class: "read_only", guidance: "Read-only fixture." },
+          },
+        ],
+      });
     });
-  });
+    await page.route("http://localhost:8080/api/connector-targets/2/profiles/*/actions", async (route) => {
+      await route.fulfill({ json: { items: [sqlQueryAction()] } });
+    });
+    await page.route("http://localhost:8080/api/connector-actions/local-run", async (route) => {
+      expect(route.request().method()).toBe("POST");
+      const request = route.request().postDataJSON();
+      if (request.reason === `manual ${label} console query`) {
+        expect(request).toEqual({
+          idempotency_key: expect.any(String),
+          target_ref: `${kind}:2:1`,
+          action_name: "query_readonly",
+          input: { sql: "SELECT 1", max_rows: 100 },
+          reason: `manual ${label} console query`,
+        });
+        manualQueries.push(request);
+      }
+      await route.fulfill({
+        json: {
+          request_id: 7,
+          target_ref: request.target_ref,
+          connector_kind: kind,
+          action_name: request.action_name,
+          status: "completed",
+          retry_policy: { class: "read_only", guidance: "Read-only fixture." },
+          output: { rows: [] },
+        },
+      });
+    });
 
-  await unlock(page);
-  await page.locator('aside a[href="/console"]').click();
-  await expect(page.getByRole("heading", { name: "analytics-db" })).toBeVisible();
-  await page.setViewportSize({ width: 1920, height: 1080 });
-  const workspaceHeader = page.locator("header").filter({ has: page.getByRole("heading", { name: "analytics-db" }) });
-  const profileSelect = workspaceHeader.getByLabel("Profile");
-  await expect(profileSelect).toHaveValue("1");
-  await expect(workspaceHeader.getByRole("button", { name: "End Session" })).toBeEnabled();
-  await verifySQLBrowserRuntime(page, testInfo, manualQueries, browserErrors);
+    if (kind === "postgres") await unlock(page);
+    else await page.goto("/");
+    await page.locator('aside a[href="/console"]').click();
+    await expect(page.getByRole("heading", { name: "analytics-db" })).toBeVisible();
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    const workspaceHeader = page.locator("header").filter({ has: page.getByRole("heading", { name: "analytics-db" }) });
+    const profileSelect = workspaceHeader.getByLabel("Profile");
+    await expect(profileSelect).toHaveValue("1");
+    await expect(workspaceHeader.getByRole("button", { name: "End Session" })).toBeEnabled();
+    await verifySQLBrowserRuntime(page, testInfo, manualQueries, browserErrors, kind);
 
-  await profileSelect.selectOption("2");
-  await expect(page).toHaveURL(/target=postgres%3A2%3A2/);
-  await workspaceHeader.getByRole("button", { name: "End Session" }).click();
-  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeVisible();
+    await profileSelect.selectOption("2");
+    await expect(page).toHaveURL(new RegExp(`target=${kind}%3A2%3A2`));
+    await workspaceHeader.getByRole("button", { name: "End Session" }).click();
+    await expect(page.getByRole("heading", { name: `No active ${label} session` })).toBeVisible();
 
-  await profileSelect.selectOption("1");
-  await expect(page).toHaveURL(/target=postgres%3A2%3A1/);
-  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeHidden();
-  await profileSelect.selectOption("2");
-  await expect(page.getByRole("heading", { name: "No active Postgres session" })).toBeVisible();
+    await profileSelect.selectOption("1");
+    await expect(page).toHaveURL(new RegExp(`target=${kind}%3A2%3A1`));
+    await expect(page.getByRole("heading", { name: `No active ${label} session` })).toBeHidden();
+    await profileSelect.selectOption("2");
+    await expect(page.getByRole("heading", { name: `No active ${label} session` })).toBeVisible();
+  }
 });
 
 test("@high-risk reconnects a live console after the remote session exits", async ({ page }) => {
@@ -738,10 +775,10 @@ function pendingApproval() {
   };
 }
 
-function postgresTargetProfile(profileID, label) {
+function sqlTargetProfile(kind, profileID, label) {
   return {
-    ref: `postgres:2:${profileID}`,
-    connector_kind: "postgres",
+    ref: `${kind}:2:${profileID}`,
+    connector_kind: kind,
     target_id: 2,
     profile_id: profileID,
     target_name: "analytics-db",
@@ -753,12 +790,12 @@ function postgresTargetProfile(profileID, label) {
     status: "active",
     created_at: "2026-05-31T00:00:00Z",
     updated_at: "2026-05-31T00:00:00Z",
-    config: { host: "127.0.0.1", port: 5432, database: "analytics" },
+    config: { host: "127.0.0.1", port: kind === "postgres" ? 5432 : 9000, database: "analytics" },
     public: { username: label },
   };
 }
 
-function postgresQueryAction() {
+function sqlQueryAction() {
   return {
     name: "query_readonly",
     label: "Read query",
