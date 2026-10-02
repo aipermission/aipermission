@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { check: checkDependencyLicenses } = require("./dependency-license-check");
 
 const root = path.resolve(__dirname, "..");
 const inventory = JSON.parse(
@@ -43,6 +44,11 @@ function dockerfileAssertsMinimumPackageVersion(name, version) {
 }
 
 const failures = [];
+try {
+  checkDependencyLicenses(root);
+} catch (error) {
+  failures.push(`Dependency license metadata: ${error.message}`);
+}
 if (moduleVersion !== sqlcipher.go_module_version) {
   failures.push(
     `SQLCipher Go module is ${moduleVersion || "missing"}; inventory expects ${sqlcipher.go_module_version}`,

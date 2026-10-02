@@ -196,6 +196,14 @@ bootstrap: authorize the exact depth and cap transition first, then apply it
 from a later trusted base. Obsolete platform mappings and command exclusions
 may be removed without weakening the additions-only exception ratchet.
 
+Dependency license inventory fixtures run with
+`node scripts/run-tooling-tests.js scripts/dependencies`. They exercise offline
+generation, explicit metadata review, input drift rejection, missing evidence,
+and the actual native hygiene entry point. The read-only
+`node scripts/dependency-license-check.js` requires repository inputs only;
+see [the inventory boundary](../security/dependency-licenses.md) for evidence
+limits and the separate generation command.
+
 Coverage floors intentionally trail the measured baseline by a small margin so
 toolchain-only statement shifts do not create noise. Critical package floors
 cannot be removed or decreased by the maintenance ratchet; raise them

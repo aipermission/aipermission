@@ -9,6 +9,10 @@ The machine-readable inventory is
 with `backend/go.mod`, `backend/go.sum`, the runtime assertions in `internal/db`,
 the pinned container bases, and the explicit CGO/OpenSSL build boundary.
 
+The same offline hygiene entry point also checks the
+[dependency license metadata inventory](dependency-licenses.md). That inventory
+references this native record without claiming native license compliance.
+
 ## SQLCipher
 
 | Component                                     | Pinned version                                       | Notes                                                       |
