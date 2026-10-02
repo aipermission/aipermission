@@ -90,6 +90,7 @@ export function S3ConnectorConsoleTemplate({
           objects={browser.objects}
           prefix={browser.prefix}
           search={browser.search}
+          appliedQuery={browser.appliedQuery}
           selectedKey={browser.selectedKey}
           nextToken={browser.nextToken}
           latestAction={browser.latestAction}
@@ -115,8 +116,8 @@ export function S3ConnectorConsoleTemplate({
           directories={browser.directories}
           objects={browser.objects}
           visibleBytes={browser.visibleBytes}
-          prefix={browser.prefix}
-          search={browser.search}
+          prefix={browser.appliedQuery.prefix}
+          search={browser.appliedQuery.search}
           metadataSearch={browser.metadataSearch}
           state={browser.state}
           classes={classes}

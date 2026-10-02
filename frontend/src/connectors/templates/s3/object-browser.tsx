@@ -16,6 +16,7 @@ type S3ObjectBrowserProps = {
   objects: BrowserObject[];
   prefix: string;
   search: string;
+  appliedQuery: { prefix: string; search: string };
   selectedKey: string;
   nextToken: string;
   latestAction: { status: string; action_name: string } | null;
@@ -40,6 +41,7 @@ export function S3ObjectBrowser({
   objects,
   prefix,
   search,
+  appliedQuery,
   selectedKey,
   nextToken,
   latestAction,
@@ -86,8 +88,8 @@ export function S3ObjectBrowser({
       <ObjectBrowserList
         directories={directories}
         objects={objects}
-        prefix={prefix}
-        search={search}
+        prefix={appliedQuery.prefix}
+        search={appliedQuery.search}
         selectedKey={selectedKey}
         loading={state.state === "loading"}
         classes={classes}

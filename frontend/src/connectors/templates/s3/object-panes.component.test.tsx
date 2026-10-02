@@ -52,6 +52,7 @@ it("routes S3 browser controls while preserving selected object identity", async
       objects={[object]}
       prefix="backups/"
       search=""
+      appliedQuery={{ prefix: "backups/", search: "" }}
       selectedKey={object.key}
       nextToken="next"
       latestAction={null}
@@ -99,6 +100,7 @@ it("keeps S3 read recovery controls available after a terminal error", async () 
       prefix=""
       search=""
       selectedKey=""
+      appliedQuery={{ prefix: "", search: "" }}
       nextToken=""
       latestAction={null}
       state={{ state: "error", error: "bucket unavailable" }}
@@ -135,6 +137,7 @@ it("keeps S3 reconciliation reads available when an outcome is unknown", () => {
       nextToken=""
       latestAction={null}
       state={{ state: "error", error: "inspect before retrying", retryBlocked: true }}
+      appliedQuery={{ prefix: "", search: "" }}
       classes={classes}
       onPrefixChange={vi.fn()}
       onSearchChange={vi.fn()}

@@ -10,6 +10,13 @@ import { readS3Directories, readS3Metadata, readS3Objects, s3OutputRecord } from
 type BrowserObject = { key: string; size?: number | string | null; last_modified?: string; etag?: string };
 type BrowserDirectory = { prefix: string; name?: string };
 type BrowserApproval = { target_ref: string; status: string; action_name: string };
+type ObjectListing = {
+  query: { prefix: string; search: string };
+  directories: BrowserDirectory[];
+  objects: BrowserObject[];
+  nextToken: string;
+};
+const emptyListing: ObjectListing = { query: { prefix: "", search: "" }, directories: [], objects: [], nextToken: "" };
 export type S3BrowserOptions = {
   target: { ref: string };
   approvals?: { data?: BrowserApproval[] } | null;
@@ -24,9 +31,9 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
   const activeSession = session || { active: false, startedAt: "" };
   const [prefix, setPrefix] = useState("");
   const [search, setSearch] = useState("");
-  const [directories, setDirectories] = useState<BrowserDirectory[]>([]);
-  const [objects, setObjects] = useState<BrowserObject[]>([]);
-  const [nextToken, setNextToken] = useState("");
+  const [listing, setListing] = useState<ObjectListing>(emptyListing);
+  const listingRef = useRef<ObjectListing | null>(listing);
+  const { directories, objects, nextToken } = listing;
   const [selectedKey, setSelectedKey] = useState("");
   const [metadata, setMetadata] = useState<S3MetadataPanelProps["metadata"]>(null);
   const [metadataSearch, setMetadataSearch] = useState("");
@@ -42,19 +49,20 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
   useEffect(() => {
     setPrefix("");
     setSearch("");
-    setDirectories([]);
-    setObjects([]);
-    setNextToken("");
+    replaceListing(emptyListing);
     requestGuard.invalidate("metadata");
     setSelectedKey("");
     setMetadata(null);
     setMetadataSearch("");
     setState({ state: "idle", error: "", message: "" });
+    return () => {
+      listingRef.current = null;
+    };
   }, [requestGuard, target.ref, activeSession.active, activeSession.startedAt]);
 
   useEffect(() => {
     if (!activeSession.active) return;
-    void refreshObjectsForEffect({ reset: true });
+    void refreshObjectsForEffect({ reset: true, nextPrefix: "", nextSearch: "" });
   }, [activeSession.active, activeSession.startedAt, target.ref]);
 
   useEffect(() => {
@@ -63,6 +71,11 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
     setMetadata(null);
     setMetadataSearch("");
   }, [requestGuard, selectedKey]);
+
+  function replaceListing(next: ObjectListing) {
+    listingRef.current = next;
+    setListing(next);
+  }
 
   async function runS3Action({
     actionName,
@@ -95,23 +108,40 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
   }
 
   async function refreshObjects({ reset = true, token = "", nextPrefix = prefix, nextSearch = search }: RefreshOptions = {}) {
-    if (!activeSession.active) return [];
-    const item = await runS3Action({
-      actionName: "list_objects",
-      input: { prefix: nextPrefix, search: nextSearch, cursor: reset ? "" : token, limit: 100 },
-      reason: "manual S3 browser object list",
-      busy: "loading",
-      channel: "objects",
-    });
-    if (!item) return [];
-    const output = s3OutputRecord(item.output);
-    const nextDirectories = readS3Directories(output.directories);
-    const nextObjects = readS3Objects(output.objects);
-    setDirectories((current) => (reset ? nextDirectories : [...current, ...nextDirectories]));
-    setObjects((current) => (reset ? nextObjects : [...current, ...nextObjects]));
-    setNextToken(typeof output.next_cursor === "string" ? output.next_cursor : "");
-    if (reset) setSelectedKey((current) => (current && !nextObjects.some((object) => object.key === current) ? "" : current));
-    return nextObjects;
+    if (!activeSession.active || scopeKeyRef.current !== scopeKey) return [];
+    const previous = listingRef.current;
+    if (!previous || (!reset && (!token || token !== previous.nextToken))) return [];
+    const query = reset ? { prefix: nextPrefix, search: nextSearch } : previous.query;
+    const pending = { ...previous, nextToken: "" };
+    replaceListing(pending);
+    try {
+      const item = await runS3Action({
+        actionName: "list_objects",
+        input: { ...query, cursor: reset ? "" : token, limit: 100 },
+        reason: "manual S3 browser object list",
+        busy: "loading",
+        channel: "objects",
+      });
+      if (listingRef.current !== pending) return [];
+      if (!item) {
+        if (!reset) replaceListing(previous);
+        return [];
+      }
+      const output = s3OutputRecord(item.output);
+      const nextDirectories = readS3Directories(output.directories);
+      const nextObjects = readS3Objects(output.objects);
+      replaceListing({
+        query,
+        directories: reset ? nextDirectories : [...previous.directories, ...nextDirectories],
+        objects: reset ? nextObjects : [...previous.objects, ...nextObjects],
+        nextToken: typeof output.next_cursor === "string" ? output.next_cursor : "",
+      });
+      if (reset) setSelectedKey((current) => (current && !nextObjects.some((object) => object.key === current) ? "" : current));
+      return nextObjects;
+    } catch (error) {
+      if (!reset && listingRef.current === pending) replaceListing(previous);
+      throw error;
+    }
   }
 
   async function openDirectory(directoryPrefix: string) {
@@ -123,7 +153,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
   }
 
   async function openParentDirectory() {
-    const parent = parentPrefix(prefix);
+    const parent = parentPrefix(listingRef.current?.query.prefix || "");
     setPrefix(parent);
     setSearch("");
     clearSelection();
@@ -223,6 +253,7 @@ export function useS3Browser({ target, approvals, session, onRefreshActivity }: 
     setPrefix,
     search,
     setSearch,
+    appliedQuery: listing.query,
     directories,
     objects,
     nextToken,
