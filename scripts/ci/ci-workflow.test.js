@@ -85,3 +85,10 @@ test("full-source frontend verification has a bounded thirty-minute budget", () 
   const frontend = parse(workflow).jobs.frontend;
   assert.equal(frontend["timeout-minutes"], 30);
 });
+
+test("frontend runtime installs patched PCRE2 before dropping root", () => {
+  assert.match(
+    read("frontend/Dockerfile"),
+    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0'\s+USER 101/,
+  );
+});
