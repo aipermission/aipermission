@@ -14,10 +14,15 @@ import (
 // Real OS-buffer coverage complements the deterministic in-memory transport.
 // This test is mandatory; unavailable loopback sockets are not a skip/pass.
 func TestConsoleLiveBackpressureTCP(t *testing.T) {
+	// Saturate the socket with a larger payload without timing thousands of
+	// display-filter regex calls as part of the network-write deadline.
+	const recordBytes = 4096
+	const prefix = "fixture-output "
+	record := prefix + strings.Repeat("x", recordBytes-len(prefix)-2) + "\r\n"
 	testConsoleLiveBackpressure(t,
 		func(t *testing.T) (*websocket.Conn, *websocket.Conn) { return newConsoleTCPFramePair(t, true) },
 		func(t *testing.T) (*websocket.Conn, *websocket.Conn) { return newConsoleTCPFramePair(t, false) },
-		strings.Repeat("fixture-output\r\n", 24000))
+		strings.Repeat(record, 128))
 }
 
 func newConsoleTCPFramePair(t *testing.T, backpressured bool) (*websocket.Conn, *websocket.Conn) {
