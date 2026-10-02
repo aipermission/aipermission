@@ -161,6 +161,24 @@ it("opens native object dialogs and resets them when the structured session ends
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
+it("loads the next visible page without applying edited search inputs", async () => {
+  const user = userEvent.setup();
+  renderActiveConsole();
+  await screen.findByTitle("alpha.txt");
+  await user.type(screen.getByPlaceholderText("Prefix, e.g. backups/2026/"), "unapplied/");
+  await user.type(screen.getByPlaceholderText("Search object keys"), "unapplied search");
+  await user.click(screen.getByRole("button", { name: "Load more" }));
+  await screen.findByTitle("beta.txt");
+  expect(screen.getByTitle("alpha.txt")).toBeVisible();
+  expect(apiPost).toHaveBeenLastCalledWith(
+    expect.any(String),
+    expect.objectContaining({ action_name: "list_objects", input: { prefix: "", search: "", cursor: "page-2", limit: 100 } }),
+    expect.anything(),
+  );
+  expect(screen.getByPlaceholderText("Search object keys")).toHaveValue("unapplied search");
+  expect(screen.queryByRole("button", { name: /bucket root/i })).not.toBeInTheDocument();
+});
+
 it("keeps browsing usable without an advertised transfer runtime or optional endpoint metadata", async () => {
   const { rerender, props } = renderActiveConsole();
   await screen.findByTitle("alpha.txt");

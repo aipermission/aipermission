@@ -106,7 +106,10 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/_shared/use-console-batch-ownership.ts": ["src/test/console/use-console-batch-ownership.component.test.tsx"],
   "src/connectors/templates/redis/use-redis-browser.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
   "src/connectors/templates/redis/use-redis-mutations.ts": ["src/connectors/templates/redis/use-redis-browser.component.test.tsx"],
-  "src/connectors/templates/s3/use-s3-browser.ts": ["src/connectors/templates/s3/use-s3-browser.component.test.tsx"],
+  "src/connectors/templates/s3/use-s3-browser.ts": [
+    "src/connectors/templates/s3/use-s3-browser.component.test.tsx",
+    "src/connectors/templates/s3/applied-query-pagination.component.test.tsx",
+  ],
   "src/connectors/templates/s3/use-s3-object-delete.ts": ["src/connectors/templates/s3/object-delete-ownership.component.test.tsx"],
   "src/connectors/templates/s3/lifecycle-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
   "src/connectors/templates/s3/presign-dialog.tsx": ["src/connectors/templates/s3/dialog-ownership.component.test.tsx"],
