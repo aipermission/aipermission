@@ -271,6 +271,10 @@ application boundary; do not add an API override or raise a repository ceiling
 merely to land a feature. Other composition-root exceptions, if ever required,
 must be explicit, narrower than the inherited limit, and justified in review.
 
+Changed-owner discovery reads NUL-delimited Git status/path records and keeps
+the exact destination of a rename. Whitespace, tabs, line breaks, Unicode and
+Git quoting preferences cannot silently remove a path from changed-owner discovery.
+
 The changed-coverage gate owns browser component behavior. Retry-storage
 internals are instead exercised through the Node IndexedDB integration suite in
 `frontend/src/lib/api.test.ts`; the public retry facade remains in the browser

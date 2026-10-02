@@ -10,25 +10,35 @@ export function resolveFrontendBase(repositoryRoot, { configured, variable, envi
 
 export function findChangedOwnerEntries(repositoryRoot, ref, isBehaviorOwner) {
   verifyCommit(repositoryRoot, ref);
-  const tracked = execFileSync("git", ["diff", "--name-status", "--diff-filter=ACMR", ref, "--", "frontend/src"], {
+  const tracked = execFileSync("git", ["diff", "--name-status", "-z", "--find-renames", "--diff-filter=ACMR", ref, "--", "frontend/src"], {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
-  const untracked = execFileSync("git", ["ls-files", "--others", "--exclude-standard", "--", "frontend/src"], {
+  const untracked = execFileSync("git", ["ls-files", "-z", "--others", "--exclude-standard", "--", "frontend/src"], {
     cwd: repositoryRoot,
     encoding: "utf8",
   });
   const entries = new Map();
-  for (const line of tracked.trim().split("\n").filter(Boolean)) {
-    const [status, ...paths] = line.split("\t");
-    const file = normalizeFrontendPath(paths.at(-1));
+  const records = nulRecords(tracked);
+  for (let index = 0; index < records.length;) {
+    const status = records[index++];
+    const source = records[index++];
+    const destination = /^[RC]/.test(status) ? records[index++] : source;
+    if (!/^[ACMR](?:\d+)?$/.test(status) || !source || !destination) throw new Error("Invalid Git changed-owner status record");
+    const file = normalizeFrontendPath(destination);
     if (isBehaviorOwner(file)) entries.set(file, { file, status: status[0], untracked: false });
   }
-  for (const path of untracked.trim().split("\n").filter(Boolean)) {
+  for (const path of nulRecords(untracked)) {
     const file = normalizeFrontendPath(path);
     if (isBehaviorOwner(file)) entries.set(file, { file, status: "A", untracked: true });
   }
   return [...entries.values()].sort((left, right) => left.file.localeCompare(right.file));
+}
+
+function nulRecords(output) {
+  if (!output) return [];
+  if (!output.endsWith("\0")) throw new Error("Invalid Git path record terminator");
+  return output.slice(0, -1).split("\0");
 }
 
 export function readBaselineAt(repositoryRoot, ref) {
