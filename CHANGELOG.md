@@ -9,6 +9,68 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.63] - 2026-10-02
+
+### Fixed
+
+- Managed SSH key and PostgreSQL role cleanup records durable intent before remote
+  changes and requires exact historical evidence to reconcile uncertain outcomes without
+  blind replay.
+- PostgreSQL role cleanup uses catalog fences, exact grant identities and
+  observation-only reconciliation after lost COMMIT replies; confirmed historical
+  cleanup can retire a local credential without its original admin secret.
+- SSH cleanup inspection and external attestation remain available after the last
+  profile is removed, while remote deletion retains its saved-profile preflight.
+- PostgreSQL bytea query values use bounded hexadecimal output, and schema/table/column
+  identities survive metadata and managed-grant dispatch unchanged.
+- Redis and RabbitMQ reject lossy Unicode resource identities; RabbitMQ binding
+  discovery handles bounded array responses without repeated fetching or claiming an
+  incomplete scan is complete.
+- Console output preserves transcript order and recipient snapshots, bounds websocket
+  writes, and drains admitted manual work before finalizing late history.
+- Credential publication and resource transactions distinguish acknowledged rollback
+  from uncertain commits and retire unsafe physical connections before readback.
+- Transfers enforce cumulative byte budgets and reconcile shutdown summaries; batch
+  pages load their children in one bounded query.
+- Imports initialize token project scopes atomically, backup uploads distinguish
+  artifact limits from multipart envelopes, and storage move rollback markers are
+  synchronized before restoration.
+- Browser mutations verify pinned workspace ownership before accepting successful,
+  failed or uncertain gateway replies.
+
+### Changed
+
+- Connector-owned PostgreSQL role history exposes exact operation, cluster, admin and
+  generation evidence with explicit operator decisions and mandatory fresh readback
+  after uncertain acknowledgements.
+- Read-only cleanup evidence, protected runtime capabilities and authenticated local
+  operator decisions have separate authority contracts; connector-specific operations
+  remain inside their connector owners.
+- Redis collection previews, Kubernetes namespace probes, host ping completion and S3
+  lifecycle-policy errors preserve their bounded protocol and cancellation semantics.
+
+### Maintenance
+
+- Regression fixtures cover encrypted restart recovery, wire-level COMMIT reply loss,
+  concurrent ownership changes, exact resource selection, transaction finality and
+  bounded transport output.
+- Capability and credential cleanup owners retain 100 percent measured coverage;
+  PostgreSQL lifecycle owners enforce explicit coverage floors without budget or
+  isolation exceptions.
+- Native service conformance, recovery and fuzz inventories require the new cases, and
+  contributor/security documentation describes the canonical evidence and retry
+  boundaries.
+- Review MCP SDK 1.31.0 issuer binding and frontend Node types, TypeScript parser and
+  jscpd updates in maintainer-authored commits; preserve local-only tooling and existing
+  duplication limits.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- External absence attestations are explicit operator assertions, not automatic proof of
+  remote state; unknown outcomes require reconciliation.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.62] - 2026-10-02
 
 ### Fixed
