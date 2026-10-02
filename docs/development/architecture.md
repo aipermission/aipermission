@@ -341,6 +341,13 @@ but it cannot replace labels changed by a successful attach/detach while that
 read was pending. A failed detail read leaves the existing preview and newer
 labels intact. Switching entries or closing the dialog retires the prior read.
 
+The shared SQL Console admits one manual query at a time, including repeated
+Ctrl+Enter events before React renders the busy state. Target or session
+transitions retire prior handlers and in-flight results; closing and reopening
+the same session identity does not revive an older request. Query admission
+remains busy through the activity refresh, and failure releases it for a
+deliberate retry without clearing the SQL draft.
+
 ## MCP Package
 
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:

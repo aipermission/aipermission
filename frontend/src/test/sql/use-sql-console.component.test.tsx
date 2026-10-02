@@ -232,6 +232,167 @@ describe("useSQLConsole", () => {
   });
 });
 
+describe("manual SQL admission", () => {
+  it("claims a query synchronously before repeated keyboard submissions", async () => {
+    const pending = deferredQuery();
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    post.mockClear().mockImplementation(() => pending.promise);
+    const run = hook.result.current.runQuery;
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    act(() => {
+      first = run();
+      second = run();
+    });
+    expect(post).toHaveBeenCalledOnce();
+    await act(async () => {
+      pending.resolve(completed({ rows: [{ result: 1 }] }));
+      await first;
+      await second;
+    });
+    expect(hook.result.current.runState.state).toBe("idle");
+    expect(hook.result.current.sql).toBe("SELECT 1");
+    expect(hook.result.current.editorFocusTick).toBe(1);
+    post.mockResolvedValue(completed({ rows: [] }));
+    await act(async () => {
+      await hook.result.current.runQuery();
+    });
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["success", "failure"])("retires pending query %s when closing and reopening the same session", async (outcome) => {
+    const pending = deferredQuery();
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    post.mockImplementationOnce(() => pending.promise);
+    let old!: Promise<void>;
+    act(() => {
+      old = hook.result.current.runQuery();
+    });
+    const signal = post.mock.calls.at(-1)?.[2]?.signal;
+    hook.rerender({ ...hook.props, session: { ...hook.props.session!, active: false } });
+    expect(signal?.aborted).toBe(true);
+    hook.rerender(hook.props);
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    await act(async () => {
+      await hook.result.current.runQuery();
+    });
+    const focus = hook.result.current.editorFocusTick;
+    await act(async () => {
+      if (outcome === "success") pending.resolve({ ...completed({ rows: [] }), request_id: 99 });
+      else pending.reject(new Error("Old query failed"));
+      await old;
+    });
+    expect(hook.result.current.selectedID).toBe(41);
+    expect(hook.result.current.runState).toEqual({ state: "idle", error: "" });
+    expect(hook.result.current.editorFocusTick).toBe(focus);
+  });
+
+  it("rejects retained query handlers after target replacement and unmount", async () => {
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    const old = hook.result.current.runQuery;
+    hook.rerender({ ...hook.props, target: { ...hook.props.target, ref: "test-sql:2:2" } });
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    post.mockClear();
+    await act(async () => {
+      await old();
+    });
+    expect(post).not.toHaveBeenCalled();
+    const current = hook.result.current.runQuery;
+    hook.unmount();
+    await current();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("releases failed-query admission for a deliberate retry", async () => {
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    post.mockClear().mockRejectedValueOnce(new Error("Query unavailable"));
+    await act(async () => {
+      await hook.result.current.runQuery();
+    });
+    expect(hook.result.current.runState.error).toBe("Query unavailable");
+    await act(async () => {
+      await hook.result.current.runQuery();
+    });
+    expect(hook.result.current.runState.state).toBe("idle");
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not release a newer pending query when the retired query finishes", async () => {
+    const older = deferredQuery();
+    const newer = deferredQuery();
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    post.mockImplementationOnce(() => older.promise);
+    let first!: Promise<void>;
+    act(() => {
+      first = hook.result.current.runQuery();
+    });
+    hook.rerender({ ...hook.props, session: { ...hook.props.session!, active: false } });
+    hook.rerender(hook.props);
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    post.mockImplementationOnce(() => newer.promise);
+    let second!: Promise<void>;
+    act(() => {
+      second = hook.result.current.runQuery();
+    });
+    await act(async () => {
+      older.resolve(completed({ rows: [] }));
+      await first;
+    });
+    const calls = post.mock.calls.length;
+    await act(async () => {
+      await hook.result.current.runQuery();
+    });
+    expect(post).toHaveBeenCalledTimes(calls);
+    expect(hook.result.current.runState.state).toBe("running");
+    await act(async () => {
+      newer.resolve(completed({ rows: [] }));
+      await second;
+    });
+    expect(hook.result.current.runState.state).toBe("idle");
+  });
+
+  it("resets busy query UI when only the configured action changes", async () => {
+    const pending = deferredQuery();
+    const hook = renderConsole();
+    await waitFor(() => expect(hook.result.current.metadata.state).toBe("ready"));
+    act(() => hook.result.current.setSQL("SELECT 1"));
+    post.mockImplementationOnce(() => pending.promise);
+    let old!: Promise<void>;
+    act(() => {
+      old = hook.result.current.runQuery();
+    });
+    hook.rerender({ ...hook.props, config: { ...config, queryAction: "query_other" } });
+    expect(hook.result.current.runState).toEqual({ state: "idle", error: "" });
+    expect(hook.result.current.selectedID).toBeNull();
+    await act(async () => {
+      pending.resolve(completed({ rows: [] }));
+      await old;
+    });
+    expect(hook.result.current.runState.state).toBe("idle");
+    expect(hook.result.current.sql).toBe("SELECT 1");
+  });
+});
+
+function deferredQuery() {
+  let resolve!: (_value: ReturnType<typeof completed>) => void;
+  let reject!: (_error: Error) => void;
+  const promise = new Promise<ReturnType<typeof completed>>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
 function completed(output: Record<string, unknown>) {
   return { id: 41, request_id: 41, status: "completed", action_name: "query_readonly", output };
 }
