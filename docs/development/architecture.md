@@ -348,6 +348,14 @@ the same session identity does not revive an older request. Query admission
 remains busy through the activity refresh, and failure releases it for a
 deliberate retry without clearing the SQL draft.
 
+SQL spreadsheet exports treat untrusted string cells and column names as text:
+CSV and copied TSV prefix an apostrophe when the first non-whitespace/control
+character is `=`, `+`, `-`, or `@`. Numeric cells retain their numeric spelling.
+TSV replaces embedded tabs and line breaks in both headers and cells with
+spaces to preserve row/column boundaries; CSV keeps standard quoted fields.
+These are intentionally non-lossless spreadsheet views. The result table and
+raw JSON copy/download remain unchanged for exact data transfer.
+
 ## MCP Package
 
 `packages/mcp` is published as `@aipermission/mcp`. It should stay small:
