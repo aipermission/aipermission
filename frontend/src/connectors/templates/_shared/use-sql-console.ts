@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { components } from "../../../../types/generated-openapi";
 import { apiPost } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
@@ -40,7 +40,20 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
   const [resultView, setResultView] = useState(false);
   const [leftPanel, setLeftPanel] = useState<"browser" | "requests">("browser");
   const [browserSearch, setBrowserSearch] = useState("");
-  const requestGuard = useRequestGuard(`${target.ref}:${activeSession.startedAt || "inactive"}`);
+  const requestScope = JSON.stringify([target.ref, activeSession.active, activeSession.startedAt, connector.queryAction]);
+  const requestGuard = useRequestGuard(requestScope);
+  const queryOwner = useMemo(() => ({ requestScope }), [requestScope]);
+  const queryOwnerRef = useRef<object | null>(null);
+  const pendingQueryRef = useRef<symbol | null>(null);
+  useLayoutEffect(() => {
+    queryOwnerRef.current = queryOwner;
+    pendingQueryRef.current = null;
+    return () => {
+      queryOwnerRef.current = null;
+      pendingQueryRef.current = null;
+      requestGuard.invalidate("query");
+    };
+  }, [queryOwner, requestGuard]);
   const rawItems = useMemo(() => (approvals?.data || []).filter((item) => item.target_ref === target.ref), [approvals?.data, target.ref]);
   const items = useMemo(
     () => sessionItems(rawItems, activeSession, connector.metadataReason),
@@ -55,11 +68,13 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     setSelectedID(null);
     setResultView(false);
     setRunState({ state: "idle", error: "" });
-  }, [target.ref, activeSession.active, activeSession.startedAt]);
+  }, [requestScope]);
 
   async function runQuery(event?: { preventDefault?: () => void }): Promise<void> {
     event?.preventDefault?.();
-    if (!activeSession.active || !sql.trim()) return;
+    if (!activeSession.active || !sql.trim() || queryOwnerRef.current !== queryOwner || pendingQueryRef.current !== null) return;
+    const token = Symbol("sql-query");
+    pendingQueryRef.current = token;
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
@@ -83,9 +98,9 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
         return;
       }
       setSelectedID(item.request_id || null);
-      setRunState({ state: "idle", error: "" });
       try {
         await onRefreshActivity?.();
+        if (request.isCurrent()) setRunState({ state: "idle", error: "" });
       } catch (error) {
         if (request.isCurrent())
           setRunState({ state: "error", error: `Query completed, but activity refresh failed: ${errorMessage(error)}` });
@@ -93,6 +108,7 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     } catch (error) {
       if (request.isCurrent()) setRunState({ state: "error", error: errorMessage(error, "Query failed.") });
     } finally {
+      if (pendingQueryRef.current === token) pendingQueryRef.current = null;
       if (request.isCurrent()) setEditorFocusTick((current) => current + 1);
       request.complete();
     }
