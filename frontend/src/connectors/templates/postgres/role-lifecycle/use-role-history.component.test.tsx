@@ -2,7 +2,11 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost, currentWorkspaceBinding } from "../../../../lib/api";
-import { roleHistoryPageFixture, deferredRoleHistoryReply as deferred } from "../../../../test/postgres/role-history-fixtures.test";
+import {
+  roleHistoryPageFixture,
+  roleHistoryCursorPageFixture,
+  deferredRoleHistoryReply as deferred,
+} from "../../../../test/postgres/role-history-fixtures.test";
 import { useRoleHistory } from "./use-role-history";
 
 vi.mock("../../../../lib/api", () => ({ apiPost: vi.fn(), currentWorkspaceBinding: vi.fn() }));
@@ -10,11 +14,7 @@ const post = vi.mocked(apiPost);
 const binding = vi.mocked(currentWorkspaceBinding);
 
 function page(start = 1, count = 1, hasMore = false, targetID = 1) {
-  const result = roleHistoryPageFixture(
-    targetID,
-    Array.from({ length: count }, (_, index) => String(start + index)),
-  );
-  return { ...result, has_more: hasMore, next_after_resource_id: hasMore ? result.entries.at(-1)!.resource_id : "" };
+  return roleHistoryCursorPageFixture(targetID, start, count, hasMore);
 }
 
 beforeEach(() => {
@@ -268,10 +268,13 @@ it("continues beyond 64 pages with bounded cursors, retained Previous, and First
   post.mockImplementation(async (_path, input) => page(Number(input.after_resource_id || 0) + 1, 64, true));
   const { result } = renderHook(() => useRoleHistory(1));
   await waitFor(() => expect(result.current.canNext).toBe(true));
-  for (let index = 1; index < 70; index++)
+  for (let index = 1; index < 70; index++) {
     await act(async () => {
       await result.current.next();
     });
+    expect(post.mock.calls.at(-1)![1]).toEqual({ after_resource_id: String(index * 64) });
+    expect(result.current.pageNumber).toBe(index + 1);
+  }
   expect(result.current.pageNumber).toBe(70);
   expect(result.current.pageOffset).toBe(6);
   expect(result.current.cursors).toHaveLength(64);

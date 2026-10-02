@@ -2,22 +2,19 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost, currentWorkspaceBinding } from "../../../../lib/api";
 import { RoleHistoryDialog } from "./role-history-dialog";
-import { roleHistoryPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
+import { deferredRoleHistoryReply, roleHistoryCursorPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
 
 vi.mock("../../../../lib/api", () => ({ apiPost: vi.fn(), currentWorkspaceBinding: vi.fn() }));
 const post = vi.mocked(apiPost);
 const target = { id: 7, name: "Production" };
 
 function response(count = 1, after = 0, more = false) {
-  const page = roleHistoryPageFixture(
-    target.id,
-    Array.from({ length: count }, (_, index) => String(after + index + 1)),
-  );
+  const page = roleHistoryCursorPageFixture(target.id, after + 1, count, more);
   for (const entry of page.entries) {
     entry.record.status = "cleanup_intent";
     entry.record.intent.role_name = `reader_${entry.resource_id}`;
   }
-  return { ...page, has_more: more, next_after_resource_id: more ? String(after + count) : "" };
+  return page;
 }
 
 beforeEach(() => {
@@ -44,12 +41,8 @@ it("shows a compact read-only identity list and refreshes without a previous sna
   expect(screen.getByRole("dialog", { name: "Production role history" })).toBeInTheDocument();
   expect(screen.getByText("No admin profile is available. Role evidence is read-only.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Verify role presence/ })).not.toBeInTheDocument();
-  let resolve!: (_value: unknown) => void;
-  post.mockReturnValueOnce(
-    new Promise((yes) => {
-      resolve = yes;
-    }),
-  );
+  const pending = deferredRoleHistoryReply();
+  post.mockReturnValueOnce(pending.promise);
   const refresh = screen.getByRole("button", { name: "Refresh role history" });
   expect(refresh).toHaveAttribute("title", "Refresh role history");
   fireEvent.click(refresh);
@@ -57,7 +50,7 @@ it("shows a compact read-only identity list and refreshes without a previous sna
   expect(screen.queryByRole("list")).not.toBeInTheDocument();
   expect(refresh).toBeDisabled();
   await act(async () => {
-    resolve(response(1, 1));
+    pending.resolve(response(1, 1));
   });
   expect(await screen.findByText("reader_2")).toBeInTheDocument();
   expect(screen.queryByText("reader_1")).not.toBeInTheDocument();
@@ -69,7 +62,7 @@ it("shows a compact read-only identity list and refreshes without a previous sna
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });
 
-it("replaces pages with Next and Previous and keeps cursor requests read-only", async () => {
+it.each(["Previous", "First"])("replaces pages with Next and %s and keeps cursor requests read-only", async (navigation) => {
   post
     .mockResolvedValueOnce(response(64, 0, true))
     .mockResolvedValueOnce(response(1, 64))
@@ -77,48 +70,29 @@ it("replaces pages with Next and Previous and keeps cursor requests read-only", 
   render(<RoleHistoryDialog target={target} onClose={vi.fn()} />);
   const next = screen.getByRole("button", { name: "Next" });
   const previous = screen.getByRole("button", { name: "Previous" });
+  const first = screen.getByRole("button", { name: "First" });
   await waitFor(() => expect(next).toBeEnabled());
   expect(previous).toBeDisabled();
+  expect(first).toBeDisabled();
   fireEvent.click(next);
   expect(await screen.findByText("reader_65")).toBeInTheDocument();
   expect(screen.queryByText("reader_1")).not.toBeInTheDocument();
   expect(screen.getByText("Page 2")).toBeInTheDocument();
+  expect(first).toBeEnabled();
   expect(next).toBeDisabled();
   expect(post.mock.calls[1][1]).toEqual({ after_resource_id: "64" });
-  fireEvent.click(previous);
+  fireEvent.click(screen.getByRole("button", { name: navigation }));
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
   expect(await screen.findByText("reader_1")).toBeInTheDocument();
   expect(screen.queryByText("reader_65")).not.toBeInTheDocument();
   expect(post.mock.calls[2][1]).toEqual({});
-});
-
-it("keeps Next available beyond page 64 and recovers page one through First", async () => {
-  post.mockImplementation(async (_path, input) => response(64, Number(input.after_resource_id || 0), true));
-  render(<RoleHistoryDialog target={target} onClose={vi.fn()} />);
-  const next = screen.getByRole("button", { name: "Next" });
-  const first = screen.getByRole("button", { name: "First" });
-  await waitFor(() => expect(next).toBeEnabled());
-  expect(first).toBeDisabled();
-  const pageNumber = screen.getByText("Page 1");
-  for (let page = 2; page <= 66; page++) {
-    await act(async () => {
-      fireEvent.click(next);
-    });
-    expect(pageNumber).toHaveTextContent(new RegExp(`^Page ${page}$`));
-  }
-  expect(next).toBeEnabled();
-  expect(first).toBeEnabled();
-  expect(screen.queryByText(/limit reached/)).not.toBeInTheDocument();
-  expect(screen.getAllByRole("listitem")).toHaveLength(64);
-  expect(screen.getByText("reader_4161")).toBeInTheDocument();
-  expect(screen.queryByText("reader_1")).not.toBeInTheDocument();
-  fireEvent.click(first);
-  expect(screen.queryByRole("list")).not.toBeInTheDocument();
-  expect(await screen.findByText("reader_1")).toBeInTheDocument();
   expect(screen.getByText("Page 1")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+  expect(previous).toBeDisabled();
   expect(first).toBeDisabled();
   expect(next).toBeEnabled();
-  expect(post.mock.calls.at(-1)![1]).toEqual({});
+  expect(screen.getAllByRole("listitem")).toHaveLength(64);
+  expect(screen.queryByText(/limit reached/)).not.toBeInTheDocument();
+  expect(post).toHaveBeenCalledTimes(3);
 });
 
 it("shows static empty, invalid-response, and workspace-change notices", async () => {
@@ -138,12 +112,8 @@ it("shows static empty, invalid-response, and workspace-change notices", async (
 });
 
 it.each(["Close", "Close dialog", "Escape"])("closes through %s while loading and aborts on parent unmount", async (action) => {
-  let resolve!: (_value: unknown) => void;
-  post.mockReturnValueOnce(
-    new Promise((yes) => {
-      resolve = yes;
-    }),
-  );
+  const pending = deferredRoleHistoryReply();
+  post.mockReturnValueOnce(pending.promise);
   const close = vi.fn();
   const { unmount } = render(<RoleHistoryDialog target={target} onClose={close} />);
   if (action === "Escape") fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -153,7 +123,7 @@ it.each(["Close", "Close dialog", "Escape"])("closes through %s while loading an
   unmount();
   expect(signal.aborted).toBe(true);
   await act(async () => {
-    resolve(response());
+    pending.resolve(response());
   });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });

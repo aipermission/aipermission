@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest";
 import { apiPost, currentWorkspaceBinding } from "../../../../lib/api";
 import { RoleHistoryDialog } from "./role-history-dialog";
-import { roleHistoryPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
+import { deferredRoleHistoryReply, roleHistoryPageFixture } from "../../../../test/postgres/role-history-fixtures.test";
 
 vi.mock("../../../../lib/api", () => ({ apiPost: vi.fn(), currentWorkspaceBinding: vi.fn() }));
 const post = vi.mocked(apiPost);
@@ -18,18 +18,12 @@ beforeEach(() => {
 });
 
 it.each(["Close", "Close dialog", "Escape"])("freezes %s while verifying and releases it after the evidence reload", async (action) => {
-  let resolve!: (_value: unknown) => void;
+  const pending = deferredRoleHistoryReply();
   const close = vi.fn();
   render(<RoleHistoryDialog target={target} onClose={close} />);
   fireEvent.click(await screen.findByRole("button", { name: /Verify role presence/ }));
   fireEvent.click(screen.getByRole("checkbox"));
-  post
-    .mockReturnValueOnce(
-      new Promise((yes) => {
-        resolve = yes;
-      }),
-    )
-    .mockResolvedValueOnce(page());
+  post.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(page());
   fireEvent.click(screen.getByRole("button", { name: "Confirm role presence" }));
   expect(screen.getByText("Verifying role decision...")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Refresh role history" })).toBeDisabled();
@@ -37,7 +31,7 @@ it.each(["Close", "Close dialog", "Escape"])("freezes %s while verifying and rel
   else fireEvent.click(screen.getByRole("button", { name: action }));
   expect(close).not.toHaveBeenCalled();
   await act(async () => {
-    resolve({});
+    pending.resolve({});
   });
   await waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toBeEnabled());
   expect(screen.getByText(/^Decision outcome was not confirmed/)).toBeInTheDocument();
@@ -48,23 +42,19 @@ it.each(["Close", "Close dialog", "Escape"])("freezes %s while verifying and rel
 });
 
 it("releases dismissal on workspace drift without accepting the pending decision", async () => {
-  let resolve!: (_value: unknown) => void;
+  const pending = deferredRoleHistoryReply();
   const close = vi.fn();
   const { rerender } = render(<RoleHistoryDialog target={target} onClose={close} />);
   fireEvent.click(await screen.findByRole("button", { name: /Verify role presence/ }));
   fireEvent.click(screen.getByRole("checkbox"));
-  post.mockReturnValueOnce(
-    new Promise((yes) => {
-      resolve = yes;
-    }),
-  );
+  post.mockReturnValueOnce(pending.promise);
   fireEvent.click(screen.getByRole("button", { name: "Confirm role presence" }));
   vi.mocked(currentWorkspaceBinding).mockReturnValue("workspace-b");
   rerender(<RoleHistoryDialog target={target} onClose={close} />);
   expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
   expect(screen.queryByRole("list")).not.toBeInTheDocument();
   await act(async () => {
-    resolve({});
+    pending.resolve({});
   });
   expect(post).toHaveBeenCalledTimes(2);
   expect(screen.queryByText(/^Decision outcome/)).not.toBeInTheDocument();

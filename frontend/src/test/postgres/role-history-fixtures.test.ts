@@ -36,6 +36,14 @@ export function roleHistoryPageFixture(targetID = 1, ids: string[] = ["1"]): Rol
   };
 }
 
+export function roleHistoryCursorPageFixture(targetID = 1, start = 1, count = 1, hasMore = false): RoleHistoryPage {
+  const page = roleHistoryPageFixture(
+    targetID,
+    Array.from({ length: count }, (_, index) => String(start + index)),
+  );
+  return { ...page, has_more: hasMore, next_after_resource_id: hasMore ? page.entries.at(-1)!.resource_id : "" };
+}
+
 export function deferredRoleHistoryReply() {
   let resolve!: (_value: unknown) => void;
   let reject!: (_error: Error) => void;
