@@ -81,6 +81,16 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The local 0.2.64 release assembly refresh aligns the npm records and source
+hashes with the current exact lockfiles: MCP SDK 1.31.0, frontend Node types
+24.19.0, TypeScript ESLint parser and related packages 8.71.0, jscpd and its
+platform packages 5.3.3, and undici-types 7.24.6. All recorded license
+declarations are unchanged. The native inventory reference already matches
+the PCRE2 runtime minimum of `10.42-1+deb12u1` enforced by the backend Dockerfile;
+its hash is unchanged. The prior Go parser capture, evidence records, metadata
+review, and 38 acknowledged gaps are preserved unchanged. This is an offline
+metadata alignment, not a new Go evidence review or legal determination.
+
 The initial offline capture has 602 npm records (including three roots),
 88 Go module/version records, and local named-file evidence for all 37 current
 Go requirements. The 38 absent versions are historical checksum-only entries.

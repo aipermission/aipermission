@@ -9,6 +9,53 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.64] - 2026-10-02
+
+### Fixed
+
+- Connector confirmations, credential editors, Kubernetes namespace caches, S3
+  pagination and SSH key-file imports preserve the request and view that own each
+  asynchronous completion.
+- Mail mutation completion cannot reload a newer mailbox view, cancel a newer outbound
+  submission, or let delayed browser snapshots resurrect an acknowledged removal; send
+  and reply outcomes retain their own presentation.
+- Vault permission saves preserve newer drafts and server revisions, History detail
+  completion preserves current labels, and expired tokens cannot remain eligible through
+  old grants.
+- Manual SQL queries claim admission before repeated keyboard dispatch; bulk output
+  displays stdout, stderr and uncertain outcome diagnostics together.
+- Postgres and ClickHouse SQL controls remain contained at narrow and wide browser
+  sizes, and VS Code doctor accepts JSONC using the shared safe setup parser.
+
+### Security
+
+- SQL spreadsheet exports escape formula-like string cells and delimiter characters;
+  canonical JSON remains the lossless output option.
+- Mock browser tests block unexpected API HTTP and WebSocket traffic, while executable
+  import guards follow actual Vite query, worker and loader behavior.
+
+### Maintenance
+
+- Every measured backend owner requires an explicit coverage floor; existing floors
+  remain intact, with early warnings below unchanged source and test budget limits.
+- MCP setup separates configuration, Git protection and TOML responsibilities, loads its
+  UI only on navigation, and documented examples execute through the packaged MCP
+  server.
+- Workflow fixtures bind to explicit repository roots, changed-owner discovery preserves
+  exact Git paths, and shared fixture setup reduces test duplication without weakening
+  assertions.
+- The common build entry point compiles native backend packages; contributor guidance
+  maps lifecycle owners and the pinned native runner.
+- Offline dependency-license metadata is checked against exact source identities, with
+  historical evidence gaps recorded explicitly rather than inferred.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- Measured coverage floors and license metadata do not assert complete security coverage
+  or legal compliance; platform and provenance limitations remain explicit.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.63] - 2026-10-02
 
 ### Fixed
