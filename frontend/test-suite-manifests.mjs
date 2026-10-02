@@ -68,6 +68,8 @@ export const asyncStateOwnerTests = {
   "src/connectors/editor/use-credential-profile-editor.ts": [
     "src/connectors/editor/use-credential-profile-editor.component.test.tsx",
     "src/connectors/editor/use-credential-profile-editor-native.component.test.tsx",
+    "src/connectors/editor/credential-save-refresh-ownership.component.test.tsx",
+    "src/connectors/editor/capture-credential-family.component.test.tsx",
   ],
   "src/connectors/templates/_shared/action-runner.ts": ["src/connectors/templates/_shared/action-runner.component.test.tsx"],
   "src/connectors/templates/_shared/use-sql-metadata.ts": ["src/test/sql/use-sql-console.component.test.tsx"],

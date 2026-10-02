@@ -21,12 +21,15 @@ export function captureCredentialFamily<
       row: Row | null;
       dialog: CredentialDeleteDialogMetadata | null;
       attempted: boolean;
+      owner: symbol | null;
     }>({
       open: false,
       row: null,
       dialog: null,
       attempted: false,
+      owner: null,
     });
+    const deletionOwner = useRef<{ token: symbol; pending: boolean } | null>(null);
     const editor = useCredentialProfileEditor<State, Row, Target, Operation>({
       defaultKind: definition.kind,
       targets,
@@ -51,7 +54,8 @@ export function captureCredentialFamily<
       return () => reportRows(null);
     }, [rows.length]);
     const closeDelete = useCallback(() => {
-      setDeletion({ open: false, row: null, dialog: null, attempted: false });
+      deletionOwner.current = null;
+      setDeletion({ open: false, row: null, dialog: null, attempted: false, owner: null });
     }, []);
     const close = useCallback(() => {
       if (!current.current.mounted) return;
@@ -84,12 +88,28 @@ export function captureCredentialFamily<
       if (!activate()) return;
       editor.closeEditor();
       const dialog = definition.deleteDialog?.({ row, targets }) || defaultCredentialDeleteDialog(definition.displayRow(row));
-      setDeletion({ open: true, row, dialog, attempted: false });
+      const token = Symbol("credential-delete-dialog");
+      deletionOwner.current = { token, pending: false };
+      setDeletion({ open: true, row, dialog, attempted: false, owner: token });
+    }
+    function ownsDelete() {
+      return current.current.mounted && deletion.owner !== null && deletionOwner.current?.token === deletion.owner;
+    }
+    function dismissDelete() {
+      if (!ownsDelete()) return;
+      current.current.editor.closeEditor();
+      closeDelete();
     }
     async function confirmDelete() {
-      if (!deletion.row || !current.current.mounted || current.current.busy) return;
+      const owner = deletionOwner.current;
+      if (!deletion.row || !owner || !ownsDelete() || owner.pending || current.current.busy) return;
+      owner.pending = true;
       setDeletion((current) => ({ ...current, attempted: true }));
-      if (await editor.remove(deletion.row)) closeDelete();
+      try {
+        if ((await editor.remove(deletion.row)) && ownsDelete()) closeDelete();
+      } finally {
+        if (deletionOwner.current === owner) owner.pending = false;
+      }
     }
     const state = editor.actionState;
     const disabled = busy || (state.state !== "idle" && state.state !== "error");
@@ -132,7 +152,7 @@ export function captureCredentialFamily<
             </fieldset>
           ) : null}
         </Drawer>
-        <DeleteCredentialDialog value={deletion} state={state} disabled={busy} onClose={closeDelete} onDelete={confirmDelete} />
+        <DeleteCredentialDialog value={deletion} state={state} disabled={busy} onClose={dismissDelete} onDelete={confirmDelete} />
       </>
     );
   }
