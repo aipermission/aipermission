@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { SetStateAction } from "react";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { connectorModelMissingMessage, refreshAfterEditorMutation } from "./editor-support";
@@ -35,8 +35,42 @@ export function useCredentialProfileEditor<
   const [formState, setFormState] = useState<FormState>(() => emptyStateForKind(defaultKind, { targets: [...targets] }));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
   const pendingSaveRef = useRef<symbol | null>(null);
+  const pendingDeleteRef = useRef<symbol | null>(null);
+  const mutationRef = useRef<symbol | null>(null);
+  const mountedRef = useRef(false);
   const editorEpochRef = useRef(0);
   const editorEpoch = editorEpochRef.current;
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      mutationRef.current = null;
+      pendingSaveRef.current = null;
+      pendingDeleteRef.current = null;
+    };
+  }, []);
+
+  function retireMutation() {
+    mutationRef.current = null;
+    pendingDeleteRef.current = null;
+  }
+
+  function claimMutation(token: symbol) {
+    mutationRef.current = token;
+    return () => mountedRef.current && mutationRef.current === token;
+  }
+
+  async function refreshMutation(isCurrent: () => boolean, message: string) {
+    if (!isCurrent()) return;
+    await refreshAfterEditorMutation(
+      onRefresh,
+      (state) => {
+        if (isCurrent()) setActionState(state);
+      },
+      message,
+    );
+  }
 
   function resetForm(kind: string = defaultKind) {
     setFormState(emptyStateForKind(kind, { targets: [...targets] }));
@@ -48,6 +82,7 @@ export function useCredentialProfileEditor<
   }
 
   function openCreate(kind: string = defaultKind) {
+    retireMutation();
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
@@ -61,6 +96,7 @@ export function useCredentialProfileEditor<
       setActionState({ state: "error", error: connectorModelMissingMessage(row.connector_kind), message: null });
       return false;
     }
+    retireMutation();
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
@@ -70,6 +106,7 @@ export function useCredentialProfileEditor<
   }
 
   function closeEditor() {
+    retireMutation();
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     setDrawer({ open: false, kind: defaultKind, mode: "create", row: null });
@@ -79,7 +116,7 @@ export function useCredentialProfileEditor<
 
   async function save(event: { preventDefault?: () => void } | null, operation: Operation) {
     event?.preventDefault?.();
-    if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return false;
+    if (!mountedRef.current || pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return false;
     const model = modelForKind(drawer.kind);
     const saveCredential = model?.saveCredential;
     if (!saveCredential) {
@@ -87,6 +124,7 @@ export function useCredentialProfileEditor<
       return false;
     }
     const saveToken = Symbol("credential-save");
+    const isCurrent = claimMutation(saveToken);
     pendingSaveRef.current = saveToken;
     try {
       const result = await runAction({
@@ -97,12 +135,12 @@ export function useCredentialProfileEditor<
           return { value };
         },
       });
-      if (result === undefined) return false;
+      if (result === undefined || !isCurrent()) return false;
       const message = result.value?.message || "Credential saved.";
       editorEpochRef.current += 1;
       setDrawer({ open: false, kind: defaultKind, mode: "create", row: null });
       resetForm(defaultKind);
-      await refreshAfterEditorMutation(onRefresh, setActionState, message);
+      await refreshMutation(isCurrent, message);
       return true;
     } finally {
       if (pendingSaveRef.current === saveToken) pendingSaveRef.current = null;
@@ -110,24 +148,31 @@ export function useCredentialProfileEditor<
   }
 
   async function remove(row: Row) {
-    if (editorEpoch !== editorEpochRef.current) return false;
+    if (!mountedRef.current || pendingDeleteRef.current !== null || editorEpoch !== editorEpochRef.current) return false;
     const model = modelForKind(row.connector_kind);
     const deleteCredential = model?.deleteCredential;
     if (!deleteCredential) {
       setActionState({ state: "error", error: connectorModelMissingMessage(row.connector_kind), message: null });
       return false;
     }
-    const result = await runAction({
-      pending: "deleting",
-      successMessage: "Credential deleted.",
-      action: async () => {
-        await deleteCredential.call(model, { row });
-        return true;
-      },
-    });
-    if (result !== true) return false;
-    await refreshAfterEditorMutation(onRefresh, setActionState, "Credential deleted.");
-    return true;
+    const deleteToken = Symbol("credential-delete");
+    const isCurrent = claimMutation(deleteToken);
+    pendingDeleteRef.current = deleteToken;
+    try {
+      const result = await runAction({
+        pending: "deleting",
+        successMessage: "Credential deleted.",
+        action: async () => {
+          await deleteCredential.call(model, { row });
+          return true;
+        },
+      });
+      if (result !== true || !isCurrent()) return false;
+      await refreshMutation(isCurrent, "Credential deleted.");
+      return isCurrent();
+    } finally {
+      if (pendingDeleteRef.current === deleteToken) pendingDeleteRef.current = null;
+    }
   }
 
   return {

@@ -318,6 +318,16 @@ command host coordinates exclusive drafts and active-family status without
 depending on connector-specific fields. Template factories may import editor
 contract types, but not captured registries or orchestration at runtime.
 
+Credential mutations retain explicit UI ownership through both the model API
+call and the follow-up inventory refresh. Closing or replacing an editor or
+delete dialog, starting a newer mutation, or unmounting retires older UI
+effects, including late refresh warnings. Each delete dialog opening has its
+own identity, even when reopening the same row, and confirmation is claimed
+synchronously to prevent duplicate dispatch. Retirement does not undo a
+committed mutation: a successful save still clears its secret draft and remains
+successful, while a retired delete cannot close a newer dialog. Same-owner
+refresh failures retain the committed success with a list-refresh warning.
+
 Console navigation, History labels, and permission capabilities use
 `console-model-registry.ts`. Each native `consoleModel` is created by the typed
 presentation capture, which retains its native decoder and exposes only read
