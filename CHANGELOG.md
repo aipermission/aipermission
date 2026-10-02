@@ -48,6 +48,8 @@ and this project uses semantic versioning for public releases.
 
 - Deferred major dependency reporting updates one actionable report without empty issue
   churn.
+- API integration fixtures share the runtime-owned database connection pool, preventing
+  competing test writers during retention and Vault authorization checks.
 - Regression tests cover cancellation, withheld output, lost replies, storage failures,
   import concurrency and mutation ownership; critical execution and Vault coverage
   floors increase without weaker gates.
