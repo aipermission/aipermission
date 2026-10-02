@@ -50,6 +50,13 @@ The package-local lockfiles are canonical. Do not create a root
 `package-lock.json`; repository hygiene rejects one to prevent local/CI
 dependency drift.
 
+Dependency changes also require a reviewed
+[license metadata inventory](docs/security/dependency-licenses.md).
+Generate candidates offline from the canonical inputs and an existing Go
+module cache, review declarations and evidence gaps, and update the baseline
+with the dependency change. `node scripts/native-dependency-check.js` runs the
+read-only check through the existing hygiene gate without installed packages.
+
 Use a full Git clone for contribution work because history-based security and
 test-manifest ratchets are part of `make -f Makefile release-check`. GitHub source archives
 can run the current MCP behavior suite with

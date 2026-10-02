@@ -124,6 +124,7 @@
   ],
   "toolingTestFiles": [
     "scripts/dependencies/dependency-major-report.test.js",
+    "scripts/dependencies/dependency-license-inventory.test.js",
     "scripts/frontend/coverage-config.test.mjs",
     "scripts/frontend/coverage-git-state.test.mjs",
     "scripts/ci/ci-workflow.test.js",
