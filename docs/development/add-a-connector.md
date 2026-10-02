@@ -870,6 +870,11 @@ path as Redis:
 It should not add RabbitMQ-specific permission tables, approval tables, history
 pages, audit routes, MCP tool families, or global UI pages.
 
+The browser admits message peeks only while its session is active. Closing a
+session retires pending reads even if its timestamp is retained, and queue,
+vhost, workspace, or session changes retire prior peek handlers. Late results
+cannot replace the current queue's messages or feedback after reopening.
+
 Vhost, queue, exchange and routing-key fields use `PreserveWhitespace` and a
 connector-owned identity validator at preparation and execution. Discovery and
 selection retain exact strings; picker labels may quote names but must not
