@@ -24,13 +24,13 @@ export type SQLQueryFormProps = Omit<SQLConsoleViewProps, "controller"> & { cont
 export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
   const running = controller.runState.state === "running";
   return (
-    <form className={`grid gap-2 border-b p-3 ${styles.border} ${styles.subtlePanel}`} onSubmit={controller.runQuery}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
+    <form className={`grid min-w-0 grid-cols-1 gap-2 border-b p-3 ${styles.border} ${styles.subtlePanel}`} onSubmit={controller.runQuery}>
+      <div className="grid min-w-0 gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
+        <div className="min-w-0 sm:flex-1">
           <p className="text-xs font-semibold">SQL</p>
           <p className={`truncate text-xs ${styles.muted}`}>{metadataStatusText(controller.metadata, controller.connector)}</p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
           <CopyButton
             value={controller.sql}
             variant="outline"
@@ -66,7 +66,7 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
           </label>
         </div>
       </div>
-      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+      <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
         <SQLEditor
           value={controller.sql}
           onChange={controller.setSQL}

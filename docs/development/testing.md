@@ -201,6 +201,13 @@ every tested unlock/setup tab transition. The checked manifest is ratcheted
 against the base Git revision, so deleting both a critical test and its current
 manifest entry cannot make the same pull request pass.
 
+Postgres and ClickHouse SQL Console browser fixtures include a recent query.
+At 390px and 1920px they assert bounding-box containment and non-overlap for
+query/session controls and save screenshots plus JSON bounds. Keyboard checks
+load the recent query, settle an empty focused editor, accept completions twice
+each with Enter and Tab, and verify that Ctrl/Cmd+Enter sends exactly `SELECT 1`.
+These mock-API checks do not establish live database behavior.
+
 The real-backend browser test runs the production API, SQLCipher database,
 UI-session authentication, CSRF, connector permission, approval, and history
 paths. Its deterministic in-process connector replaces only the remote service,
