@@ -40,6 +40,7 @@ export function useHistoryPageState() {
     error: null,
   });
   const [selected, setSelected] = useState<HistoryEntry | null>(null);
+  const detailOwnerRef = useRef<{ id: number; labelsChanged: boolean } | null>(null);
   const references = useHistoryReferences();
   const targetItems = useMemo(() => references.targets.data || [], [references.targets.data]);
   const targetSignature = targetItems.map((target) => `${target.ref}:${target.project_id || ""}:${target.project_name || ""}`).join(",");
@@ -166,12 +167,18 @@ export function useHistoryPageState() {
 
   async function openHistoryItem(item: HistoryEntry) {
     const request = requestGuard.begin("detail");
+    const owner = { id: item.id, labelsChanged: false };
+    detailOwnerRef.current = owner;
     setSelected(item);
     try {
       const detail = await apiGet(`/api/history/${item.id}`, { signal: request.signal });
-      if (request.isCurrent()) setSelected(historyEntryResponse(detail, item.id));
+      if (!request.isCurrent() || detailOwnerRef.current !== owner) return;
+      const verified = historyEntryResponse(detail, item.id);
+      setSelected((current) =>
+        current?.id === item.id ? { ...verified, labels: owner.labelsChanged ? current.labels : verified.labels } : current,
+      );
     } catch {
-      if (request.isCurrent()) setSelected(item);
+      // The list preview is already visible; a failed read must not undo newer labels.
     } finally {
       request.complete();
     }
@@ -179,10 +186,13 @@ export function useHistoryPageState() {
 
   function closeHistoryItem() {
     requestGuard.invalidate("detail");
+    detailOwnerRef.current = null;
     setSelected(null);
   }
 
   function updateItemLabels(id: number, nextLabels: HistoryLabel[]) {
+    const owner = detailOwnerRef.current;
+    if (owner?.id === id) owner.labelsChanged = true;
     setSelected((current) => (current?.id === id ? { ...current, labels: nextLabels } : current));
     setState((current) => ({ ...current, data: current.data.map((item) => (item.id === id ? { ...item, labels: nextLabels } : item)) }));
   }
