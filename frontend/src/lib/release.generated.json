@@ -1,6 +1,47 @@
 {
-  "version": "0.2.63",
+  "version": "0.2.64",
   "entries": [
+    {
+      "version": "0.2.64",
+      "label": "Scoped UI ownership and measured maintenance checks",
+      "sections": [
+        {
+          "title": "Fixed",
+          "items": [
+            "Connector confirmations, credential editors, Kubernetes namespace caches, S3 pagination and SSH key-file imports preserve the request and view that own each asynchronous completion.",
+            "Mail mutation completion cannot reload a newer mailbox view, cancel a newer outbound submission, or let delayed browser snapshots resurrect an acknowledged removal; send and reply outcomes retain their own presentation.",
+            "Vault permission saves preserve newer drafts and server revisions, History detail completion preserves current labels, and expired tokens cannot remain eligible through old grants.",
+            "Manual SQL queries claim admission before repeated keyboard dispatch; bulk output displays stdout, stderr and uncertain outcome diagnostics together.",
+            "Postgres and ClickHouse SQL controls remain contained at narrow and wide browser sizes, and VS Code doctor accepts JSONC using the shared safe setup parser."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "SQL spreadsheet exports escape formula-like string cells and delimiter characters; canonical JSON remains the lossless output option.",
+            "Mock browser tests block unexpected API HTTP and WebSocket traffic, while executable import guards follow actual Vite query, worker and loader behavior."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Every measured backend owner requires an explicit coverage floor; existing floors remain intact, with early warnings below unchanged source and test budget limits.",
+            "MCP setup separates configuration, Git protection and TOML responsibilities, loads its UI only on navigation, and documented examples execute through the packaged MCP server.",
+            "Workflow fixtures bind to explicit repository roots, changed-owner discovery preserves exact Git paths, and shared fixture setup reduces test duplication without weakening assertions.",
+            "The common build entry point compiles native backend packages; contributor guidance maps lifecycle owners and the pinned native runner.",
+            "Offline dependency-license metadata is checked against exact source identities, with historical evidence gaps recorded explicitly rather than inferred."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "Measured coverage floors and license metadata do not assert complete security coverage or legal compliance; platform and provenance limitations remain explicit.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.63",
       "label": "Durable connector cleanup and bounded execution",
@@ -258,50 +299,6 @@
           "title": "Maintenance",
           "items": [
             "Focused regression tests and three independent strict review passes cover the corrected behavior."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.56",
-      "label": "Authorization integrity and connector reliability",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Workspace, project, credential, approval, token, and live-session mutations now use stricter ownership and lifecycle boundaries so stale or concurrent operations cannot act on newer state.",
-            "Connector execution applies consistent admission, timeout, output, identity, and resource limits across SSH, Postgres, ClickHouse, Redis / Valkey, S3, Docker, Kubernetes, Kafka, and Mail workflows.",
-            "Frontend request owners retire superseded dialogs, saves, transfers, approvals, and detail loads instead of allowing late responses to replace current user intent."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Interactive consoles preserve ordered input, transcript positions, workspace binding, shutdown behavior, and connector-specific runtime identity through reconnects and replacements.",
-            "File transfers, backups, catalog publication, host-key replacement, and S3 multipart operations preserve durable identities and reject unsafe paths, stale claims, and ambiguous overwrites.",
-            "Database and messaging connectors preserve exact names and bytes, fail closed on parser or result-limit gaps, and report workload or restore state consistently.",
-            "SSH directory listings and environment bootstrap reads are bounded, while network fallback and portable remote wrapper handling remain compatible across supported hosts."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "Approval delivery, reusable token storage, Vault output, project scope revisions, settings writes, and gateway response decoding are bound to the authorization context that created them.",
-            "Sensitive connector operations use fail-closed parsing and bounded persistence, download, metadata, and action-result projections."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Release verification now mirrors macOS, Windows, vulnerability, recovery, fuzz, coverage, architecture, and connector-contract gates with pinned workflow actions.",
-            "Kafka protocol support, frontend and MCP tooling, UI dependencies, and the Node.js container image include reviewed maintainer-authored updates."
           ]
         },
         {
