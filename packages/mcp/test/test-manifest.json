@@ -6,6 +6,7 @@
     "test/contracts/response-contracts.test.js",
     "test/doctor.test.js",
     "test/doctor/config-format.test.js",
+    "test/docs/executable-examples.test.js",
     "test/init/cli-setup.test.js",
     "test/init/init.test.js",
     "test/private-file.test.js",

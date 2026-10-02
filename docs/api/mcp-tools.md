@@ -40,8 +40,10 @@ After resolving and authorizing the project, `call_vault_action` returns
 removed. Idempotent replays preserve the reference submitted for that call too;
 aliases for the same project do not create another request. Request reads and
 cancellations are bound by `request_id` and return the stored project slug.
-If a mutation response cannot be validated, reconcile it with the same
-idempotency key and unchanged input instead of blindly creating a new request.
+If a mutation response cannot be validated, do not retry automatically or
+create a new key. Poll the original request when its ID is known; otherwise,
+explicitly reconcile with the same idempotency key and unchanged project,
+action, input, and reason.
 
 ## Connector Model
 
@@ -517,6 +519,10 @@ Example response:
   "profile_label": "admin",
   "action_name": "exec",
   "display_text": "active\n",
+  "retry_policy": {
+    "class": "non_idempotent",
+    "guidance": "Do not retry automatically after execution starts or the outcome becomes unknown; inspect external state first."
+  },
   "output": {
     "exit_code": 0,
     "stdout": "active\n"
@@ -539,15 +545,20 @@ Example S3 directory browse:
 }
 ```
 
-Example S3 list response shape:
+Example S3 list response (the required request envelope is included):
 
 ```json
 {
   "status": "completed",
+  "request_id": 45,
   "target_ref": "s3:12:7",
   "connector_kind": "s3",
   "action_name": "list_objects",
-  "display_text": "1 folder(s), 2 object(s)",
+  "display_text": "1 folder(s), 1 object(s)",
+  "retry_policy": {
+    "class": "read_only",
+    "guidance": "Inspect the recorded result first. Use the same idempotency key only to retrieve the same gateway submission; use a new key to start a new external attempt."
+  },
   "output": {
     "directories": [
       {
@@ -589,6 +600,10 @@ Example S3 list response shape:
   "target_ref": "ssh:3:1",
   "connector_kind": "ssh",
   "action_name": "exec",
+  "retry_policy": {
+    "class": "non_idempotent",
+    "guidance": "Do not retry automatically after execution starts or the outcome becomes unknown; inspect external state first."
+  },
   "retry_after_seconds": 3,
   "assistant_hint": "Wait 3 seconds, then poll this connector action request until it is completed, failed, declined, stale, blocked, or outcome_unknown."
 }
@@ -605,10 +620,14 @@ The MCP bridge also uses `outcome_unknown` with code
 `gateway_transport_outcome_unknown` when a POST response is lost, times out,
 or ends before its body can be read. This does not establish a terminal gateway
 request state: the request may still be pending or running. Action-call errors
-retain the supplied `idempotency_key`, but never invent a request ID. Reconcile
-with the same key and unchanged input; do not create a new logical mutation
-blindly. Local schema-validation failures remain ordinary errors, and complete
-gateway error responses keep their own status and metadata.
+retain the supplied `idempotency_key`, but never invent a request ID. Do not
+retry automatically or create a new key. Poll the original request when its ID
+is known; otherwise, explicitly reconcile with the same key and unchanged
+target/profile, action, input, and reason. A same-key submission recovers the
+original gateway request, not a new external attempt, and does not prove that
+an external side effect did or did not occur. Local schema-validation failures
+remain ordinary errors, and complete gateway error responses keep their own
+status and metadata.
 
 A gateway request recorded as `outcome_unknown` is terminal. It means the gateway restarted or lost its
 definitive lifecycle state after remote execution may have started. Do not retry
@@ -627,6 +646,10 @@ request until terminal.
   "target_ref": "ssh:3:1",
   "connector_kind": "ssh",
   "action_name": "exec",
+  "retry_policy": {
+    "class": "non_idempotent",
+    "guidance": "Do not retry automatically after execution starts or the outcome becomes unknown; inspect external state first."
+  },
   "retry_after_seconds": 3,
   "assistant_hint": "Wait 3 seconds, then call get_connector_action_request again. For SSH exec actions, inspect live output with the read_console connector action before sending another long-running command to the same target. If the action appears stuck, use the restart_console_session connector action for that target."
 }
@@ -663,9 +686,14 @@ call:
 ```json
 {
   "status": "blocked",
+  "request_id": 46,
   "target_ref": "ssh:3:1",
   "connector_kind": "ssh",
   "action_name": "exec",
+  "retry_policy": {
+    "class": "non_idempotent",
+    "guidance": "Do not retry automatically after execution starts or the outcome becomes unknown; inspect external state first."
+  },
   "error": "Connector action is blocked for this token"
 }
 ```
