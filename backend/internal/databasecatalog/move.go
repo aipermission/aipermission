@@ -31,7 +31,6 @@ type databaseMoveManifest struct {
 type databaseMoveOps struct {
 	lstat     func(string) (os.FileInfo, error)
 	readDir   func(string) ([]os.DirEntry, error)
-	glob      func(string) ([]string, error)
 	mkdir     func(string, os.FileMode) error
 	rename    func(string, string) error
 	publish   func(string, string) error
@@ -44,7 +43,7 @@ type databaseMoveOps struct {
 
 func defaultDatabaseMoveOps() databaseMoveOps {
 	return databaseMoveOps{
-		lstat: os.Lstat, readDir: os.ReadDir, glob: filepath.Glob, mkdir: os.Mkdir, rename: moveFileNoReplace, publish: moveFileNoReplace,
+		lstat: os.Lstat, readDir: os.ReadDir, mkdir: os.Mkdir, rename: moveFileNoReplace, publish: moveFileNoReplace,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
@@ -65,6 +64,10 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 		return err
 	}
 	root := databaseMoveRoot(currentPath, targetPath)
+	manifest := databaseMoveManifest{SourceBase: currentPath, TargetBase: targetPath, Moves: moves}
+	if err := validateDatabaseMoveManifest(root, manifest); err != nil {
+		return err
+	}
 	suffix, err := databaseDeleteQuarantineSuffix()
 	if err != nil {
 		return fmt.Errorf("create database move journal id: %w", err)
@@ -78,7 +81,6 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 			_ = ops.syncDir(root)
 		}
 	}
-	manifest := databaseMoveManifest{SourceBase: currentPath, TargetBase: targetPath, Moves: moves}
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {
 		cleanupIncompleteJournal()
@@ -189,13 +191,9 @@ func moveDatabaseWithOps(currentPath string, targetPath string, ops databaseMove
 }
 
 func collectDatabaseMoves(currentPath, targetPath string, ops databaseMoveOps) ([]databaseMove, error) {
-	candidates := []string{currentPath, currentPath + "-wal", currentPath + "-shm", currentPath + "-journal"}
-	for _, pattern := range []string{currentPath + ".pre-migration-v*.aipdb", currentPath + ".pre-migration-v*.aipdb.pending"} {
-		matches, err := ops.glob(pattern)
-		if err != nil {
-			return nil, fmt.Errorf("inspect database recovery artifacts: %w", err)
-		}
-		candidates = append(candidates, matches...)
+	candidates, err := databaseArtifactCandidates(currentPath, ops.readDir)
+	if err != nil {
+		return nil, err
 	}
 	moves := make([]databaseMove, 0, len(candidates))
 	for _, source := range candidates {
@@ -454,7 +452,9 @@ func validateDatabaseMoveManifest(root string, manifest databaseMoveManifest) er
 	root, _ = filepath.Abs(filepath.Clean(root))
 	sourceBase, sourceErr := filepath.Abs(filepath.Clean(manifest.SourceBase))
 	targetBase, targetErr := filepath.Abs(filepath.Clean(manifest.TargetBase))
-	if sourceErr != nil || targetErr != nil || sourceBase != manifest.SourceBase || targetBase != manifest.TargetBase || sourceBase == targetBase || filepath.Ext(sourceBase) != ".db" || filepath.Ext(targetBase) != ".db" {
+	// Configured default databases need not use the named catalog's .db suffix.
+	// Recovery ownership is established by canonical directories and exact artifacts.
+	if sourceErr != nil || targetErr != nil || sourceBase != manifest.SourceBase || targetBase != manifest.TargetBase || sourceBase == targetBase {
 		return fmt.Errorf("database move journal has invalid base paths")
 	}
 	if !databaseMovePathWithin(root, sourceBase) || !databaseMovePathWithin(root, targetBase) || len(manifest.Moves) == 0 || len(manifest.Moves) > 64 {
