@@ -6,6 +6,8 @@ import type { GatewayContext } from "../lib/gateway-context";
 import type { ComponentProps } from "react";
 import type { AppSidebar } from "./app-sidebar";
 import type { TransferCenter } from "./transfer-center";
+import type { VaultApprovalDialogState } from "./vault/use-vault-action-approvals";
+import type { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
 
 type FixtureState = {
   pathname: string;
@@ -29,7 +31,14 @@ const state = vi.hoisted<FixtureState>(() => ({
   sidebar: null,
   transferProps: null,
 }));
-const wiring = vi.hoisted(() => ({ resources: vi.fn(), database: vi.fn(), transfers: vi.fn(), console: vi.fn(), vault: vi.fn() }));
+const wiring = vi.hoisted(() => ({
+  resources: vi.fn(),
+  database: vi.fn(),
+  transfers: vi.fn(),
+  console: vi.fn(),
+  vault: vi.fn(),
+  vaultDialog: vi.fn(),
+}));
 
 vi.mock("react-router", () => ({
   useLocation: () => ({ pathname: state.pathname }),
@@ -61,7 +70,12 @@ vi.mock("./transfer-center", () => ({
   },
 }));
 vi.mock("./console/vault-session-dialog", () => ({ VaultSessionDialog: () => null }));
-vi.mock("./vault/vault-action-approval-dialog", () => ({ VaultActionApprovalDialog: () => null }));
+vi.mock("./vault/vault-action-approval-dialog", () => ({
+  VaultActionApprovalDialog: (props: ComponentProps<typeof VaultActionApprovalDialog>) => {
+    wiring.vaultDialog(props);
+    return <div data-testid="vault-approval">Approval #{props.approval?.id}</div>;
+  },
+}));
 vi.mock("./use-local-action-reconciliation", () => ({ useLocalActionReconciliation: () => [{ open: false }, vi.fn()] }));
 vi.mock("./use-gateway-resources", () => ({
   useGatewayResources: (options: unknown) => {
@@ -358,6 +372,49 @@ it("counts only pending approvals and unread inbound messages for navigation att
   expect(state.sidebar!.onOpenTransferCenter).toBe(state.transfers!.show);
 });
 
+it("loads the approval presentation only when an owned dialog is open and preserves its handlers", async () => {
+  vi.useRealTimers();
+  const view = render(<Shell theme="dark" setTheme={vi.fn()} />);
+  expect(wiring.vaultDialog).not.toHaveBeenCalled();
+  state.vault!.dialog = {
+    approval: {
+      id: 42,
+      token_id: 7,
+      token_name: "Agent",
+      project_id: 3,
+      project_name: "My Project",
+      project_slug: "my-project",
+      action_name: "generate_item",
+      status: "approval_pending",
+      source: "mcp",
+      input: {},
+      reason: "fixture",
+      approval_context: {},
+      approval_context_hash: "context",
+      idempotency_key: "fixture",
+      created_at: "2026-10-03",
+      updated_at: "2026-10-03",
+      expires_at: "2026-10-03",
+    },
+    note: "Reviewed note",
+    state: "idle",
+    error: null,
+  };
+  view.rerender(<Shell theme="dark" setTheme={vi.fn()} />);
+  expect(await screen.findByTestId("vault-approval")).toHaveTextContent("Approval #42");
+  expect(wiring.vaultDialog.mock.lastCall?.[0]).toMatchObject({
+    approval: state.vault!.dialog.approval,
+    note: "Reviewed note",
+    onRun: state.vault!.run,
+    onDecline: state.vault!.decline,
+    onClose: state.vault!.close,
+    onNoteChange: state.vault!.setNote,
+  });
+  state.vault!.dialog = { approval: null, note: "", state: "idle", error: null };
+  view.rerender(<Shell theme="dark" setTheme={vi.fn()} />);
+  expect(screen.queryByTestId("vault-approval")).not.toBeInTheDocument();
+});
+
 function asyncMock() {
   return vi.fn(async (_generation?: number) => {});
 }
@@ -445,7 +502,7 @@ function vaultState() {
   const data: Pick<VaultApproval, "id" | "status">[] = [];
   return {
     approvals: { state: "ready", data },
-    dialog: {},
+    dialog: { approval: null, note: "", state: "idle", error: null } as VaultApprovalDialogState,
     load: asyncMock(),
     setNote: vi.fn(),
     run: vi.fn(),

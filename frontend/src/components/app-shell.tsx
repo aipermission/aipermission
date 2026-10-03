@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from "react-router";
+import { lazy, Suspense } from "react";
 import { BackupFreshnessNotices } from "./backup-freshness-notices";
 import { AppSidebar } from "./app-sidebar";
 import { AppMobileNavigation } from "./app-mobile-navigation";
@@ -7,11 +8,16 @@ import { DatabaseLockDialog } from "./database-lock-dialog";
 import { LocalActionReconciliationDialog } from "./local-action-reconciliation-dialog";
 import { TransferCenter } from "./transfer-center";
 import { VaultSessionDialog } from "./console/vault-session-dialog";
-import { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
+import { Dialog } from "./ui/dialog";
+import { Notice } from "./ui/notice";
 import { PendingVaultApprovalNotice } from "./vault/pending-vault-approval-notice";
 import { useAppShellController } from "./use-app-shell-controller";
 import type { Dispatch, SetStateAction } from "react";
 import type { Theme } from "../lib/theme.ts";
+
+const VaultActionApprovalDialog = lazy(() =>
+  import("./vault/vault-action-approval-dialog").then((module) => ({ default: module.VaultActionApprovalDialog })),
+);
 export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<SetStateAction<Theme>> }) {
   const location = useLocation();
   const {
@@ -63,15 +69,30 @@ export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<Se
         onClose={consoleCoordinator.closeVaultDialog}
         onStart={consoleCoordinator.startVaultSession}
       />
-      <VaultActionApprovalDialog
-        approval={vaultApprovals.dialog.approval}
-        note={vaultApprovals.dialog.note}
-        action={vaultApprovals.dialog}
-        onNoteChange={vaultApprovals.setNote}
-        onRun={vaultApprovals.run}
-        onDecline={vaultApprovals.decline}
-        onClose={vaultApprovals.close}
-      />
+      {vaultApprovals.dialog.approval ? (
+        <Suspense
+          fallback={
+            <Dialog
+              open
+              title="Vault action approval"
+              onClose={vaultApprovals.close}
+              closeDisabled={["running", "declining"].includes(vaultApprovals.dialog.state)}
+            >
+              <Notice>Loading approval...</Notice>
+            </Dialog>
+          }
+        >
+          <VaultActionApprovalDialog
+            approval={vaultApprovals.dialog.approval}
+            note={vaultApprovals.dialog.note}
+            action={vaultApprovals.dialog}
+            onNoteChange={vaultApprovals.setNote}
+            onRun={vaultApprovals.run}
+            onDecline={vaultApprovals.decline}
+            onClose={vaultApprovals.close}
+          />
+        </Suspense>
+      ) : null}
 
       <DatabaseSwitchDialog
         state={database.switchDialog}
