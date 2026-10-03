@@ -24,7 +24,13 @@ export type BackupFreshnessItem = {
 export type BackupCheckError = { provider_id: number; provider_name?: string; error?: string };
 
 export function runtimeMessagesResponse(value: unknown): RuntimeMessage[] {
-  if (!Array.isArray(value) || !value.every(validRuntimeMessage)) throw new Error("Invalid runtime messages response.");
+  if (
+    !Array.isArray(value) ||
+    value.length > 100 ||
+    !value.every(validRuntimeMessage) ||
+    new Set(value.map((row) => row.id)).size !== value.length
+  )
+    throw new Error("Invalid runtime messages response.");
   return value;
 }
 

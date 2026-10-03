@@ -53,16 +53,17 @@ func TestStoreValidatesScopesRedactsAndMarksRead(t *testing.T) {
 	if first.Message != "token=[REDACTED]" || first.TargetName != "first" {
 		t.Fatalf("unexpected persisted record: %#v", first)
 	}
-	if _, err := store.Insert(context.Background(), CreateRequest{
+	reply, err := store.Insert(context.Background(), CreateRequest{
 		TokenID: tokenID, RuntimeID: &secondRuntime, Direction: "ai_to_user", Message: "reply",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("insert reply: %v", err)
 	}
 	items, err := store.List(context.Background(), Filter{RuntimeID: firstRuntime})
 	if err != nil || len(items) != 1 || items[0].ID != first.ID {
 		t.Fatalf("filtered list mismatch: items=%#v err=%v", items, err)
 	}
-	count, err := store.MarkRuntimeRead(context.Background(), secondRuntime)
+	count, err := store.MarkRuntimeRead(context.Background(), secondRuntime, []int64{reply.ID})
 	if err != nil || count != 1 {
 		t.Fatalf("mark read: count=%d err=%v", count, err)
 	}

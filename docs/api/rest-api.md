@@ -1948,7 +1948,26 @@ POST /api/messages/read
 
 User-to-AI messages are token-scoped. If `runtime_id` is set, the note is consumed only by matching target profile runtime responses. If `session_id` is also set, it is consumed only by MCP responses attached to that exact persistent console session. Generic notes can omit both `runtime_id` and `session_id`.
 
-Unread AI-to-user messages contribute to Console sidebar and connector list badge counts for connector targets. Opening the Messages drawer can mark matching messages as read.
+Unread AI-to-user messages contribute to Console sidebar and connector list
+badge counts for connector targets. Closing the Messages drawer acknowledges
+only unread AI notes in the successfully loaded, rendered token-filtered window.
+Pending, failed or malformed loads do not acknowledge unseen notes.
+
+`POST /api/messages/read` requires an exact selection:
+
+```json
+{
+  "runtime_id": 3,
+  "message_ids": [17, 19]
+}
+```
+
+The selection must contain 1 to 100 distinct positive message IDs. Missing,
+empty, duplicate or oversized selections return `400` without mutation. The
+update also requires matching runtime, `ai_to_user` direction and an unread
+record. IDs for other runtimes and outbound or already consumed notes do not
+change; repeat acknowledgements return a zero count. This endpoint does not
+mark all messages read and cannot acknowledge notes outside the selected IDs.
 
 ## Audit
 

@@ -3,6 +3,7 @@ package gatewayoperations
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -81,7 +82,8 @@ func (handlers *MessageHTTPHandlers) MarkRead(w http.ResponseWriter, request *ht
 		return
 	}
 	var input struct {
-		RuntimeID int64 `json:"runtime_id"`
+		RuntimeID  int64   `json:"runtime_id"`
+		MessageIDs []int64 `json:"message_ids"`
 	}
 	if !httptransport.DecodeJSON(w, request, &input, httptransport.DefaultJSONBodyBytes) {
 		return
@@ -90,7 +92,11 @@ func (handlers *MessageHTTPHandlers) MarkRead(w http.ResponseWriter, request *ht
 		httptransport.WriteError(w, http.StatusBadRequest, "runtime_id is required")
 		return
 	}
-	count, err := store.store.MarkRuntimeRead(request.Context(), input.RuntimeID)
+	count, err := store.store.MarkRuntimeRead(request.Context(), input.RuntimeID, input.MessageIDs)
+	if errors.Is(err, messagequeue.ErrInvalidReadSelection) {
+		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return

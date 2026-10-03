@@ -21,6 +21,7 @@ function props(overrides: Partial<ComponentProps<typeof MessagesDialog>> = {}): 
     onSubmit: vi.fn().mockResolvedValue(undefined),
     onRefresh: vi.fn().mockResolvedValue(undefined),
     onClose: vi.fn(),
+    onRendered: vi.fn(),
     ...overrides,
   };
 }

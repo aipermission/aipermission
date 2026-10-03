@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { RefreshCcw, Send } from "lucide-react";
 import { Button } from "../ui/button";
 import { Drawer } from "../ui/drawer";
@@ -19,6 +19,7 @@ type Props = {
   onSubmit: Messages["submit"];
   onRefresh: Messages["load"];
   onClose: Messages["close"];
+  onRendered: Messages["recordDisplayed"];
 };
 
 export function MessagesDialog({
@@ -33,11 +34,16 @@ export function MessagesDialog({
   onSubmit,
   onRefresh,
   onClose,
+  onRendered,
 }: Props) {
   const messageListRef = useRef<HTMLDivElement>(null);
   const filteredMessages = (tokenID ? state.data.filter((message) => Number(message.token_id) === Number(tokenID)) : state.data)
     .slice()
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || Number(a.id) - Number(b.id));
+
+  useLayoutEffect(() => {
+    onRendered(open ? filteredMessages.map((message) => message.id) : []);
+  }, [open, filteredMessages, onRendered]);
 
   useEffect(() => {
     if (!open || !messageListRef.current) return;

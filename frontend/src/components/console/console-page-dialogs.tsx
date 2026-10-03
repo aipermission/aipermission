@@ -42,6 +42,7 @@ export type ConsolePageDialogsProps<Value, Completion extends unknown[], Credent
     submit: Messages["onSubmit"];
     load: Messages["onRefresh"];
     close: Messages["onClose"];
+    recordDisplayed: Messages["onRendered"];
   };
   operationDialog: {
     Template: ComponentType<ConsoleOperationSlotProps<Value, Completion, Credential>> | null;
@@ -88,6 +89,7 @@ export function ConsolePageDialogs<Value, Completion extends unknown[], Credenti
         onSubmit={messageDialog.submit}
         onRefresh={messageDialog.load}
         onClose={messageDialog.close}
+        onRendered={messageDialog.recordDisplayed}
       />
       {OperationTemplate ? (
         <OperationTemplate
