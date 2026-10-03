@@ -128,6 +128,7 @@
     "scripts/frontend/coverage-config.test.mjs",
     "scripts/frontend/coverage-git-state.test.mjs",
     "scripts/frontend/monaco-sanitizer.test.mjs",
+    "scripts/frontend/build-context.test.mjs",
     "scripts/ci/ci-workflow.test.js",
     "scripts/ci/compose-topology.test.js",
     "scripts/ci/documented-verification-contract.test.js",
