@@ -1,11 +1,12 @@
 import { act, fireEvent, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiGet as realGet } from "../../lib/api";
+import { apiGet as realGet, apiPut as realPut } from "../../lib/api";
 import { useConnectorTokenPermissionState } from "../../components/console/use-connector-token-permission-state";
 import type { ConnectorTokenPermissionOptions } from "../../components/console/use-connector-token-permission-state";
 
-vi.mock("../../lib/api", () => ({ apiGet: vi.fn() }));
+vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPut: vi.fn() }));
 const get = vi.mocked(realGet);
+const put = vi.mocked(realPut);
 const target = { connector_kind: "fixture", target_id: 7, profile_id: 11, project_id: 3 };
 const token = { id: 5, name: "Agent" };
 
@@ -19,16 +20,46 @@ function renderPermissions(overrides: Partial<ConnectorTokenPermissionOptions> =
     replaceTokenConnectorPermissions: vi.fn().mockResolvedValue([]),
     ...overrides,
   };
-  return { options, ...renderHook(() => useConnectorTokenPermissionState(options)) };
+  return { options, ...renderHook(({ current }) => useConnectorTokenPermissionState(current), { initialProps: { current: options } }) };
 }
 
 beforeEach(() => {
   window.localStorage.clear();
   get.mockReset();
+  put.mockReset();
   get.mockResolvedValue({
     items: [{ project_id: 3, project_name: "My Project", project_slug: "my-project", enabled: true }],
     revision: "r1",
   });
+});
+
+it("does not let polling the same target cancel an owned project-scope save", async () => {
+  let finish!: (_value: unknown) => void;
+  put.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const { result, rerender, options } = renderPermissions();
+  await waitFor(() => expect(result.current.projectScopeReadyForToken(5)).toBe(true));
+  let pending!: Promise<void>;
+  act(() => {
+    pending = result.current.setProjectVisibility(token, false);
+  });
+  const signal = put.mock.calls[0][2]?.signal;
+  rerender({ current: { ...options, selectedTarget: { ...target } } });
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(signal?.aborted).toBe(false);
+  expect(get).toHaveBeenCalledOnce();
+  expect(result.current.savingKey).toBe("5:project:3");
+  await act(async () => {
+    finish({ items: [], revision: "r2" });
+    await pending;
+  });
+  expect(result.current.savingKey).toBe("");
+  expect(result.current.projectEnabledForToken(5)).toBe(false);
 });
 
 it("uses only a validated project scope snapshot for token visibility", async () => {

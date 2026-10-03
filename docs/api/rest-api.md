@@ -137,6 +137,12 @@ Disabling a project hides all of its connector targets from MCP discovery and
 prevents connector actions for that project, while preserving the underlying
 per-action grants for later re-enablement.
 
+The Console keeps project-scope reads separate from the owned visibility
+mutation. Inventory polling for the same target cannot cancel that mutation;
+refreshes defer the token's scope read while it is saving. Switching target or
+removing the token retires the old UI result, not an already admitted server
+mutation. After returning, the Console reloads the authoritative snapshot.
+
 Project capability responses use the same `revision` / `expected_revision`
 contract. These three full-list authorization APIs reject a missing revision
 with `400 Bad Request` and a stale revision with `409 Conflict`; callers must
