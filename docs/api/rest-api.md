@@ -42,6 +42,10 @@ stable machine-readable value. Clients should branch on `code` when present and
 must not parse the human-readable `error` string.
 
 Request bodies reject unknown fields where structured decoding is used.
+Resource-bearing JSON also rejects malformed UTF-8 and unpaired Unicode
+surrogate escapes before typed decoding or action dispatch. Valid Unicode,
+including literal replacement characters, retains its exact identity. The
+same validation applies to JSON `relative_paths` in multipart file uploads.
 
 JSON request bodies are limited to 1 MiB by default. The two connector-action
 execution routes, `POST /api/connector-actions/local-run` and

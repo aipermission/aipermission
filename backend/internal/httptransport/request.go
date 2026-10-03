@@ -85,18 +85,16 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any, maxBytes
 	if err != nil {
 		return err
 	}
+	return DecodeJSONBytes(body, target)
+}
+
+// DecodeJSONBytes validates embedded JSON before decoding can repair resource names.
+func DecodeJSONBytes(body []byte, target any) error {
 	if err := jsonidentity.Validate(body); err != nil {
 		return err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.DisallowUnknownFields()
 	decoder.UseNumber()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return fmt.Errorf("invalid json body")
-	}
-	return nil
+	return decoder.Decode(target)
 }

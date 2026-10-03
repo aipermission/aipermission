@@ -2,7 +2,6 @@ package gatewaytransfer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"mime/multipart"
@@ -16,6 +15,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/filetransfer"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	transferapp "github.com/aipermission/aipermission/backend/internal/gatewayoperations/transfer/runtime"
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 func (s FileTransferHTTPHandlers) StartUpload(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +349,7 @@ func (s FileTransferHTTPHandlers) prepareUploadBatchMultipart(w http.ResponseWri
 	}
 	relativePaths := []string{}
 	if raw := strings.TrimSpace(r.FormValue("relative_paths")); raw != "" {
-		if err := json.Unmarshal([]byte(raw), &relativePaths); err != nil || len(relativePaths) != len(plan.headers) {
+		if err := httptransport.DecodeJSONBytes([]byte(raw), &relativePaths); err != nil || len(relativePaths) != len(plan.headers) {
 			writeError(w, http.StatusBadRequest, "relative_paths must match the uploaded files")
 			return uploadBatchMultipartPlan{}, false
 		}
