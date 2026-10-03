@@ -3,6 +3,51 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.65",
+      "date": "2026-10-05",
+      "label": "Exact identities and bounded execution recovery",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "Shared bounded JSON admission rejects malformed UTF-8 and unpaired surrogates before resource lookup or dispatch; valid replacement characters, surrogate pairs and exact upload path identities remain supported.",
+            "PostgreSQL readonly policy rejects Unicode-qualified typed literals at prepare and execution, while Mail configuration rejects malformed policy lists rather than interpreting them as unrestricted access.",
+            "Locked or unauthorized browser views are invalidated across same-origin tabs and reconciled with bounded gateway status reads; frontend notices do not grant authentication or weaken session and CSRF checks.",
+            "Monaco's declared and embedded sanitizers use pinned DOMPurify 3.4.16 without downgrading the editor; actual development optimizer tests and a fail-closed production graph guard prevent the embedded copy from shipping.",
+            "Backend container builds require PCRE2 10.42-1+deb12u2 or newer; the patched native package and both final release images remain subject to the vulnerability gate."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Canonical action results and persisted replays preserve unsafe integers and inexact decimal tokens as exact strings across JSON and JavaScript boundaries, with output limits and redaction reapplied after projection.",
+            "Command dispatch evidence distinguishes undispatched cancellation from uncertain remote execution during lock, shutdown and restart recovery; known terminal results remain authoritative and unknown outcomes do not gain invented exit codes.",
+            "PostgreSQL rollback and close use bounded independent cleanup contexts after cancellation or network failure without replacing the original query outcome.",
+            "Remote backup restore performs download and verification outside the exclusive lifecycle writer, then rechecks workspace, browser, provider and artifact identity before publication; stalled headers and bodies have bounded progress deadlines.",
+            "Console persistence bounds pending and in-flight data, retries autonomously after transient storage failures and retains failed finalizations for explicit durable retry; output ordering and cancellation remain owned.",
+            "Console readiness retains the recorded, redacted startup failure when runtime shutdown wins the wait, instead of masking a connection error with a generic closed-session message.",
+            "Database move producers and recovery share the same path and artifact limits, support arbitrary configured filename suffixes and match owned artifacts literally rather than interpreting filename characters as globs."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Regression tests cover encrypted schema upgrades and replay, real PostgreSQL domain side effects, silent-peer cleanup, restore authorization drift, persistence pressure and actual two-tab browser lock transitions.",
+            "Measured coverage floors for new cleanup, finality and download watchdog owners are explicit; frontend ownership migrations preserve accepted coverage without weakening source, isolation or duplication budgets.",
+            "Maintainer-owned dependency updates include compression 1.20.1, Lucide React 1.49.0, Node.js types 24.19.1, globals 17.13.0 and jscpd 5.4.0; exact license metadata remains aligned with the lockfiles."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user, and developer-focused.",
+            "Pending transcript memory is not crash-durable, browser invalidation cannot erase copied data, and numeric projection cannot recover precision already lost inside an upstream driver.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.64",
       "date": "2026-10-02",
       "label": "Scoped UI ownership and measured maintenance checks",
