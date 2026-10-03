@@ -16,6 +16,15 @@ Responsibilities:
 - detect long-running command state
 - keep raw transcript parsing separate from cleaned display output
 - redact transcript text before persistence through the injected redactor
+- keep independent stdout/stderr UTF-8 carry before text policy and JSON framing
+
+`streamoutput` owns exact-byte redaction and incremental text emission; the
+shared `terminaltext.UTF8Stream` decoder is also used by the maintenance PTY.
+Each stream retains at most three unfinished UTF-8 bytes. Exact secret matches
+and prefixes are redacted before transcoding, so decoding cannot bypass byte
+redaction. On EOF, remaining invalid bytes each become U+FFFD, and the carry is
+cleared. Normal output closure flushes both streams before the exit frame;
+canceled or failed persistence cannot be reported as complete output observation.
 
 Shutdown closes work admission, waits for admitted manual history operations,
 and performs the final capture and stale manual-row cleanup before destroying

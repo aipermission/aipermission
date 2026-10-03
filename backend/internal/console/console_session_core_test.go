@@ -476,9 +476,9 @@ func TestManagedConsoleSessionKeepsStdoutAndStderrRedactionStateIndependent(t *t
 		exactRedactor: persistenceRedactor, stdoutExactRedactor: stdoutRedactor, stderrExactRedactor: stderrRedactor,
 	}
 
-	session.appendStreamOutput("stdout secret-", stdoutRedactor)
-	session.appendStreamOutput("stderr remains visible\n", stderrRedactor)
-	session.appendStreamOutput("value complete\n", stdoutRedactor)
+	session.appendStreamOutput("stdout secret-", stdoutRedactor, RuntimeStdout)
+	session.appendStreamOutput("stderr remains visible\n", stderrRedactor, RuntimeStderr)
+	session.appendStreamOutput("value complete\n", stdoutRedactor, RuntimeStdout)
 	session.closeExactRedactor()
 
 	if strings.Contains(session.rawTranscript, "secret-value") || strings.Contains(session.transcript, "secret-value") {
@@ -507,7 +507,7 @@ func TestManagedConsoleSessionDiscardsOutputAfterRedactorsAreWiped(t *testing.T)
 		clients: map[*websocket.Conn]*sync.Mutex{}, exactRedactor: redactor,
 	}
 	session.closeExactRedactor()
-	session.appendStreamOutput("late secret-value", redactor)
+	session.appendStreamOutput("late secret-value", redactor, RuntimeStdout)
 	if session.rawTranscript != "" || session.transcript != "" {
 		t.Fatalf("late output entered a closed session: raw=%q display=%q", session.rawTranscript, session.transcript)
 	}
