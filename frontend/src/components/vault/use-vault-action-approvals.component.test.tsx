@@ -60,12 +60,12 @@ function decisionApproval(status: VaultApproval["status"], overrides: Partial<Va
   return { ...pendingApproval, status, approval_context_hash: "", ...overrides };
 }
 
-describe("useVaultActionApprovals", () => {
-  beforeEach(() => {
-    apiGet.mockReset();
-    apiPost.mockReset();
-  });
+beforeEach(() => {
+  apiGet.mockReset();
+  apiPost.mockReset();
+});
 
+describe("useVaultActionApprovals", () => {
   it("ignores an older approval load after a newer load completes", async () => {
     const older = deferred();
     apiGet.mockReturnValueOnce(older.promise).mockResolvedValueOnce([pendingApproval]);
@@ -164,7 +164,7 @@ describe("useVaultActionApprovals", () => {
     });
   });
 
-  it("does not restore dialog state when a decision completes after dismissal", async () => {
+  it("preserves an owned decision through dismissal and refreshes its resulting sessions", async () => {
     const decision = deferred();
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
     apiPost.mockReturnValue(decision.promise);
@@ -176,11 +176,12 @@ describe("useVaultActionApprovals", () => {
       run = result.current.run();
     });
     act(() => result.current.close());
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "running" });
     await act(async () => decision.resolve(decisionApproval("completed")));
     await run;
 
     expect(result.current.dialog).toEqual({ approval: null, note: "", state: "idle", error: null });
-    expect(refreshConsoleSessions).not.toHaveBeenCalled();
+    expect(refreshConsoleSessions).toHaveBeenCalledOnce();
   });
 
   it("does not start follow-up work when a decision completes after unmount", async () => {
@@ -201,7 +202,107 @@ describe("useVaultActionApprovals", () => {
     expect(apiGet).toHaveBeenCalledOnce();
     expect(refreshConsoleSessions).not.toHaveBeenCalled();
   });
+});
 
+describe("Vault decision ownership", () => {
+  it("does not follow a confirmed decline with reads after the owner unmounts", async () => {
+    const mutation = deferred();
+    apiGet.mockResolvedValueOnce([pendingApproval]);
+    apiPost.mockReturnValue(mutation.promise);
+    const { result, unmount } = renderApprovals();
+    await act(async () => result.current.load());
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.decline();
+    });
+    unmount();
+    await act(async () => {
+      mutation.resolve(decisionApproval("declined"));
+      await pending;
+    });
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(apiGet).toHaveBeenCalledOnce();
+  });
+
+  it("retires a dismissed request after it disappears and discovers a later pending request", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]).mockResolvedValueOnce([pendingApproval]);
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+    act(() => result.current.close());
+    await act(async () => result.current.load());
+    act(() => result.current.openPending());
+    expect(result.current.dialog.approval).toBeNull();
+    await act(async () => result.current.load());
+    expect(result.current.dialog.approval).toEqual(pendingApproval);
+  });
+
+  it("makes an idle request acknowledgement-only when polling no longer lists it", async () => {
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValueOnce([]);
+    const { result } = renderApprovals();
+    await act(async () => result.current.load());
+    await act(async () => result.current.load());
+    expect(result.current.dialog).toMatchObject({ approval: pendingApproval, state: "stale" });
+    await act(async () => result.current.run());
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it("serializes same-tick decisions and retains the dialog until resulting sessions refresh", async () => {
+    const mutation = deferred();
+    const refresh = deferred();
+    apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
+    apiPost.mockReturnValue(mutation.promise);
+    const { result, refreshConsoleSessions } = renderApprovals();
+    refreshConsoleSessions.mockReturnValue(refresh.promise);
+    await act(async () => result.current.load());
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.run();
+      void result.current.run();
+      void result.current.decline();
+      result.current.close();
+      result.current.setNote("Late edit");
+    });
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(result.current.dialog).toMatchObject({ state: "running", note: "", approval: pendingApproval });
+    await act(async () => {
+      mutation.resolve(decisionApproval("completed"));
+      await Promise.resolve();
+    });
+    expect(result.current.dialog.state).toBe("running");
+    act(() => result.current.close());
+    expect(result.current.dialog.approval).toEqual(pendingApproval);
+    await act(async () => {
+      refresh.resolve(undefined);
+      await pending;
+    });
+    expect(result.current.dialog.approval).toBeNull();
+  });
+
+  it.each([false, true])("keeps confirmed completion acknowledgement-only if session refresh fails (lost response %s)", async (lost) => {
+    apiGet
+      .mockResolvedValueOnce([pendingApproval])
+      .mockImplementation(async (path) => (path.endsWith("/42") ? decisionApproval("completed") : []));
+    if (lost) apiPost.mockRejectedValue(new Error("Response lost"));
+    else apiPost.mockResolvedValue(decisionApproval("completed"));
+    const { result, refreshConsoleSessions } = renderApprovals();
+    refreshConsoleSessions.mockImplementation(() => {
+      throw new Error("Session refresh failed");
+    });
+    await act(async () => result.current.load());
+    await act(async () => result.current.run());
+    expect(result.current.dialog).toMatchObject({ approval: { status: "completed" }, state: "stale" });
+    expect(result.current.dialog.error).toContain("refreshing sessions failed");
+    await act(async () => {
+      await result.current.run();
+      await result.current.decline();
+    });
+    expect(apiPost).toHaveBeenCalledOnce();
+    act(() => result.current.close());
+    expect(result.current.dialog.approval).toBeNull();
+  });
+});
+
+describe("Vault decision reconciliation", () => {
   it("turns an approval context failure into an acknowledgement-only stale state", async () => {
     apiGet.mockResolvedValueOnce([pendingApproval]).mockResolvedValue([]);
     apiPost.mockRejectedValue(new APIError("Approval changed.", { code: "approval_context_changed" }));

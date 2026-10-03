@@ -52,10 +52,10 @@
       "lines": 100
     },
     "src/components/console/connector-action-approval-dialog.tsx": {
-      "statements": 91.66,
-      "branches": 78.72,
-      "functions": 85.71,
-      "lines": 91.66
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/console/connector-activity-dialog.tsx": {
       "statements": 95.45,
@@ -166,10 +166,10 @@
       "lines": 100
     },
     "src/components/console/use-connector-approval-dialog.ts": {
-      "statements": 96.45,
-      "branches": 87.12,
+      "statements": 98.05,
+      "branches": 89.38,
       "functions": 100,
-      "lines": 99.15
+      "lines": 99.2
     },
     "src/components/console/use-connector-token-permission-state.ts": {
       "statements": 97.25,
@@ -646,8 +646,8 @@
       "lines": 100
     },
     "src/components/vault/use-vault-action-approvals.ts": {
-      "statements": 91,
-      "branches": 85.89,
+      "statements": 92.85,
+      "branches": 88,
       "functions": 100,
       "lines": 100
     },
@@ -671,7 +671,7 @@
     },
     "src/components/vault/vault-action-approval-dialog.tsx": {
       "statements": 100,
-      "branches": 95.83,
+      "branches": 98,
       "functions": 100,
       "lines": 100
     },
@@ -2646,6 +2646,12 @@
     "src/lib/update-check.ts": {
       "statements": 100,
       "branches": 94.2,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/use-approval-decision-owner.ts": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },

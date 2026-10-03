@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet } from "../../lib/api";
 import { useRequestGuard } from "../../lib/request-guard";
+import { useApprovalDecisionOwner } from "../../lib/use-approval-decision-owner";
 import { connectorApproval } from "../../lib/gateway-contracts/security-contracts";
 import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts";
 import { APIError, errorMessage } from "../../lib/errors.ts";
@@ -27,7 +28,8 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
   const [dismissedIDs, setDismissedIDs] = useState<Record<number, boolean>>({});
   const [note, setNote] = useState("");
   const [action, setAction] = useState(idleAction);
-  const requests = useRequestGuard(`console-approval:${selectedTargetRef || "none"}`);
+  const requests = useRequestGuard("console-approval");
+  const decision = useApprovalDecisionOwner(requests, "mutation");
   const selectedTargetRefRef = useRef(selectedTargetRef);
   selectedTargetRefRef.current = selectedTargetRef;
 
@@ -50,6 +52,7 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
 
   const open = useCallback(
     async (approval: ConnectorApproval) => {
+      if (decision.isPending()) return;
       requests.invalidate("mutation");
       const request = requests.begin("detail");
       setActiveID(approval.id);
@@ -74,18 +77,20 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
         request.complete();
       }
     },
-    [requests],
+    [decision, requests],
   );
 
   const close = useCallback(() => {
+    if (decision.isPending()) return;
     if (activeID) setDismissedIDs((current) => ({ ...current, [activeID]: true }));
     reset();
-  }, [activeID, reset]);
+  }, [activeID, decision, reset]);
 
   const approve = useCallback(async () => {
-    if (!activeApproval || !detailVerified) return;
+    if (!activeApproval || !detailVerified || !["idle", "error"].includes(action.state)) return;
     const approval = activeApproval;
-    const request = requests.begin("mutation");
+    const request = decision.begin();
+    if (!request) return;
     setAction({ state: "running", error: null });
     try {
       const item = await runApproval(approval, note);
@@ -126,14 +131,15 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       }
       setAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: errorMessage(error) });
     } finally {
-      request.complete();
+      decision.complete(request);
     }
-  }, [activeApproval, detailVerified, note, requests, reset, runApproval]);
+  }, [activeApproval, action.state, decision, detailVerified, note, reset, runApproval]);
 
   const decline = useCallback(async () => {
-    if (!activeApproval || !detailVerified) return;
+    if (!activeApproval || !detailVerified || !["idle", "error"].includes(action.state)) return;
     const approval = activeApproval;
-    const request = requests.begin("mutation");
+    const request = decision.begin();
+    if (!request) return;
     setAction({ state: "declining", error: null });
     try {
       await declineApproval(approval, note);
@@ -159,11 +165,13 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
       }
       setAction({ state: isStaleApprovalError(error) ? "stale" : "error", error: errorMessage(error) });
     } finally {
-      request.complete();
+      decision.complete(request);
     }
-  }, [activeApproval, declineApproval, detailVerified, note, requests, reset]);
+  }, [activeApproval, action.state, declineApproval, decision, detailVerified, note, reset]);
 
-  useEffect(() => reset(), [reset, selectedTargetRef]);
+  useEffect(() => {
+    if (!decision.isPending()) reset();
+  }, [decision, reset, selectedTargetRef]);
 
   useEffect(() => {
     if (
@@ -179,7 +187,13 @@ export function useConnectorApprovalDialog({ approvals, selectedTargetRef, runAp
     if (next) void open(next);
   }, [action.state, activeID, dismissedIDs, open, pendingApprovals, reset, selectedPendingApprovals]);
 
-  return { action, activeApproval, approve, close, decline, note, open, pendingApprovals, selectedPendingApprovals, setNote };
+  const editNote = useCallback(
+    (value: string) => {
+      if (!decision.isPending()) setNote(value);
+    },
+    [decision],
+  );
+  return { action, activeApproval, approve, close, decline, note, open, pendingApprovals, selectedPendingApprovals, setNote: editNote };
 }
 
 async function readExactApproval(approval: ConnectorApproval, targetRef: string, signal: AbortSignal) {

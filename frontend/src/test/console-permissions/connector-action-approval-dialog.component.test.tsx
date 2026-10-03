@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { ConnectorActionApprovalDialog } from "../../components/console/connector-action-approval-dialog";
@@ -36,6 +36,56 @@ function renderDialog(action: ApprovalDialogAction = { state: "idle", error: "" 
 }
 
 describe("ConnectorActionApprovalDialog", () => {
+  it("renders no decision or payload when no approval is selected", () => {
+    render(
+      <ConnectorActionApprovalDialog
+        approval={null}
+        note=""
+        action={{ state: "idle", error: null }}
+        onNoteChange={vi.fn()}
+        onRun={vi.fn()}
+        onDecline={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run" })).not.toBeInTheDocument();
+  });
+
+  it("handles absent optional context and payload without inventing a preview", () => {
+    render(
+      <ConnectorActionApprovalDialog
+        approval={{
+          ...approval,
+          created_at: "invalid",
+          token_name: undefined,
+          reason: undefined,
+          input: undefined,
+          preview: undefined,
+          title: "Reviewed title",
+          summary: "Reviewed summary",
+        }}
+        note=""
+        action={{ state: "error", error: "Retry requires review" }}
+        onNoteChange={vi.fn()}
+        onRun={vi.fn()}
+        onDecline={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Reviewed title")).toBeVisible();
+    expect(screen.getByText("Reviewed summary")).toBeVisible();
+    expect(screen.getByText("Retry requires review")).toBeVisible();
+    expect(screen.getByText("No structured preview was provided.")).toBeVisible();
+  });
+
+  it("edits the reviewed note only before a decision has been admitted", async () => {
+    const user = userEvent.setup();
+    const handlers = renderDialog();
+    await user.type(screen.getByRole("textbox", { name: "Decline note" }), "x");
+    expect(handlers.onNoteChange).toHaveBeenCalledWith("x");
+  });
+
   it("keeps Run and Decline as explicit user decisions", async () => {
     const user = userEvent.setup();
     const handlers = renderDialog();
@@ -91,5 +141,15 @@ describe("ConnectorActionApprovalDialog", () => {
     renderDialog({ state: "running", error: "" });
     expect(screen.getByRole("button", { name: "Running..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Decline" })).toBeDisabled();
+  });
+
+  it.each(["running", "declining"] as const)("blocks every dismissal path and note edits while %s", async (state) => {
+    const user = userEvent.setup();
+    const handlers = renderDialog({ state, error: "" });
+    expect(screen.getByRole("button", { name: "Close dialog" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Decline note" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    fireEvent.pointerDown(screen.getByTestId("dialog-overlay"));
+    expect(handlers.onClose).not.toHaveBeenCalled();
   });
 });

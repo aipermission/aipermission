@@ -89,7 +89,7 @@ describe("useConnectorApprovalDialog", () => {
     expect(runApproval).not.toHaveBeenCalled();
   });
 
-  it("does not apply a mutation completion after the selected target changes", async () => {
+  it("keeps the admitted decision visible through target changes until its outcome arrives", async () => {
     const mutation = deferred<ConnectorApproval>();
     const runApproval = vi.fn(() => mutation.promise);
     vi.mocked(apiGet).mockResolvedValue(approval(7));
@@ -98,6 +98,8 @@ describe("useConnectorApprovalDialog", () => {
 
     act(() => void result.current.approve());
     rerender({ ...props, selectedTargetRef: "ssh:2:2", approvals: [] });
+    expect(result.current.action.state).toBe("running");
+    expect(result.current.activeApproval?.id).toBe(7);
     await act(async () => mutation.resolve({ ...approval(7), status: "completed" }));
 
     expect(result.current.activeApproval).toBeNull();
@@ -247,11 +249,11 @@ describe("useConnectorApprovalDialog", () => {
   });
 
   it.each(["approve", "decline"] as const)(
-    "does not let an earlier %s completion clear a newer decision on the same target",
+    "does not replace an owned %s decision with a newer review before its outcome arrives",
     async (decision) => {
       const mutation = deferred<ConnectorApproval>();
       vi.mocked(apiGet).mockResolvedValueOnce(approval(7)).mockResolvedValueOnce(approval(8));
-      const { result } = renderDialog({
+      const { result, rerender, props } = renderDialog({
         approvals: [approval(7), approval(8)],
         runApproval: vi.fn(() => mutation.promise),
         declineApproval: vi.fn(() => mutation.promise),
@@ -263,10 +265,14 @@ describe("useConnectorApprovalDialog", () => {
       });
       await act(async () => result.current.open(approval(8)));
       act(() => result.current.setNote("For the newer decision"));
+      expect(result.current.activeApproval?.id).toBe(7);
+      expect(result.current.note).toBe("");
+      expect(apiGet).toHaveBeenCalledOnce();
+      rerender({ ...props, approvals: [approval(8)] });
       await act(async () => mutation.resolve({ ...approval(7), status: "completed" }));
       await pending;
       expect(result.current.activeApproval?.id).toBe(8);
-      expect(result.current.note).toBe("For the newer decision");
+      expect(result.current.note).toBe("");
       expect(result.current.action.state).toBe("idle");
     },
   );
@@ -340,7 +346,7 @@ it("clears an idle reviewed decision when polling removes its pending approval",
   expect(result.current.action).toEqual({ state: "idle", error: null });
 });
 
-it.each(["approve", "decline"] as const)("ignores a failed %s reconciliation after its decision is closed", async (decision) => {
+it.each(["approve", "decline"] as const)("keeps a failed %s reconciliation visible when close is attempted", async (decision) => {
   const reconciliation = deferred<unknown>();
   vi.mocked(apiGet).mockReset().mockResolvedValueOnce(approval(7)).mockReturnValueOnce(reconciliation.promise);
   const runApproval = vi.fn().mockRejectedValue(new Error("Decision response lost"));
@@ -353,10 +359,84 @@ it.each(["approve", "decline"] as const)("ignores a failed %s reconciliation aft
   });
   expect(apiGet).toHaveBeenCalledTimes(2);
   act(() => result.current.close());
+  expect(result.current.activeApproval?.id).toBe(7);
   await act(async () => {
     reconciliation.reject(new Error("Retired detail failed"));
     await pending;
   });
+  expect(result.current.activeApproval?.id).toBe(7);
+  expect(result.current.action.error).toContain("Decision response lost");
+  act(() => result.current.close());
   expect(result.current.activeApproval).toBeNull();
   expect(result.current.action).toEqual({ state: "idle", error: null });
+});
+
+it.each(["approve", "decline"] as const)("serializes same-tick %s and its competing decision", async (decision) => {
+  const mutation = deferred<ConnectorApproval>();
+  vi.mocked(apiGet).mockReset().mockResolvedValue(approval(7));
+  const runApproval = vi.fn(() => mutation.promise);
+  const declineApproval = vi.fn(() => mutation.promise);
+  const { result, rerender, props } = renderDialog({ approvals: [approval(7)], runApproval, declineApproval });
+  await act(async () => {});
+  let pending!: Promise<void>;
+  act(() => {
+    const reviewed = result.current;
+    pending = reviewed[decision]();
+    void reviewed.approve();
+    void reviewed.decline();
+    reviewed.close();
+  });
+  expect(runApproval.mock.calls.length + declineApproval.mock.calls.length).toBe(1);
+  rerender({ ...props, approvals: [] });
+  await act(async () => {
+    mutation.resolve({ ...approval(7), status: "completed" });
+    await pending;
+  });
+  expect(result.current.activeApproval).toBeNull();
+});
+
+it.each(["approve", "decline"] as const)("retires %s completion and rejection after unmount", async (decision) => {
+  for (const outcome of ["resolve", "reject"] as const) {
+    const mutation = deferred<ConnectorApproval>();
+    vi.mocked(apiGet).mockReset().mockResolvedValue(approval(7));
+    const { result, unmount } = renderDialog({
+      approvals: [approval(7)],
+      runApproval: vi.fn(() => mutation.promise),
+      declineApproval: vi.fn(() => mutation.promise),
+    });
+    await act(async () => {});
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current[decision]();
+    });
+    unmount();
+    await act(async () => {
+      if (outcome === "resolve") mutation.resolve({ ...approval(7), status: "completed" });
+      else mutation.reject(new Error("Retired decision"));
+      await pending;
+    });
+    expect(apiGet).toHaveBeenCalledOnce();
+  }
+});
+
+it.each(["approve", "decline"] as const)("retires %s reconciliation after unmount", async (decision) => {
+  const detail = deferred<unknown>();
+  vi.mocked(apiGet).mockReset().mockResolvedValueOnce(approval(7)).mockReturnValueOnce(detail.promise);
+  const { result, unmount } = renderDialog({
+    approvals: [approval(7)],
+    runApproval: vi.fn().mockRejectedValue(new Error("Response lost")),
+    declineApproval: vi.fn().mockRejectedValue(new Error("Response lost")),
+  });
+  await act(async () => {});
+  let pending!: Promise<void>;
+  await act(async () => {
+    pending = result.current[decision]();
+  });
+  expect(apiGet).toHaveBeenCalledTimes(2);
+  unmount();
+  await act(async () => {
+    detail.resolve(approval(7));
+    await pending;
+  });
+  expect(result.current.action.state).toBe(decision === "approve" ? "running" : "declining");
 });

@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { apiGet, apiPost } from "../../lib/api";
 import { failedResource, pollReadOptions } from "../../lib/async-resource";
 import { useRequestGuard } from "../../lib/request-guard";
+import { useApprovalDecisionOwner } from "../../lib/use-approval-decision-owner";
 import { vaultApproval, vaultApprovals } from "../../lib/gateway-contracts/security-contracts";
 import { reconcileVaultApprovalDialog } from "../../lib/vault-approval-poll";
 import type { ApprovalDialog } from "../../lib/vault-approval-poll.ts";
@@ -29,6 +30,7 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
   const [dialog, setDialog] = useState(initialDialog);
   const seenPendingRef = useRef(new Set<number>());
   const requests = useRequestGuard("vault-action-approvals");
+  const decision = useApprovalDecisionOwner(requests, "decision");
 
   const load = useCallback(
     async (generation?: number) => {
@@ -65,11 +67,12 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
 
   const run = useCallback(async () => {
     const approval = dialog.approval;
-    if (!approval || approvals.state !== "ready") return;
-    const request = requests.begin("decision");
+    if (!approval || approvals.state !== "ready" || !["idle", "error"].includes(dialog.state)) return;
+    const request = decision.begin();
+    if (!request) return;
     setDialog((current) => ({ ...current, state: "running", error: null }));
     try {
-      vaultApproval(
+      const completed = vaultApproval(
         await apiPost(`/api/vault-action-approvals/${approval.id}/run`, {
           user_note: dialog.note,
           approval_context_hash: approval.approval_context_hash,
@@ -84,15 +87,14 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         "Vault approval decision",
       );
       if (!request.isCurrent()) return;
-      setDialog(initialDialog);
-      await Promise.all([load(), refreshConsoleSessions()]);
+      const refreshError = await refreshVaultDecision(load, refreshConsoleSessions);
+      if (!request.isCurrent()) return;
+      setDialog(refreshError ? { approval: completed, note: dialog.note, state: "stale", error: refreshError } : initialDialog);
     } catch (error) {
       if (!request.isCurrent()) return;
       const exact = await readExactVaultApproval(approval, request.signal);
       if (!request.isCurrent()) return;
-      await load();
-      if (!request.isCurrent()) return;
-      if (exact?.status === "completed") await refreshConsoleSessions();
+      const refreshError = await refreshVaultDecision(load, exact?.status === "completed" ? refreshConsoleSessions : undefined);
       if (!request.isCurrent()) return;
       setDialog((current) => ({
         ...current,
@@ -100,18 +102,19 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         state: exact && exact.status !== "approval_pending" ? "stale" : isStaleApprovalError(error) ? "stale" : "failed",
         error:
           exact && exact.status !== "approval_pending"
-            ? `${errorMessage(error)} This Vault approval is ${exact.status}; the run response may have been lost.`
+            ? `${errorMessage(error)} This Vault approval is ${exact.status}; the run response may have been lost.${refreshError ? ` ${refreshError}` : ""}`
             : errorMessage(error),
       }));
     } finally {
-      request.complete();
+      decision.complete(request);
     }
-  }, [approvals.state, dialog.approval, dialog.note, load, refreshConsoleSessions, requests]);
+  }, [approvals.state, decision, dialog.approval, dialog.note, dialog.state, load, refreshConsoleSessions]);
 
   const decline = useCallback(async () => {
     const approval = dialog.approval;
-    if (!approval || approvals.state !== "ready") return;
-    const request = requests.begin("decision");
+    if (!approval || approvals.state !== "ready" || !["idle", "error"].includes(dialog.state)) return;
+    const request = decision.begin();
+    if (!request) return;
     setDialog((current) => ({ ...current, state: "declining", error: null }));
     try {
       vaultApproval(
@@ -129,8 +132,8 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
         "Vault approval decision",
       );
       if (!request.isCurrent()) return;
-      setDialog(initialDialog);
       await load();
+      if (request.isCurrent()) setDialog(initialDialog);
     } catch (error) {
       if (!request.isCurrent()) return;
       const exact = await readExactVaultApproval(approval, request.signal);
@@ -147,14 +150,15 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
           : errorMessage(error),
       }));
     } finally {
-      request.complete();
+      decision.complete(request);
     }
-  }, [approvals.state, dialog.approval, dialog.note, load, requests]);
+  }, [approvals.state, decision, dialog.approval, dialog.note, dialog.state, load]);
 
   const close = useCallback(() => {
+    if (decision.isPending()) return;
     requests.invalidate("decision");
     setDialog(initialDialog);
-  }, [requests]);
+  }, [decision, requests]);
 
   const openPending = useCallback(() => {
     if (approvals.state !== "ready" || dialog.approval) return;
@@ -164,9 +168,24 @@ export function useVaultActionApprovals({ pollIsCurrent, refreshConsoleSessions 
     setDialog({ ...initialDialog, approval });
   }, [approvals, dialog.approval]);
 
-  const setNote = useCallback((note: string) => setDialog((current) => ({ ...current, note })), []);
+  const setNote = useCallback(
+    (note: string) => {
+      if (!decision.isPending()) setDialog((current) => ({ ...current, note }));
+    },
+    [decision],
+  );
 
   return { approvals, close, decline, dialog, load, openPending, run, setNote };
+}
+
+async function refreshVaultDecision(load: () => Promise<VaultApproval[] | null>, refreshSessions?: Options["refreshConsoleSessions"]) {
+  const [approvals, sessions] = await Promise.allSettled([load(), Promise.resolve().then(() => refreshSessions?.())]);
+  if (sessions.status === "rejected") {
+    return `Vault approval completed, but refreshing sessions failed: ${errorMessage(sessions.reason)} Refresh the Console before continuing.`;
+  }
+  return approvals.status === "rejected" || approvals.value === null
+    ? "Vault approval completed, but refreshing pending approvals failed. Refresh activity before continuing."
+    : null;
 }
 
 async function readExactVaultApproval(approval: VaultApproval, signal: AbortSignal) {

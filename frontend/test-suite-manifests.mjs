@@ -1,4 +1,9 @@
 export const asyncStateOwnerTests = {
+  "src/lib/use-approval-decision-owner.ts": [
+    "src/test/console-permissions/approval-decision-owner.component.test.tsx",
+    "src/test/console-permissions/use-connector-approval-dialog.component.test.tsx",
+    "src/components/vault/use-vault-action-approvals.component.test.tsx",
+  ],
   "src/connectors/editor/use-connector-connection-tests.ts": ["src/connectors/editor/use-connector-connection-tests.component.test.tsx"],
   "src/pages/settings.tsx": ["src/pages/settings.component.test.tsx"],
   "src/lib/use-unlock-status.ts": ["src/App.component.test.tsx"],

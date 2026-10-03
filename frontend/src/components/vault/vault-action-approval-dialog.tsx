@@ -37,6 +37,7 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
       title="Vault action approval"
       description={approval ? `Request #${approval.id}${age ? ` · sent ${age}` : ""}` : ""}
       onClose={onClose}
+      closeDisabled={["running", "declining"].includes(action.state)}
       size="xl"
       className="max-h-[calc(100vh-96px)]"
       bodyClassName="min-h-0 overflow-hidden p-0"
@@ -98,6 +99,7 @@ export function VaultActionApprovalDialog({ approval, note, action, onNoteChange
               Decision note
               <Textarea
                 value={note}
+                disabled={action.state === "running" || action.state === "declining"}
                 onChange={(event) => onNoteChange(event.target.value)}
                 placeholder="Optional guidance for the AI."
                 rows={2}
