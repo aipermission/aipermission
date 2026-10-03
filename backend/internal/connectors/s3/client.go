@@ -97,6 +97,7 @@ func (client *s3Client) HeadBucket(ctx context.Context) (http.Header, error) {
 func (client *s3Client) ListObjects(ctx context.Context, prefix string, token string, limit int, delimiter bool) (s3ListBucketResult, error) {
 	query := url.Values{}
 	query.Set("list-type", "2")
+	query.Set("encoding-type", "url")
 	query.Set("max-keys", strconv.Itoa(limit))
 	if prefix != "" {
 		query.Set("prefix", prefix)
@@ -114,6 +115,16 @@ func (client *s3Client) ListObjects(ctx context.Context, prefix string, token st
 	var result s3ListBucketResult
 	if err := xml.Unmarshal(data, &result); err != nil {
 		return s3ListBucketResult{}, fmt.Errorf("decode s3 list response: %w", err)
+	}
+	names := []*string{&result.Prefix}
+	for i := range result.Contents {
+		names = append(names, &result.Contents[i].Key)
+	}
+	for i := range result.CommonPrefixes {
+		names = append(names, &result.CommonPrefixes[i].Prefix)
+	}
+	if err := decodeListingNames(result.EncodingType, names...); err != nil {
+		return s3ListBucketResult{}, err
 	}
 	return result, nil
 }
@@ -309,6 +320,7 @@ type s3RequestBody struct {
 
 type s3ListBucketResult struct {
 	XMLName               xml.Name         `xml:"ListBucketResult"`
+	EncodingType          string           `xml:"EncodingType"`
 	Name                  string           `xml:"Name"`
 	Prefix                string           `xml:"Prefix"`
 	KeyCount              int              `xml:"KeyCount"`

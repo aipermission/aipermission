@@ -26,6 +26,7 @@ const (
 
 type s3VersionListResult struct {
 	XMLName             xml.Name          `xml:"ListVersionsResult"`
+	EncodingType        string            `xml:"EncodingType"`
 	IsTruncated         bool              `xml:"IsTruncated"`
 	NextKeyMarker       string            `xml:"NextKeyMarker"`
 	NextVersionIDMarker string            `xml:"NextVersionIdMarker"`
@@ -168,6 +169,7 @@ func executeDeleteObjectVersion(ctx context.Context, client *s3Client, input map
 func (client *s3Client) ListObjectVersions(ctx context.Context, key string, cursor s3VersionCursor, limit int) (s3VersionListResult, error) {
 	query := url.Values{}
 	query.Set("versions", "")
+	query.Set("encoding-type", "url")
 	query.Set("prefix", key)
 	query.Set("max-keys", strconv.Itoa(limit))
 	if cursor.KeyMarker != "" {
@@ -183,6 +185,16 @@ func (client *s3Client) ListObjectVersions(ctx context.Context, key string, curs
 	var result s3VersionListResult
 	if err := xml.Unmarshal(data, &result); err != nil {
 		return s3VersionListResult{}, fmt.Errorf("decode s3 version list response: %w", err)
+	}
+	names := []*string{&result.NextKeyMarker}
+	for i := range result.Versions {
+		names = append(names, &result.Versions[i].Key)
+	}
+	for i := range result.DeleteMarkers {
+		names = append(names, &result.DeleteMarkers[i].Key)
+	}
+	if err := decodeListingNames(result.EncodingType, names...); err != nil {
+		return s3VersionListResult{}, err
 	}
 	return result, nil
 }

@@ -184,7 +184,7 @@ func objectActions() []connectors.ActionDefinition {
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "prefix", Label: "Prefix", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional object key prefix. Use a folder prefix ending in / to browse inside that folder."},
 				{Name: "search", Label: "Search", Type: connectors.FieldString, Description: "Optional case-insensitive key search applied across bounded list pages. Folder grouping is disabled while searching."},
-				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, Description: "Optional pagination cursor returned as next_cursor by a previous list_objects response."},
+				{Name: "cursor", Label: "Cursor", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional opaque pagination cursor returned as next_cursor by a previous list_objects response; pass it unchanged."},
 				{Name: "limit", Label: "Limit", Type: connectors.FieldInteger, Default: defaultS3ListLimit, Description: "Maximum objects to return, capped by the connector."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxS3ListLimit},
