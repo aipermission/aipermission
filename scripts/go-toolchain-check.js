@@ -33,13 +33,18 @@ function verifyGoToolchain({ root = repositoryRoot } = {}) {
       );
     }
   };
-  for (const version of requireMatches(
-    root,
+  for (const filename of [
     "backend/Dockerfile",
-    /^FROM(?:\s+--platform=\S+)?\s+golang:([^\s@-]+)/gim,
-    "a Go builder image",
-  )) {
-    check("backend/Dockerfile", version);
+    "backend/testdata/connector-conformance/Dockerfile",
+  ]) {
+    for (const version of requireMatches(
+      root,
+      filename,
+      /^FROM(?:\s+--platform=\S+)?\s+golang:([^\s@-]+)/gim,
+      "a Go builder image",
+    )) {
+      check(filename, version);
+    }
   }
   let count = 0;
   for (const filename of workflowFiles(root)) {

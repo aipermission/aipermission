@@ -523,6 +523,7 @@ function verifyRequiredWorkflows(policy, root = repositoryRoot) {
 }
 
 module.exports = {
+  parseYAMLMapping,
   plainObject,
   verifyActionPinsInSource,
   verifyExternalActionPins,

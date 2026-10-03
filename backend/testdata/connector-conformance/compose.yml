@@ -1,4 +1,33 @@
 services:
+  kafka:
+    image: apache/kafka:4.1.0@sha256:bff074a5d0051dbc0bbbcd25b045bb1fe84833ec0d3c7c965d1797dd289ec88f
+    environment:
+      CLUSTER_ID: q1Cx6uyAT_C32_D-m73BFQ
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /tmp/owned-kafka
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    tmpfs:
+      # Kafka's Snappy JNI library is unpacked here and must be executable.
+      - /tmp:size=1g,mode=1777,exec
+    mem_limit: 1g
+    cpus: 1
+    healthcheck:
+      test: ["CMD", "/opt/kafka/bin/kafka-broker-api-versions.sh", "--bootstrap-server", "kafka:9092"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+
   clickhouse:
     image: clickhouse/clickhouse-server:25.3-alpine@sha256:a4e8cf46e526a06f4f52d22f7fa8d07472b55d3c896d7ca3f159e249be38ae62
     environment:
@@ -6,8 +35,6 @@ services:
       CLICKHOUSE_USER: aipermission
       CLICKHOUSE_PASSWORD: conformance-only
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
-    ports:
-      - "127.0.0.1::9000"
     healthcheck:
       test: ["CMD", "clickhouse-client", "--user", "aipermission", "--password", "conformance-only", "--query", "SELECT 1"]
       interval: 2s
@@ -20,8 +47,6 @@ services:
       POSTGRES_DB: aipermission
       POSTGRES_USER: aipermission
       POSTGRES_PASSWORD: conformance-only
-    ports:
-      - "127.0.0.1::5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U aipermission -d aipermission"]
       interval: 2s
@@ -31,8 +56,6 @@ services:
   valkey:
     image: valkey/valkey:8-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
     command: ["valkey-server", "--requirepass", "conformance-only"]
-    ports:
-      - "127.0.0.1::6379"
     healthcheck:
       test: ["CMD", "valkey-cli", "-a", "conformance-only", "--no-auth-warning", "ping"]
       interval: 2s
@@ -44,8 +67,6 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: aipermission
       RABBITMQ_DEFAULT_PASS: conformance-only
-    ports:
-      - "127.0.0.1::15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 3s
@@ -59,8 +80,6 @@ services:
       RUSTFS_ACCESS_KEY: conformance-access
       RUSTFS_SECRET_KEY: conformance-secret-key
       RUSTFS_VOLUMES: /data
-    ports:
-      - "127.0.0.1::9000"
     tmpfs:
       - /data:size=256m,mode=1777
     healthcheck:
@@ -81,3 +100,36 @@ services:
       AWS_DEFAULT_REGION: us-east-1
       AWS_EC2_METADATA_DISABLED: "true"
     command: ["--endpoint-url", "http://minio:9000", "s3api", "create-bucket", "--bucket", "aipermission-conformance"]
+
+  runner:
+    build:
+      context: ${AIPERMISSION_CONFORMANCE_SOURCE:?run make connector-conformance to prepare the source snapshot}
+      dockerfile: backend/testdata/connector-conformance/Dockerfile
+    environment:
+      AIPERMISSION_CONFORMANCE: "1"
+      AIPERMISSION_KAFKA_HOST: kafka
+      AIPERMISSION_KAFKA_PORT: "9092"
+      AIPERMISSION_POSTGRES_HOST: postgres
+      AIPERMISSION_POSTGRES_PORT: "5432"
+      AIPERMISSION_VALKEY_HOST: valkey
+      AIPERMISSION_VALKEY_PORT: "6379"
+      AIPERMISSION_RABBITMQ_HOST: rabbitmq
+      AIPERMISSION_RABBITMQ_PORT: "15672"
+      AIPERMISSION_S3_HOST: minio
+      AIPERMISSION_S3_PORT: "9000"
+      AIPERMISSION_CLICKHOUSE_HOST: clickhouse
+      AIPERMISSION_CLICKHOUSE_PORT: "9000"
+    volumes:
+      - compiler-cache:/cache
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 2g
+    cpus: 2
+    command: ["timeout", "--signal=TERM", "--kill-after=10s", "12m", "go", "run", "./cmd/verification-runner", "conformance"]
+
+networks:
+  default:
+    internal: true
+
+volumes:
+  compiler-cache:
