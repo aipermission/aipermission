@@ -1,43 +1,7 @@
-import { act, renderHook } from "@testing-library/react";
+import { act } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { useConnectorEditor } from "./use-connector-editor";
-import type { ConnectorEditorProps } from "./connector-editor-controller-types";
-
-type EditorProps = ConnectorEditorProps;
-type Model = NonNullable<ReturnType<EditorProps["modelForKind"]>>;
-type SyncContext = Parameters<NonNullable<Model["syncForm"]>>[0];
-
-const baseForm = (kind: string) => ({ connector_kind: kind, name: "", project_id: "" });
-
-function renderEditor(model: Model | null) {
-  const onRefresh = vi.fn(async () => {});
-  const onOperation = vi.fn(() => true);
-  const modelForKind = vi.fn(() => model);
-  const hook = renderHook(
-    ({ firstCredentialID }) =>
-      useConnectorEditor({
-        defaultKind: "example",
-        firstCredentialID,
-        defaultProjectID: "2",
-        emptyFormForKind: baseForm,
-        modelForKind,
-        onRefresh,
-        onOperation,
-      }),
-    { initialProps: { firstCredentialID: "4" } },
-  );
-  return { ...hook, onRefresh, onOperation, modelForKind };
-}
-
-function deferred() {
-  let resolve!: () => void;
-  let reject!: (_reason: unknown) => void;
-  const promise = new Promise<void>((resolvePromise, rejectPromise) => {
-    resolve = resolvePromise;
-    reject = rejectPromise;
-  });
-  return { promise, resolve, reject };
-}
+import { deferredEditorMutation as deferred, renderEditor } from "../../test/connector-editor-fixtures";
+import type { SyncContext } from "../../test/connector-editor-fixtures";
 
 describe("useConnectorEditor", () => {
   it("saves through the connector model and clears sensitive form state", async () => {
@@ -240,7 +204,7 @@ describe("useConnectorEditor", () => {
     expect(onRefresh).toHaveBeenCalledOnce();
   });
 
-  it.each(["success", "failure"])("does not let a retired %s delete affect a replacement target", async (outcome) => {
+  it.each(["success", "failure"])("keeps an owned %s delete visible despite replacement attempts", async (outcome) => {
     const pendingDelete = deferred();
     const first = { id: 8, connector_kind: "example", name: "First target" };
     const replacement = { id: 9, connector_kind: "example", name: "Replacement target" };
@@ -254,15 +218,17 @@ describe("useConnectorEditor", () => {
     });
     act(() => result.current.closeDelete());
     act(() => result.current.requestDelete(replacement));
+    expect(result.current.deleteDialog).toEqual({ open: true, target: first });
+    expect(result.current.actionState.state).toBe("deleting");
 
     await act(async () => {
       if (outcome === "success") pendingDelete.resolve();
       else pendingDelete.reject(new Error("retired delete failed"));
     });
 
-    await expect(removal).resolves.toBe(false);
-    expect(result.current.deleteDialog).toEqual({ open: true, target: replacement });
-    expect(result.current.actionState).toEqual({ state: "idle", error: null, message: null });
-    expect(onRefresh).not.toHaveBeenCalled();
+    await expect(removal).resolves.toBe(outcome === "success");
+    expect(result.current.deleteDialog).toEqual(outcome === "success" ? { open: false, target: null } : { open: true, target: first });
+    expect(result.current.actionState.state).toBe(outcome === "success" ? "idle" : "error");
+    expect(onRefresh).toHaveBeenCalledTimes(outcome === "success" ? 1 : 0);
   });
 });

@@ -29,6 +29,8 @@ export function useConnectorEditor<
   const [drawer, setDrawer] = useState<Drawer<Target>>({ open: false, mode: "create", kind: defaultKind, target: null });
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialog<Target>>({ open: false, target: null });
   const deleteOwnerRef = useRef<{ generation: number; targetID: string | number | null }>({ generation: 0, targetID: null });
+  const pendingDeleteRef = useRef<symbol | null>(null);
+  const deleteEpoch = deleteOwnerRef.current.generation;
   const [form, setForm] = useState<Form>(() => emptyFormForKind(defaultKind));
   const { actionState, setActionState, runAction, resetAction } = useAsyncAction();
   const pendingSaveRef = useRef<symbol | null>(null);
@@ -48,6 +50,7 @@ export function useConnectorEditor<
   }
 
   function openCreate(kind: string = defaultKind, projectID: string | number = defaultProjectID) {
+    if (pendingDeleteRef.current) return;
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     resetAction();
@@ -56,6 +59,7 @@ export function useConnectorEditor<
   }
 
   function openEdit(target: Target, profile: Profile | null | undefined) {
+    if (pendingDeleteRef.current) return false;
     const model = modelForKind(target.connector_kind);
     if (!model?.formFromTarget) {
       setActionState({ state: "error", error: connectorModelMissingMessage(target.connector_kind), message: null });
@@ -74,6 +78,7 @@ export function useConnectorEditor<
   }
 
   function closeEditor() {
+    if (pendingDeleteRef.current) return;
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     setDrawer({ open: false, mode: "create", kind: defaultKind, target: null });
@@ -82,7 +87,7 @@ export function useConnectorEditor<
   }
 
   function selectKind(kind: string) {
-    if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
+    if (pendingDeleteRef.current || pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     editorEpochRef.current += 1;
     resetAction();
     setForm((current) => ({ ...emptyFormForKind(kind, { firstCredentialID }), project_id: current.project_id || defaultProjectID }));
@@ -90,13 +95,13 @@ export function useConnectorEditor<
   }
 
   function updateField<Field extends keyof Form>(field: Field, value: Form[Field]) {
-    if (pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
+    if (pendingDeleteRef.current || pendingSaveRef.current !== null || editorEpoch !== editorEpochRef.current) return;
     setForm((current) => ({ ...current, [field]: value }));
   }
 
   async function save(event?: { preventDefault?: () => void } | null) {
     event?.preventDefault?.();
-    if (pendingSaveRef.current !== null) return false;
+    if (pendingDeleteRef.current || pendingSaveRef.current !== null) return false;
     const model = modelForKind(form.connector_kind);
     const saveTarget = model?.save;
     if (!saveTarget) {
@@ -132,6 +137,7 @@ export function useConnectorEditor<
   }
 
   function requestDelete(target: Target) {
+    if (pendingDeleteRef.current || pendingSaveRef.current) return;
     resetAction();
     deleteOwnerRef.current = {
       generation: deleteOwnerRef.current.generation + 1,
@@ -141,6 +147,7 @@ export function useConnectorEditor<
   }
 
   function closeDelete() {
+    if (pendingDeleteRef.current) return;
     deleteOwnerRef.current = {
       generation: deleteOwnerRef.current.generation + 1,
       targetID: null,
@@ -151,7 +158,7 @@ export function useConnectorEditor<
 
   async function remove(removeKey: boolean) {
     const target = deleteDialog.target;
-    if (!target) return false;
+    if (!target || pendingDeleteRef.current || pendingSaveRef.current || deleteEpoch !== deleteOwnerRef.current.generation) return false;
     const owner = { ...deleteOwnerRef.current };
     const model = modelForKind(target.connector_kind);
     const deleteTarget = model?.deleteTarget;
@@ -160,23 +167,32 @@ export function useConnectorEditor<
       return false;
     }
     const message = "Connector deleted.";
-    const result = await runAction({
-      pending: "deleting",
-      successMessage: message,
-      action: async () => {
-        await deleteTarget.call(model, { target, removeKey });
-        return true;
-      },
-    });
-    if (result !== true) return false;
-    if (deleteOwnerRef.current.generation !== owner.generation || deleteOwnerRef.current.targetID !== owner.targetID) return false;
-    deleteOwnerRef.current = { generation: owner.generation + 1, targetID: null };
-    setDeleteDialog({ open: false, target: null });
-    await refreshAfterEditorMutation(onRefresh, setActionState, message);
-    return true;
+    const token = Symbol("connector-delete");
+    pendingDeleteRef.current = token;
+    try {
+      const result = await runAction({
+        pending: "deleting",
+        successMessage: message,
+        action: async () => {
+          await deleteTarget.call(model, { target, removeKey });
+          return true;
+        },
+      });
+      if (result !== true) return false;
+      if (deleteOwnerRef.current.generation !== owner.generation || deleteOwnerRef.current.targetID !== owner.targetID) return false;
+      setActionState({ state: "deleting", error: null, message: null });
+      await refreshAfterEditorMutation(onRefresh, setActionState, message);
+      setActionState((current) => (current.state === "deleting" ? { state: "idle", error: null, message } : current));
+      deleteOwnerRef.current = { generation: owner.generation + 1, targetID: null };
+      setDeleteDialog({ open: false, target: null });
+      return true;
+    } finally {
+      if (pendingDeleteRef.current === token) pendingDeleteRef.current = null;
+    }
   }
 
   function completeOperation(result: { message?: string } | null, operation: ConnectorEditorOperation | null) {
+    if (pendingDeleteRef.current) return;
     editorEpochRef.current += 1;
     pendingSaveRef.current = null;
     const kind = operation?.connector_kind || operation?.kind || form.connector_kind;

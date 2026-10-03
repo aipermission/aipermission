@@ -78,6 +78,7 @@ export const asyncStateOwnerTests = {
   "src/connectors/editor/use-credential-inventory.ts": ["src/connectors/editor/use-credential-inventory.component.test.tsx"],
   "src/connectors/editor/use-connector-editor.ts": [
     "src/connectors/editor/use-connector-editor.component.test.tsx",
+    "src/test/connector-actions/connector-delete-ownership.component.test.tsx",
     "src/connectors/editor/use-connector-editor-native.component.test.tsx",
   ],
   "src/connectors/editor/use-credential-profile-editor.ts": [

@@ -242,4 +242,5 @@ it("renders connector-owned deletion details and cleanup choices without a regis
     <DeleteConnectorDialog value={value} dialog={dialog} state={{ state: "deleting" }} onDelete={onDelete} onClose={vi.fn()} />,
   );
   expect(screen.getByRole("button", { name: "Cleaning..." })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Close dialog" })).toBeDisabled();
 });

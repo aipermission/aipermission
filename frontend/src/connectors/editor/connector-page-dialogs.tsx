@@ -163,6 +163,7 @@ export function DeleteConnectorDialog({ value, dialog, state, onDelete, onClose 
       title={dialog?.title || "Delete connector"}
       description={dialog?.description || "Remove this connector target from aipermission."}
       onClose={onClose}
+      closeDisabled={state.state === "deleting"}
       size="md"
     >
       {target ? (
