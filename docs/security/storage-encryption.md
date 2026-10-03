@@ -114,6 +114,14 @@ For an encrypted database, the tabs are:
 
 Unlock Database requires the selected database password. New Database creates a separate named encrypted database and does not delete or archive the current one. Import Database imports a user-selected SQLCipher-encrypted `.aipdb` or `.db` file as a named local database.
 
+The configured default database filename does not require a `.db` extension;
+named catalog databases use `.db`. Rename journals apply the same canonical
+catalog-directory, symlink, exact-artifact and 64-artifact checks before any
+move and during restart recovery. Filename characters are matched literally
+when collecting sidecars and retained migration snapshots. Interrupted moves
+restore the source artifact set; a durable completion marker keeps the target
+authoritative.
+
 Plain SQLite files are intentionally unsupported. If a plaintext SQLite file is detected in the data directory or uploaded during import, the backend rejects it instead of converting it or keeping plaintext backup files.
 
 Until unlock succeeds, server, token, key, console, history, and MCP endpoints are unavailable.

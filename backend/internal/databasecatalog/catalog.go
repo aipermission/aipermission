@@ -330,7 +330,6 @@ type quarantinedDatabaseFile struct {
 type databaseDeleteOps struct {
 	lstat     func(string) (os.FileInfo, error)
 	readDir   func(string) ([]os.DirEntry, error)
-	glob      func(string) ([]string, error)
 	mkdir     func(string, os.FileMode) error
 	rename    func(string, string) error
 	write     func(string, []byte, os.FileMode) error
@@ -342,20 +341,16 @@ type databaseDeleteOps struct {
 
 func defaultDatabaseDeleteOps() databaseDeleteOps {
 	return databaseDeleteOps{
-		lstat: os.Lstat, readDir: os.ReadDir, glob: filepath.Glob, mkdir: os.Mkdir, rename: os.Rename,
+		lstat: os.Lstat, readDir: os.ReadDir, mkdir: os.Mkdir, rename: os.Rename,
 		write: os.WriteFile, syncFile: syncDatabaseDeletePath,
 		syncDir: syncDatabaseDeletePath, remove: os.Remove, removeAll: os.RemoveAll,
 	}
 }
 
 func deleteDatabaseWithOps(path string, ops databaseDeleteOps) error {
-	candidates := []string{path, path + "-wal", path + "-shm", path + "-journal"}
-	for _, pattern := range []string{path + ".pre-migration-v*.aipdb", path + ".pre-migration-v*.aipdb.pending"} {
-		matches, err := ops.glob(pattern)
-		if err != nil {
-			return fmt.Errorf("inspect database recovery artifacts: %w", err)
-		}
-		candidates = append(candidates, matches...)
+	candidates, err := databaseArtifactCandidates(path, ops.readDir)
+	if err != nil {
+		return err
 	}
 	existing := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {

@@ -21,13 +21,17 @@ type moveRollbackFixture struct {
 }
 
 func newMoveRollbackFixture(t *testing.T) *moveRollbackFixture {
+	return newNamedMoveRollbackFixture(t, "source.db", "target.db")
+}
+
+func newNamedMoveRollbackFixture(t *testing.T, sourceName, targetName string) *moveRollbackFixture {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.Chmod(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	fixture := &moveRollbackFixture{
-		root: root, source: filepath.Join(root, "source.db"), target: filepath.Join(root, "target.db"),
+		root: root, source: filepath.Join(root, sourceName), target: filepath.Join(root, targetName),
 		suffixes: []string{"", ".pre-migration-v1.aipdb", ".pre-migration-v2.aipdb.pending"},
 	}
 	for _, suffix := range fixture.suffixes {
