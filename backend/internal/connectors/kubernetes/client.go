@@ -24,7 +24,7 @@ func newKubeClient(runtime connectors.RuntimeContext) (*kubeClient, error) {
 	if transport == nil {
 		return nil, ErrMissingTransport
 	}
-	command, err := KubectlCommand(runtime.Target)
+	command, err := KubectlShellCommand(runtime.Target)
 	if err != nil {
 		return nil, err
 	}
@@ -40,14 +40,23 @@ func newKubeClient(runtime connectors.RuntimeContext) (*kubeClient, error) {
 // KubectlCommand resolves and validates the connector-owned executable used by
 // both bounded actions and live-console sessions.
 func KubectlCommand(target connectors.TargetView) (string, error) {
-	command := strings.TrimSpace(stringValue(target.Config, "kubectl_command"))
-	if command == "" {
-		command = defaultKubectlCommand
-	}
-	if len(command) > 1024 || !kubectlCommandPattern.MatchString(command) {
-		return "", fmt.Errorf("%w: kubectl_command must be an executable name or wrapper path", ErrInvalidConfig)
+	command, err := connectors.NormalizeCommandExecutable(stringValue(target.Config, "kubectl_command"), defaultKubectlCommand)
+	if err != nil {
+		return "", fmt.Errorf("%w: kubectl_command must be kubectl or an absolute wrapper path without arguments or parent traversal", ErrInvalidConfig)
 	}
 	return command, nil
+}
+
+// KubectlShellCommand bypasses shell aliases/functions for the standard binary.
+func KubectlShellCommand(target connectors.TargetView) (string, error) {
+	command, err := KubectlCommand(target)
+	if err != nil {
+		return "", err
+	}
+	if command == defaultKubectlCommand {
+		return "command kubectl", nil
+	}
+	return shellQuote(command), nil
 }
 
 func (client *kubeClient) baseCommand() string {

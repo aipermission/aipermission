@@ -43,8 +43,7 @@ var (
 	ErrInvalidConfig     = errors.New("kubernetes connector target config is invalid")
 	ErrScopeDenied       = errors.New("kubernetes namespace is outside this credential profile scope")
 
-	kubeNamePattern       = regexp.MustCompile(`^[A-Za-z0-9._:][A-Za-z0-9._:-]*$`)
-	kubectlCommandPattern = regexp.MustCompile(`^[A-Za-z0-9_./+-]+$`)
+	kubeNamePattern = regexp.MustCompile(`^[A-Za-z0-9._:][A-Za-z0-9._:-]*$`)
 )
 
 // Connector describes Kubernetes as a read-heavy connector over bounded kubectl

@@ -88,7 +88,7 @@ func (adapter) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCons
 }
 
 func kubectlExecShellCommand(target connectors.TargetView, namespace string, pod string, container string) (string, error) {
-	command, err := kubernetesconnector.KubectlCommand(target)
+	command, err := kubernetesconnector.KubectlShellCommand(target)
 	if err != nil {
 		return "", err
 	}

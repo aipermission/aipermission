@@ -38,7 +38,7 @@ func TestKubectlExecShellCommandPreservesContextAndShell(t *testing.T) {
 	got, err := kubectlExecShellCommand(connectors.TargetView{Config: map[string]any{
 		"context": "team's cluster", "kubectl_command": "/usr/local/bin/kubectl",
 	}}, "default", "api-123", "web")
-	want := "/usr/local/bin/kubectl --context 'team'\"'\"'s cluster' exec -it -n 'default' 'api-123' -c 'web' -- sh -lc 'if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh'"
+	want := "'/usr/local/bin/kubectl' --context 'team'\"'\"'s cluster' exec -it -n 'default' 'api-123' -c 'web' -- sh -lc 'if command -v bash >/dev/null 2>&1; then exec bash -l; fi; exec sh'"
 	if err != nil || got != want {
 		t.Fatalf("command=%q error=%v, want %q", got, err, want)
 	}
