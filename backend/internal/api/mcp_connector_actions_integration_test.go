@@ -241,6 +241,13 @@ func TestMCPProjectScopeHidesTargetsAndBlocksActions(t *testing.T) {
 		t.Fatalf("set action permission: %v", err)
 	}
 
+	beforeOptIn := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
+	if beforeOptIn.Code != http.StatusOK || beforeOptIn.Body.String() != "[]\n" {
+		t.Fatalf("new project must require opt-in despite action grants: %d %s", beforeOptIn.Code, beforeOptIn.Body.String())
+	}
+	if _, err := projects.ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatalf("explicit new project opt-in: %v", err)
+	}
 	visible := performJSON(fixture.server.Handler(), http.MethodGet, "/api/mcp/connector-targets", token.TokenValue, nil)
 	if visible.Code != http.StatusOK || !strings.Contains(visible.Body.String(), `"project_name":"Project Alpha"`) {
 		t.Fatalf("project target should be visible: %d %s", visible.Code, visible.Body.String())

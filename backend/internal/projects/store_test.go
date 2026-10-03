@@ -44,7 +44,7 @@ func TestProjectLifecycleAndTokenScopeDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list token project scopes: %v", err)
 	}
-	if len(scopes) != 2 || !scopeEnabled(scopes, ungrouped.ID) || !scopeEnabled(scopes, project.ID) {
+	if len(scopes) != 2 || !scopeEnabled(scopes, ungrouped.ID) || scopeEnabled(scopes, project.ID) {
 		t.Fatalf("unexpected default project scopes: %#v", scopes)
 	}
 

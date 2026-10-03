@@ -46,12 +46,16 @@ token validity, expiration, and execution rules.
 - New connector targets must be assigned to one project.
 - Existing targets migrate to `Ungrouped`.
 - New tokens start with all current projects enabled.
-- New projects start enabled for existing tokens.
+- New projects start disabled for existing tokens, including tokens enabled
+  for every previously active project. Enable the new project explicitly in
+  that token's project scopes before using it through MCP.
 - Enabling a project does not create connector action grants. A token still
   needs explicit target/profile/action permissions.
 
-These defaults preserve existing local workflows while action grants remain
-the authority for what a token may execute.
+Creating a project does not alter existing projects' enabled states or scope
+revisions. Creating a new token is a separate explicit admission decision and
+retains the all-current-projects default. Action grants remain the authority
+for what a visible token may execute.
 
 ## Project Lifecycle
 
