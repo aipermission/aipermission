@@ -6,8 +6,15 @@ export const asyncStateOwnerTests = {
   "src/components/console/use-connector-approval-dialog.ts": [
     "src/test/console-permissions/use-connector-approval-dialog.component.test.tsx",
   ],
-  "src/components/console/use-connector-token-permission-state.ts": [
+  "src/components/console/use-console-project-scopes.ts": [
     "src/test/console-permissions/connector-token-permission-panel.component.test.tsx",
+    "src/test/console-permissions/use-connector-token-permission-state.component.test.tsx",
+    "src/test/console-permissions/project-scope-ownership.component.test.tsx",
+    "src/test/console-permissions/project-refresh.component.test.tsx",
+  ],
+  "src/components/console/use-connector-token-permission-state.ts": [
+    "src/test/console-permissions/use-connector-token-permission-state.component.test.tsx",
+    "src/test/console-permissions/project-refresh.component.test.tsx",
   ],
   "src/components/console/use-console-connections.ts": ["src/components/console/use-console-connections.component.test.tsx"],
   "src/components/console/use-console-messages.ts": ["src/components/console/use-console-messages.component.test.tsx"],

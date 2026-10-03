@@ -172,8 +172,8 @@
       "lines": 99.15
     },
     "src/components/console/use-connector-token-permission-state.ts": {
-      "statements": 95.85,
-      "branches": 79.25,
+      "statements": 97.25,
+      "branches": 84.03,
       "functions": 100,
       "lines": 100
     },
@@ -204,6 +204,12 @@
     "src/components/console/use-console-permission-view.ts": {
       "statements": 100,
       "branches": 85.71,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/console/use-console-project-scopes.ts": {
+      "statements": 98.7,
+      "branches": 94,
       "functions": 100,
       "lines": 100
     },
