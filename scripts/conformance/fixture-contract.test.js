@@ -29,6 +29,7 @@ test("connector conformance documentation matches the required workflow", () => 
     rabbitmq: "RabbitMQ",
     minio: "S3",
     kafka: "Kafka",
+    protocols: "Mail",
   };
   for (const service of Object.keys(families)) {
     assert.ok(
@@ -45,7 +46,9 @@ test("connector conformance documentation matches the required workflow", () => 
   }
   assert.doesNotMatch(connectorGuide, /not part of every pull request/);
   assert.equal(compose.networks.default.internal, true);
-  assert.deepEqual(compose.services.kafka.tmpfs, ["/tmp:size=1g,mode=1777,exec"]);
+  assert.deepEqual(compose.services.kafka.tmpfs, [
+    "/tmp:size=1g,mode=1777,exec",
+  ]);
   for (const [name, service] of Object.entries(compose.services)) {
     for (const property of [
       "ports",
@@ -67,5 +70,29 @@ test("connector conformance documentation matches the required workflow", () => 
   assert.deepEqual(compose.services.runner.security_opt, [
     "no-new-privileges:true",
   ]);
-  assert.deepEqual(compose.services.runner.volumes, ["compiler-cache:/cache"]);
+  assert.deepEqual(compose.services.runner.volumes, [
+    "compiler-cache:/cache",
+    "fixture-material:/fixture-material:ro",
+  ]);
+  assert.equal(
+    compose.services.runner.environment.SSL_CERT_FILE,
+    "/fixture-material/ca.crt",
+  );
+  const protocolRoot = "backend/testdata/connector-conformance/protocols";
+  assert.match(
+    read(`${protocolRoot}/Dockerfile`),
+    /^FROM debian:bookworm-slim@sha256:[a-f0-9]{64}$/m,
+  );
+  assert.match(
+    read(`${protocolRoot}/postfix.cf`),
+    /^default_transport = error:fixture refuses external delivery$/m,
+  );
+  assert.match(
+    read(`${protocolRoot}/postfix.cf`),
+    /^relay_transport = error:fixture refuses external relay$/m,
+  );
+  assert.doesNotMatch(
+    read(`${protocolRoot}/start.sh`),
+    /cp .*tls\.key .*fixture-material/,
+  );
 });

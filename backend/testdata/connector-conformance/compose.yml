@@ -1,4 +1,20 @@
 services:
+  protocols:
+    build:
+      context: ${AIPERMISSION_CONFORMANCE_SOURCE:?run make connector-conformance to prepare the source snapshot}
+      dockerfile: backend/testdata/connector-conformance/protocols/Dockerfile
+    volumes:
+      - fixture-material:/fixture-material
+    tmpfs:
+      - /run:size=32m,mode=755
+    mem_limit: 256m
+    cpus: 1
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /run/protocols/sshd.pid && doveadm service status imap-login >/dev/null && postfix status"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   kafka:
     image: apache/kafka:4.1.0@sha256:bff074a5d0051dbc0bbbcd25b045bb1fe84833ec0d3c7c965d1797dd289ec88f
     environment:
@@ -107,6 +123,8 @@ services:
       dockerfile: backend/testdata/connector-conformance/Dockerfile
     environment:
       AIPERMISSION_CONFORMANCE: "1"
+      AIPERMISSION_PROTOCOL_HOST: protocols
+      SSL_CERT_FILE: /fixture-material/ca.crt
       AIPERMISSION_KAFKA_HOST: kafka
       AIPERMISSION_KAFKA_PORT: "9092"
       AIPERMISSION_POSTGRES_HOST: postgres
@@ -121,6 +139,7 @@ services:
       AIPERMISSION_CLICKHOUSE_PORT: "9000"
     volumes:
       - compiler-cache:/cache
+      - fixture-material:/fixture-material:ro
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 2g
@@ -133,3 +152,4 @@ networks:
 
 volumes:
   compiler-cache:
+  fixture-material:

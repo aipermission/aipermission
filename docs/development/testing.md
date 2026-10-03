@@ -282,7 +282,7 @@ millisecond/second duration capped at 30 seconds, for a different local pass.
 The bounded runner uses one fuzz worker so CI results remain reproducible.
 
 The required connector conformance workflow exercises ClickHouse, Postgres,
-Valkey, RabbitMQ, S3, and Apache Kafka against disposable pinned service
+Valkey, RabbitMQ, S3, Apache Kafka, OpenSSH, and Dovecot/Postfix Mail against disposable pinned service
 containers on pull requests and pushes to `main` and `dev`, weekly, and on
 demand. The runner joins the internal fixture network, with no published ports,
 host Docker socket, host credentials or production target configurations.
@@ -293,8 +293,22 @@ The fixture target requires a Linux shell, GNU tar, Compose v2, and a local
 Unix-socket Docker endpoint; remote Docker contexts are rejected before setup.
 Compose does not load operator `.env` files for this isolated target.
 The protected check keeps its existing name for branch-protection continuity.
-SSH, Docker, Kubernetes, and Mail retain focused protocol tests until a bounded,
+Docker and Kubernetes retain focused protocol tests until a bounded,
 deterministic real-service fixture is reviewed.
+
+OpenSSH conformance covers explicit owned host-key approval, changed-key refusal
+before dispatch, stdout/stderr/exit identity, cancellation, and atomic SFTP
+create/overwrite/download with permission preservation and staging cleanup.
+It exercises connector-owned transport code, not a duplicated test runtime
+adapter; persistent gateway sessions and approval lifecycle remain separately
+tested. Dovecot/Postfix conformance covers verified implicit TLS and STARTTLS,
+folder ordering, bounded UID continuation, read-only Seen preservation, explicit
+flag changes, UID-safe move/staleness, SMTP acceptance, and independently read
+local recipient delivery. Wrong credentials and TLS hostname mismatch fail
+closed. Only generated fixture keys/certificates are shared read-only with the
+runner; server private keys remain in the daemon's private tmpfs. The pinned
+Debian base still installs distribution packages at image-build time, so this is
+not a byte-reproducible native dependency claim.
 
 Kafka conformance covers the real single-broker KRaft implementation, binary
 publish/readback identity, bounded sampling without offset commits, exact

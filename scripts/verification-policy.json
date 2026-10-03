@@ -469,6 +469,9 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestOpenSSHRealService",
+    "TestMailRealService",
+    "TestMailRealServiceRejectsInvalidIdentity",
     "TestKafkaWireProbe",
     "TestKafkaRealService",
     "TestClickHouseRealService",
