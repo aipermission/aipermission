@@ -23,6 +23,7 @@ import type {
 import type { PreparedRetry } from "./local-action-retry/records";
 import { observeLocalActionRetryResponse } from "./local-action-retry/observations.ts";
 import { consoleCommandBatch } from "./gateway-contracts/console-command-contract.ts";
+import { invalidateUISession } from "./ui-session-events.ts";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
@@ -70,14 +71,16 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
       signal: options.signal,
       credentials: "include",
     });
-    assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
     let data: unknown;
     try {
       data = await readResponse(response, { captureWorkspace: !pinnedWorkspace && path !== "/api/console/bulk-exec" });
     } catch (error) {
+      // Observe lock/session failures before rejecting foreign replies; they cannot retire this workspace's retry.
+      assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
       finalized = await finalizePostError(prepared, error, response);
       throw error;
     }
+    assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
     assertPostAcknowledgement(path, response, prepared, data, requestWorkspace);
     if (prepared.retry && response.ok && prepared.pending?.(data)) {
       await preserveLocalActionRetryAttempt(prepared.retry, data);
@@ -338,9 +341,11 @@ async function readResponse(response: Response, options: { captureWorkspace?: bo
       parseError = error;
     }
     const failure = objectRecord(data);
-    if (response.status === 401 && failure?.error === "ui session required" && typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("aipermission:ui-session-required"));
-    }
+    if (
+      (response.status === 401 && failure?.error === "ui session required") ||
+      (response.status === 423 && failure?.error === "database is locked")
+    )
+      invalidateUISession();
     throw new APIError(
       typeof failure?.error === "string" && failure.error
         ? failure.error

@@ -71,8 +71,15 @@ test("runs approval, stale rejection, lock, and restart against the real backend
   });
 
   await test.step("lock, unlock, and survive a backend restart with the same encrypted database", async () => {
+    const sibling = await page.context().newPage();
+    await sibling.goto("/tokens");
+    await expect(sibling.getByText("real-browser-agent", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Lock", exact: true }).click();
     await expect(page.getByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+    await expect(sibling.getByRole("button", { name: "Unlock", exact: true })).toBeVisible();
+    await expect(sibling.getByText("real-browser-agent", { exact: true })).not.toBeVisible();
+    await expect(sibling.locator('aside a[href="/tokens"]')).not.toBeVisible();
+    await sibling.close();
     await page.locator('input[type="password"]').fill(databasePassword);
     await page.getByRole("button", { name: "Unlock", exact: true }).click();
     await expect(page.locator('aside a[href="/console"]')).toBeVisible();

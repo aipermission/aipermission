@@ -2363,7 +2363,7 @@
     },
     "src/lib/api.ts": {
       "statements": 96.55,
-      "branches": 89.95,
+      "branches": 90,
       "functions": 100,
       "lines": 97.9
     },
@@ -2631,6 +2631,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/lib/ui-session-events.ts": {
+      "statements": 96.42,
+      "branches": 88.23,
+      "functions": 100,
+      "lines": 100
+    },
     "src/lib/update-check.ts": {
       "statements": 100,
       "branches": 94.2,
@@ -2662,8 +2668,8 @@
       "lines": 100
     },
     "src/lib/use-unlock-status.ts": {
-      "statements": 95.83,
-      "branches": 92.85,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },

@@ -58,11 +58,15 @@ it("owns uncertain retries under the explicit binding even while another workspa
   expect(currentWorkspaceBinding()).toBe(workspace);
 });
 
-it.each([400, 409, 503])("cannot retire a protected mutation using an unowned HTTP %s reply", async (status) => {
+it.each([400, 401, 409, 423, 503])("cannot retire a protected mutation using an unowned HTTP %s reply", async (status) => {
   const keys: string[] = [];
   vi.stubGlobal("fetch", async (_url: unknown, options?: RequestInit) => {
     keys.push(JSON.parse(String(options?.body)).idempotency_key);
-    return reply({ error: "foreign failure" }, "foreign-workspace", status);
+    return reply(
+      { error: status === 401 ? "ui session required" : status === 423 ? "database is locked" : "foreign failure" },
+      "foreign-workspace",
+      status,
+    );
   });
   const body = { target_ref: "example:3:11", action_name: "example_action", input: {}, reason: "uncertain reply ownership" };
   for (let attempt = 0; attempt < 2; attempt++)

@@ -52,6 +52,18 @@ depth on the supported local `localhost` gateway URL. HTTPS reverse-proxy/LAN
 deployment is unsupported and must not be used to reinterpret these cookies as
 remote authentication.
 
+Locking through the UI sends a same-origin invalidation notice to sibling
+tabs. A `401 ui session required` or `423 database is locked` response also
+invalidates the current unlocked UI immediately, before status reconciliation.
+The notices contain no credentials or database identity and cannot authenticate
+or unlock anything; only a verified gateway status response may reopen the UI.
+Status reads are bounded, superseded/unmounted replies are ignored, and visible
+tabs recheck on focus/visibility changes and every 30 seconds. Background browser
+throttling can delay these checks. This removes stale visible views, not already
+copied secrets, downloaded artifacts, or every browser-managed memory copy.
+Different origins (including different ports) do not receive each other's
+notices; their own gateway status checks remain authoritative.
+
 Browser extension boundary:
 
 A malicious browser extension with broad host/page permissions is treated as a compromised local client. AIPermission can reduce ordinary web-page and CSRF risk, but it cannot guarantee protection from an extension that can observe pages, inject actions, read visible UI content, or issue privileged localhost requests from the user's browser profile. Use a trusted browser/profile for AIPermission and avoid untrusted extensions while the gateway is unlocked.
