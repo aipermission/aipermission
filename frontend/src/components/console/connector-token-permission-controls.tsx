@@ -5,7 +5,7 @@ import type { ExecutionRule } from "../../lib/gateway-contracts/security-contrac
 import type { ConnectorPermissionAction } from "../../lib/use-connector-permissions";
 import type { PermissionMode } from "./connector-token-permission-model";
 import type { PermissionMutationError as MutationFailure, PermissionTarget } from "./use-connector-token-permission-state";
-import { ConnectorRuleButton } from "../connectors/connector-rule-button";
+import { ConnectorRuleButton, ConnectorRuleButtons } from "../connectors/connector-rule-button";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select } from "../ui/form";
@@ -161,30 +161,6 @@ export function PermissionModeTabs({
   );
 }
 
-const rules: readonly { value: ExecutionRule | ""; label: string }[] = [
-  { value: "", label: "Disabled" },
-  { value: "blocked", label: "Blocked" },
-  { value: "approval_required", label: "Prompt" },
-  { value: "always_run", label: "Always" },
-];
-
-function RuleButtons({ rule, saving, disabled = false, onSetRule }: RuleProps) {
-  return (
-    <div className="grid grid-cols-4 gap-1">
-      {rules.map((choice) => (
-        <ConnectorRuleButton
-          key={choice.value}
-          active={rule === choice.value && !disabled}
-          disabled={saving || disabled}
-          onClick={() => onSetRule(choice.value)}
-        >
-          {choice.label}
-        </ConnectorRuleButton>
-      ))}
-    </div>
-  );
-}
-
 export function PermissionRuleGroup({
   title,
   description,
@@ -206,7 +182,7 @@ export function PermissionRuleGroup({
         </div>
         {rule === "mixed" ? <Badge tone="warn">mixed</Badge> : null}
       </div>
-      <RuleButtons rule={rule} saving={saving} disabled={disabled} onSetRule={onSetRule} />
+      <ConnectorRuleButtons rule={rule} saving={saving} disabled={disabled} onSetRule={onSetRule} />
     </div>
   );
 }
@@ -231,7 +207,7 @@ export function ActionPermissionCard({
         </div>
         <Badge tone={connectorActionRiskTone(action.risk)}>{connectorActionRiskLabel(action.risk)}</Badge>
       </div>
-      <RuleButtons rule={rule} saving={saving} onSetRule={onSetRule} />
+      <ConnectorRuleButtons rule={rule} saving={saving} onSetRule={onSetRule} />
     </div>
   );
 }

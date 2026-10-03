@@ -47,7 +47,7 @@
     },
     "src/components/connectors/connector-rule-button.tsx": {
       "statements": 100,
-      "branches": 75,
+      "branches": 85.71,
       "functions": 100,
       "lines": 100
     },
@@ -70,8 +70,8 @@
       "lines": 100
     },
     "src/components/console/connector-token-permission-controls.tsx": {
-      "statements": 96,
-      "branches": 80.95,
+      "statements": 100,
+      "branches": 97.29,
       "functions": 100,
       "lines": 100
     },
@@ -460,10 +460,10 @@
       "lines": 100
     },
     "src/components/tokens/connector-permission-dialog.tsx": {
-      "statements": 89.28,
-      "branches": 74.19,
-      "functions": 84.21,
-      "lines": 92.39
+      "statements": 94.57,
+      "branches": 77.39,
+      "functions": 97.36,
+      "lines": 98.09
     },
     "src/components/tokens/created-token-notice.tsx": {
       "statements": 100,
