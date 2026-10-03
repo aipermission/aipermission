@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
 	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/rolejournal"
 	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/jackc/pgx/v5"
@@ -47,15 +48,11 @@ func lifecycleTransaction(ctx context.Context, dial Dial) (Connection, pgx.Tx, e
 }
 
 func closeConnection(ctx context.Context, connection Connection) {
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	_ = connection.Close(cleanup)
+	_ = cleanup.Run(ctx, connection.Close)
 }
 
 func rollbackTransaction(ctx context.Context, tx pgx.Tx) error {
-	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	defer cancel()
-	return tx.Rollback(cleanup)
+	return cleanup.Run(ctx, tx.Rollback)
 }
 
 type confirmation func(context.Context, rolejournal.Entry) (rolejournal.Entry, error)

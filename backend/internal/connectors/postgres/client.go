@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -68,7 +69,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
 	if err := configurePostgresSession(ctx, conn); err != nil {
-		_ = conn.Close(ctx)
+		_ = cleanup.Run(ctx, conn.Close)
 		return nil, err
 	}
 	return conn, nil

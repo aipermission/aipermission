@@ -640,6 +640,12 @@ rejected. Operators should still use dedicated
 least-privilege database roles and prefer `approval_required` for ad-hoc
 queries over sensitive data.
 
+Postgres network cleanup is bounded independently of the action context:
+rollback and connection close each receive up to five seconds after cancellation
+or a query error. Cleanup preserves the original query outcome and always
+attempts connection close even when rollback fails or times out; a silent server
+cannot retain the handler indefinitely through its rollback response.
+
 ClickHouse exposes `get_databases`, `get_tables`, `describe_table`, and
 `query_readonly` through the same target/profile/action routes. It uses the
 native ClickHouse protocol over Direct or generic Over SSH network transport.
