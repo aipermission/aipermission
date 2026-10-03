@@ -354,7 +354,7 @@ func IsUnboundedRequestRoute(path string) bool {
 }
 
 func ManagesLifecycleLock(path string) bool {
-	if path == "/api/backup/download" || path == "/api/backup/import" {
+	if path == "/api/backup/download" || path == "/api/backup/import" || path == "/api/backup/remote/restore" {
 		return true
 	}
 	return strings.HasPrefix(path, "/api/backup/providers/") &&

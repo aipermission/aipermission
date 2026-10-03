@@ -7,14 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -247,58 +245,6 @@ func upsertServiceBackupRecord(ctx context.Context, runtime HTTPScope, store *St
 	})
 }
 
-func downloadServiceRecordToTemp(ctx context.Context, runtime HTTPScope, provider Provider, record Record, client *ServiceClient) (string, error) {
-	if record.SizeBytes < 1 || record.SizeBytes > MaxDatabaseTransferBytes {
-		return "", ValidationError("backup is too large to download through the gateway")
-	}
-	tmpPath, err := databasecatalog.ReserveTempPath(runtime.DatabasePath, fmt.Sprintf("remote-backup-%d-*.aipdb", provider.ID))
-	if err != nil {
-		return "", err
-	}
-	downloaded, err := client.Download(ctx, stringFromMap(provider.Public, "stream_id"), record.ProviderFileID, tmpPath, MaxDatabaseTransferBytes)
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return "", remoteOperationError{err: err}
-	}
-	if downloaded.SizeBytes != record.SizeBytes || !strings.EqualFold(downloaded.SHA256, record.ChecksumSHA256) {
-		_ = os.Remove(tmpPath)
-		return "", remoteOperationError{err: errors.New("remote backup metadata changed since it was listed; refresh versions and try again")}
-	}
-	return tmpPath, nil
-}
-
-func CopyBackupFile(sourcePath string) func(string) error {
-	return func(targetPath string) error {
-		source, err := os.Open(sourcePath)
-		if err != nil {
-			return err
-		}
-		defer source.Close()
-		target, err := os.OpenFile(targetPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-		if err != nil {
-			return err
-		}
-		remove := true
-		defer func() {
-			_ = target.Close()
-			if remove {
-				_ = os.Remove(targetPath)
-			}
-		}()
-		if _, err := io.Copy(target, source); err != nil {
-			return err
-		}
-		if err := target.Sync(); err != nil {
-			return err
-		}
-		if err := target.Close(); err != nil {
-			return err
-		}
-		remove = false
-		return nil
-	}
-}
-
 func backupSourceInstallationID(dataPath string) string {
 	hostname, _ := os.Hostname()
 	digest := sha256.Sum256([]byte(hostname + "\x00" + filepath.Clean(dataPath)))
@@ -332,9 +278,6 @@ func cloneJSONMap(input map[string]any) map[string]any {
 }
 
 func stringFromMap(values map[string]any, key string) string {
-	if values == nil {
-		return ""
-	}
 	value, _ := values[key].(string)
 	return strings.TrimSpace(value)
 }

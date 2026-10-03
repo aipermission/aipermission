@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -118,18 +117,9 @@ func PrepareTransientRestore(ctx context.Context, installationDataPath string, r
 	if version.SizeBytes > MaxDatabaseTransferBytes {
 		return PreparedTransientRestore{}, ErrTransientBackupTooLarge
 	}
-	tmpPath, err := databasecatalog.ReserveTempPath(installationDataPath, "first-run-restore-*.aipdb")
+	tmpPath, err := client.downloadVerifiedTemp(ctx, installationDataPath, "first-run-restore-*.aipdb", stream.ID, version)
 	if err != nil {
 		return PreparedTransientRestore{}, err
-	}
-	downloaded, err := client.Download(ctx, stream.ID, version.ID, tmpPath, MaxDatabaseTransferBytes)
-	if err != nil {
-		_ = os.Remove(tmpPath)
-		return PreparedTransientRestore{}, err
-	}
-	if downloaded.SizeBytes != version.SizeBytes || !strings.EqualFold(downloaded.SHA256, version.SHA256) {
-		_ = os.Remove(tmpPath)
-		return PreparedTransientRestore{}, ErrTransientBackupChanged
 	}
 	return PreparedTransientRestore{
 		Path: tmpPath, BaseURL: request.BaseURL, StreamID: stream.ID, Version: version,

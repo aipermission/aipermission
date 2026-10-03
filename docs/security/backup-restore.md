@@ -112,6 +112,17 @@ Download and restore re-check remote metadata and verify the received size and S
 Restore then validates the user-provided SQLCipher password and schema and
 installs a new local database without overwriting the current one.
 
+Remote restore holds a bounded backup-operation slot, not the exclusive
+workspace lifecycle lease, during network staging. Downloads have a 15-minute
+total limit and a 30-second renewable no-progress limit, including time spent
+waiting for response headers. Before installation the gateway reacquires the
+writer lease and revalidates the original workspace and browser authorization.
+Provider restore also rechecks that the selected provider remains active and
+that its credential, configuration, and backup identity have not changed.
+A concurrent lock, workspace switch, revoked session, or changed backup source
+rejects publication and removes the temporary candidate; it does not install
+the staged file into another workspace.
+
 First-run restore is available while no local database is unlocked. The service
 URL and token are accepted only for the list or restore request and are never
 persisted. The selected stream identity cannot be changed during restore, while

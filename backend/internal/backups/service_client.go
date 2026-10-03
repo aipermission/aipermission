@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/aipermission/aipermission/backend/internal/backups/downloadbody"
 	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 )
 
@@ -496,9 +497,9 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	if maxBytes < 1 || maxBytes == math.MaxInt64 {
 		return ServiceBackup{}, ValidationError("local import limit must be positive")
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-	defer cancel()
-	request, err := c.request(requestCtx, http.MethodGet, "/v1/streams/"+url.PathEscape(streamID)+"/backups/"+url.PathEscape(backupID), nil, true)
+	guard := downloadbody.New(ctx, 15*time.Minute, 30*time.Second)
+	defer guard.Close()
+	request, err := c.request(guard, http.MethodGet, "/v1/streams/"+url.PathEscape(streamID)+"/backups/"+url.PathEscape(backupID), nil, true)
 	if err != nil {
 		return ServiceBackup{}, err
 	}
@@ -537,7 +538,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	}()
 	digest := sha256.New()
 	scanner := newCredentialScanningWriter(io.MultiWriter(output, digest), serviceTokenVariants(c.token))
-	written, err := io.Copy(scanner, io.LimitReader(response.Body, maxBytes+1))
+	written, err := io.Copy(scanner, io.LimitReader(guard.Reader(response.Body), maxBytes+1))
 	if err != nil {
 		if errors.Is(err, errReflectedBackupCredential) {
 			return ServiceBackup{}, errReflectedBackupCredential

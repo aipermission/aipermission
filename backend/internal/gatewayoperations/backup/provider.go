@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/backups/snapshotfile"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
@@ -99,7 +100,10 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 		return
 	}
 	defer clearStrings(&request.DatabasePassword)
-	lease, ok := component.authorizedMutationOperation(w, r)
+	if !validateRestoreDestination(w, request.DatabaseName, request.DatabasePassword) {
+		return
+	}
+	lease, revalidate, ok := component.admitImport(w, r)
 	if !ok {
 		return
 	}
@@ -108,17 +112,37 @@ func (component *Component) restoreProviderRecord(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	prepared, err := backups.PrepareProviderRestore(r.Context(), scope, providerID, recordID)
+	selection, err := backups.SelectProviderRestore(r.Context(), scope, providerID, recordID)
+	if err != nil {
+		backups.WriteProviderHTTPError(w, err)
+		return
+	}
+	details := selection.Info()
+	scope.Observe(r.Context(), "backup.provider.record.restore_requested", map[string]any{
+		"provider_id": details.ProviderID, "record_id": details.RecordID, "filename": details.Filename,
+		"database_name": strings.TrimSpace(request.DatabaseName), "source_machine": details.SourceMachine,
+	})
+	lease.ReleaseLifecycle()
+	prepared, err := selection.Download(r.Context())
 	if err != nil {
 		backups.WriteProviderHTTPError(w, err)
 		return
 	}
 	defer prepared.Remove()
-	scope.Observe(r.Context(), "backup.provider.record.restore_requested", map[string]any{
-		"provider_id": prepared.ProviderID, "record_id": prepared.RecordID, "filename": prepared.Filename,
-		"database_name": strings.TrimSpace(request.DatabaseName), "source_machine": prepared.SourceMachine,
-	})
-	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
+	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, snapshotfile.Copy(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
-	}, nil)
+	}, component.importCommit(r.Context(), lease, func() bool {
+		if !revalidate() {
+			return false
+		}
+		current, err := selection.Current(r.Context(), scope.Database)
+		if err != nil {
+			httptransport.WriteInternalError(w)
+			return false
+		}
+		if !current {
+			httptransport.WriteError(w, http.StatusConflict, "backup source changed; restart the database restore")
+		}
+		return current
+	}))
 }
