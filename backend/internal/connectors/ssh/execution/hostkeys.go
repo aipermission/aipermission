@@ -193,15 +193,13 @@ func TrustedHostFingerprints(path string, hostname string) ([]string, error) {
 }
 
 func TrustHostKey(path string, hostname string, publicKey string) error {
-	path = filepath.Clean(path)
-	if path == "." || path == "" {
-		return fmt.Errorf("known_hosts path is required")
-	}
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
-		return fmt.Errorf("hostname is required")
-	}
-	key, err := ParseHostPublicKey(publicKey)
+	return trustHostKeyWithOps(path, hostname, publicKey, knownHostsFileOps{
+		rename: renameKnownHostsFile, syncDir: syncKnownHostsDirectory,
+	})
+}
+
+func trustHostKeyWithOps(path string, hostname string, publicKey string, ops knownHostsFileOps) error {
+	path, hostname, key, err := validatedHostTrustInput(path, hostname, publicKey)
 	if err != nil {
 		return err
 	}
@@ -225,28 +223,29 @@ func TrustHostKey(path string, hostname string, publicKey string) error {
 		}
 	}
 
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("open known_hosts: %w", err)
+		return fmt.Errorf("read known_hosts: %w", err)
 	}
-	defer file.Close()
-
-	if _, err := fmt.Fprintln(file, knownhosts.Line([]string{hostname}, key)); err != nil {
-		return fmt.Errorf("append known_hosts: %w", err)
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat known_hosts: %w", err)
 	}
-	return nil
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+	data = append(data, knownhosts.Line([]string{hostname}, key)+"\n"...)
+	return writeKnownHostsAtomicallyWithOps(path, data, info.Mode().Perm(), func(candidate string) error {
+		verify, err := knownhosts.New(candidate)
+		if err != nil {
+			return fmt.Errorf("validate known_hosts trust: %w", err)
+		}
+		return verify(hostname, knownHostsRemoteAddr(nil), key)
+	}, ops)
 }
 
 func ReplaceHostKey(path string, hostname string, publicKey string) error {
-	path = filepath.Clean(path)
-	if path == "." || path == "" {
-		return fmt.Errorf("known_hosts path is required")
-	}
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
-		return fmt.Errorf("hostname is required")
-	}
-	key, err := ParseHostPublicKey(publicKey)
+	path, hostname, key, err := validatedHostTrustInput(path, hostname, publicKey)
 	if err != nil {
 		return err
 	}
@@ -273,6 +272,19 @@ func ReplaceHostKey(path string, hostname string, publicKey string) error {
 	return writeKnownHostsAtomically(path, output, info.Mode().Perm(), func(candidatePath string) error {
 		return validateHostKeyReplacement(candidatePath, hostname, key, previousKeys)
 	})
+}
+
+func validatedHostTrustInput(path, hostname, publicKey string) (string, string, ssh.PublicKey, error) {
+	path = filepath.Clean(path)
+	if path == "." || path == "" {
+		return "", "", nil, fmt.Errorf("known_hosts path is required")
+	}
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return "", "", nil, fmt.Errorf("hostname is required")
+	}
+	key, err := ParseHostPublicKey(publicKey)
+	return path, hostname, key, err
 }
 
 func replaceKnownHostData(data []byte, hostname, replacement string) []byte {
@@ -363,18 +375,32 @@ func writeKnownHostsAtomicallyWithOps(path string, data []byte, mode os.FileMode
 	return nil
 }
 
-func writeKnownHostsCandidate(dir, pattern string, data []byte, mode os.FileMode) (path string, err error) {
+type knownHostsCandidateFile interface {
+	Name() string
+	Chmod(os.FileMode) error
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+func writeKnownHostsCandidate(dir, pattern string, data []byte, mode os.FileMode) (string, error) {
 	file, err := os.CreateTemp(dir, pattern)
 	if err != nil {
 		return "", err
 	}
-	path = file.Name()
+	return finishKnownHostsCandidate(file, data, mode)
+}
+
+func finishKnownHostsCandidate(file knownHostsCandidateFile, data []byte, mode os.FileMode) (path string, err error) {
+	candidatePath := file.Name()
+	path = candidatePath
 	defer func() {
 		if file != nil {
 			_ = file.Close()
 		}
 		if err != nil {
-			_ = os.Remove(path)
+			// Explicit error returns overwrite the named path before this defer.
+			_ = os.Remove(candidatePath)
 		}
 	}()
 	if err = file.Chmod(mode); err != nil {

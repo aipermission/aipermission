@@ -223,6 +223,10 @@ Gateway SSH clients use explicit first-connect fingerprint approval:
 - The first unknown host key returns `unknown_ssh_host_key` with the host, key type, SHA256 fingerprint, and public host key payload.
 - The user should verify the fingerprint through a trusted channel such as the VPS provider console or their own trusted terminal.
 - After approval, the host key is stored under the local data path `known_hosts` file. This file is outside the encrypted database and stores host key pins only, not SSH private keys.
+- Initial trust and replacement both validate a staged file, sync its contents,
+  atomically publish it and sync the parent directory before reporting success.
+  Publication failure preserves the prior trust state when rollback succeeds;
+  an unconfirmed rollback reports indeterminate trust instead of success.
 - Later connections for the same host/port verify the host key.
 - If the host key changes, the connection is rejected.
 
