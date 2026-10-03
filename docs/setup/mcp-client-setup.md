@@ -78,7 +78,15 @@ failures stop setup rather than risking a token write.
 
 Config updates use a cross-process lock, private POSIX modes or a restricted
 Windows ACL, and atomic replacement so concurrent setup processes cannot
-silently discard entries. A lock is never stolen automatically: after a crash,
+silently discard entries. JSON, JSONC, TOML and local Git exclude updates also
+compare the exact original bytes and file identity immediately before replacing
+the destination. If an outside editor created, changed, deleted or replaced it,
+setup stops with a conflict: review the current file and retry. Owned temporary
+files and locks are cleaned up without changing the outside edit. This is
+optimistic conflict detection, not an atomic compare-and-swap guarantee against
+writers that ignore the lock; an outside writer can still race the final
+comparison and rename. Close other config editors while running setup.
+A lock is never stolen automatically: after a crash,
 first confirm no other setup process is running, then remove the
 `.aipermission.lock` path named in the timeout error and retry. Config and skill
 paths reject symbolic links or junctions anywhere in their managed path. Use

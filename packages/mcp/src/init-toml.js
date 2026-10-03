@@ -1,24 +1,20 @@
-import fs from "node:fs/promises";
 import { parse as parseTOML } from "smol-toml";
 import { atomicWritePrivateFile, withPrivateFileLock } from "./private-file.js";
+import { readPrivateFileSnapshot } from "./private-file-snapshot.js";
 
 export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
   await withPrivateFileLock(
     filePath,
     async () => {
       await options.beforeWrite?.();
-      let current = "";
-      try {
-        current = await fs.readFile(filePath, "utf8");
-      } catch (error) {
-        if (error.code !== "ENOENT") throw error;
-      }
+      const snapshot = await readPrivateFileSnapshot(filePath);
+      const current = snapshot.content;
       const next = removeTOMLServer(current, name).trimEnd();
       const block = tomlServerBlock(name, config);
       const outputContent = `${next ? `${next}\n\n` : ""}${block}\n`;
       parseTOMLDocument(outputContent, filePath);
       await options.beforeWrite?.();
-      await atomicWritePrivateFile(filePath, outputContent, options);
+      await atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
     },
     options,
   );

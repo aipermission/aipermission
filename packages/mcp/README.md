@@ -55,8 +55,15 @@ Check both paths without printing the bearer token:
 npx -y @aipermission/mcp doctor --client codex --scope user
 ```
 
-The generated MCP config contains a bearer token. Keep it private. For
-project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and
+The generated MCP config contains a bearer token. Keep it private.
+
+For config updates, setup detects outside edits observed before atomic replacement
+and stops rather than knowingly overwriting them. Review the current file and
+retry after closing other editors. This does not provide atomic compare-and-swap
+against writers ignoring the setup lock; see the
+[setup conflict and recovery guidance](../../docs/setup/mcp-client-setup.md).
+
+For project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and
 `.vscode/mcp.json`, setup refuses to write into files already tracked by Git
 unless `--force` is passed. For untracked project-local configs, it locally
 excludes and verifies four paths: the final config, crash-safe temporary-file

@@ -42,6 +42,71 @@ test("init preserves its public exports and exposes the implementation owners di
 });
 
 for (const format of ["JSON", "JSONC", "TOML"]) {
+  for (const change of ["edit", "create", "delete", "replace", "stage-edit"]) {
+    test(`${format} writer preserves an external ${change} and reports conflict`, async (t) => {
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-external-config-"));
+      t.after(() => fs.rm(dir, { recursive: true, force: true }));
+      const filePath = path.join(dir, "config");
+      const original = format === "TOML" ? '# keep\ntitle = "before"\n' : '// keep\n{ "note": "before", }\n';
+      const bytes = format === "JSON" ? '{ "note": "before" }\n' : original;
+      const edited = bytes.replace("before", "external-edit");
+      if (change !== "create") await fs.writeFile(filePath, bytes, { mode: 0o600 });
+      let changed = false;
+      const mutate = async () => {
+        changed = true;
+        if (change === "delete" || change === "replace") await fs.unlink(filePath);
+        if (change !== "delete") await fs.writeFile(filePath, change === "replace" ? bytes : edited, { mode: 0o600 });
+      };
+      let calls = 0;
+      const options = {
+        trustedRoot: dir,
+        jsonc: format === "JSONC",
+        beforeWrite: async () => {
+          if (++calls === 2 && change !== "stage-edit") await mutate();
+        },
+        enforcePermissions: async (target) => {
+          if (process.platform !== "win32") await fs.chmod(target, 0o600);
+          if (change === "stage-edit" && target.endsWith(".tmp")) await mutate();
+        },
+      };
+      const config = buildMCPServerConfig({ apiUrl: "http://localhost:3210", token: "CONFLICT_CANARY" });
+      const write = () =>
+        format === "TOML"
+          ? writeTOMLMCPConfig(filePath, "aipermission", config, options)
+          : writeJSONMCPConfig(filePath, "aipermission", config, "servers", options);
+      await assert.rejects(write, (error) => {
+        assert.match(error.message, /changed.*retry/i);
+        assert.doesNotMatch(error.message, /CONFLICT_CANARY|external-edit|before/);
+        return true;
+      });
+      assert.equal(changed, true);
+      if (change === "delete") await assert.rejects(fs.stat(filePath), { code: "ENOENT" });
+      else assert.equal(await fs.readFile(filePath, "utf8"), change === "replace" ? bytes : edited);
+      assert.deepEqual(await fs.readdir(dir), change === "delete" ? [] : ["config"]);
+    });
+  }
+}
+
+test("Git exclude update preserves an external edit and removes owned staging and lock files", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-external-exclude-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  await promisify(execFile)("git", ["init", "--quiet", dir]);
+  const exclude = path.join(dir, ".git", "info", "exclude");
+  const original = await fs.readFile(exclude, "utf8");
+  const edited = `${original}\nexternal-only\n`;
+  await assert.rejects(
+    gitOwner.protectGitIgnoredConfig(path.join(dir, "mcp.json"), dir, {
+      beforeWrite: async () => fs.writeFile(exclude, edited),
+    }),
+    /changed.*retry/i,
+  );
+  assert.equal(await fs.readFile(exclude, "utf8"), edited);
+  assert.deepEqual(await fs.readdir(path.dirname(exclude)), ["exclude"]);
+});
+
+for (const format of ["JSON", "JSONC", "TOML"]) {
   test(`${format} writer runs both callbacks under lock and preserves the file when the second rejects`, async (t) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-init-callback-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));

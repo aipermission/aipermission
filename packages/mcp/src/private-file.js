@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
+import { assertPrivateFileUnchanged } from "./private-file-snapshot.js";
 
 const execFileAsync = promisify(execFile);
 const staleTemporaryAgeMs = 24 * 60 * 60 * 1000;
@@ -34,6 +35,7 @@ export async function atomicWritePrivateFile(filePath, contents, options = {}) {
     await handle.close();
     handle = undefined;
     await validatePrivateDestination(destination, options);
+    if (options.expectedSnapshot) await assertPrivateFileUnchanged(destination, options.expectedSnapshot);
     await rename(temporaryPath, destination);
     await (options.syncDirectory || syncParentDirectory)(directory);
   } catch (error) {

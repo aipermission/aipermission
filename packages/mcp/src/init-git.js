@@ -1,7 +1,7 @@
-import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
+import { readPrivateFileSnapshot } from "./private-file-snapshot.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -53,18 +53,16 @@ export async function protectGitIgnoredConfig(filePath, startDir = process.cwd()
     await withPrivateFileLock(
       excludePath,
       async () => {
-        let current = "";
-        try {
-          current = await fs.readFile(excludePath, "utf8");
-        } catch (error) {
-          if (error.code !== "ENOENT") throw error;
-        }
+        const snapshot = await readPrivateFileSnapshot(excludePath);
+        const current = snapshot.content;
         const entries = new Set(current.split(/\r?\n/));
         const missingEntries = ignoreEntries.filter((entry) => !entries.has(entry));
         if (missingEntries.length === 0) return;
         const prefix = current && !current.endsWith("\n") ? "\n" : "";
+        await options.beforeWrite?.();
         await atomicWritePrivateFile(excludePath, `${current}${prefix}${missingEntries.join("\n")}\n`, {
           trustedRoot: path.dirname(excludePath),
+          expectedSnapshot: snapshot,
         });
       },
       { trustedRoot: path.dirname(excludePath) },
