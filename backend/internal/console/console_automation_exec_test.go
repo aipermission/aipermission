@@ -469,7 +469,7 @@ func TestAppendDisplayOutputSeparatesAutomationCommandFromPrompt(t *testing.T) {
 	session := &managedConsoleSession{
 		transcript: "root@worker:~# ",
 	}
-	session.appendDisplayOutput(terminaltext.FormatAutomationCommand("pwd"))
+	session.appendDisplayOutput(t.Context(), terminaltext.FormatAutomationCommand("pwd"))
 
 	if !strings.Contains(session.transcript, "root@worker:~# \r\n[AI command]") {
 		t.Fatalf("automation command should start after the current prompt line: %q", session.transcript)

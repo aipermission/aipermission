@@ -408,7 +408,7 @@ func TestSecretLeakCanaryNeverEntersConsoleTranscript(t *testing.T) {
 
 	session.appendOutput("canary=" + canary[:17])
 	session.appendOutput(canary[17:] + "\n")
-	session.appendDisplayOutput("[AI command]\n$ printf '" + canary + "'\n")
+	session.appendDisplayOutput(t.Context(), "[AI command]\n$ printf '"+canary+"'\n")
 	session.flushTranscript()
 
 	var snapshot string
@@ -533,7 +533,7 @@ func TestManagedConsoleSessionRedactsVaultValueFromDisplayAndPersistenceText(t *
 		manager: &Manager{redact: func(value string) string { return value }},
 		clients: map[*websocket.Conn]*sync.Mutex{}, exactRedactor: redactor,
 	}
-	session.appendDisplayOutput("[AI command]\n$ printf secret-value\n")
+	session.appendDisplayOutput(t.Context(), "[AI command]\n$ printf secret-value\n")
 	if strings.Contains(session.transcript, "secret-value") {
 		t.Fatalf("display output leaked Vault value: %q", session.transcript)
 	}

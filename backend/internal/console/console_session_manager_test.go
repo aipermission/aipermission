@@ -1283,7 +1283,7 @@ func TestConsoleTranscriptPersistsAppendOnlyChunksAndBoundedSnapshot(t *testing.
 		status:  "connected",
 		clients: map[*websocket.Conn]*sync.Mutex{},
 	}
-	session.appendDisplayOutput(output)
+	session.appendDisplayOutput(t.Context(), output)
 	session.flushTranscript()
 
 	var snapshot string

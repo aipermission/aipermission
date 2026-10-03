@@ -1,6 +1,8 @@
 package console
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"sync"
 	"testing"
@@ -23,9 +25,11 @@ func TestConsoleOutputBelongsToSnapshotOrLiveDelivery(t *testing.T) {
 func testConsoleOutputOwnership(t *testing.T, path, registration string) {
 	server, client := newConsoleFramePair(t)
 	session := &managedConsoleSession{
-		id: 7, status: "connected", manager: &Manager{}, workClosed: true,
-		clients:       map[*websocket.Conn]*sync.Mutex{},
-		pendingOutput: strings.Repeat("p", maxConsolePendingFlushSize),
+		id: 7, status: "connected", manager: &Manager{db: &sql.DB{}}, workClosed: true,
+		clients: map[*websocket.Conn]*sync.Mutex{},
+	}
+	if err := session.outputBuffer.Append(context.Background(), strings.Repeat("p", maxConsoleChunkLength*4), nil); err != nil {
+		t.Fatal(err)
 	}
 	data := "\rprogress\x1b[2K\rcomplete\r\n"
 	if path == "display" {
@@ -65,7 +69,7 @@ func testConsoleOutputOwnership(t *testing.T, path, registration string) {
 		if path == "manual" {
 			session.appendSafeOutput(data)
 		} else {
-			session.appendDisplayOutput(data)
+			session.appendDisplayOutput(t.Context(), data)
 		}
 		session.broadcast(ptyServerMessage{Type: "ready", Status: "connected", SessionID: session.id})
 	}()

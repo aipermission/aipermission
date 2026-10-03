@@ -749,14 +749,7 @@ func (m *Manager) exactSession(handle SessionHandle) (*managedConsoleSession, er
 }
 
 func (m *Manager) activeSessionCountLocked() int {
-	count := 0
-	for _, session := range m.sessions {
-		status, _ := session.snapshot()
-		if status == "connecting" || status == "connected" {
-			count++
-		}
-	}
-	return count
+	return len(m.sessions)
 }
 
 func (m *Manager) active(id int64) *managedConsoleSession {

@@ -18,7 +18,6 @@ const (
 	maxConsoleTranscriptLength   = 200000
 	maxConsoleSnapshotLength     = 50000
 	maxConsoleChunkLength        = consolepersistence.MaxChunkLength
-	maxConsolePendingFlushSize   = maxConsoleChunkLength * 4
 	maxActiveConsoleSessions     = 32
 	maxConsoleClientsPerSession  = 8
 	maxConsoleInputBytes         = 65536
@@ -232,32 +231,31 @@ type managedConsoleSession struct {
 	exactRedactionClosed    bool
 	manager                 *Manager
 
-	ctx        context.Context
-	cancel     context.CancelFunc
-	start      chan struct{}
-	done       chan struct{}
-	startOnce  sync.Once
-	closeOnce  sync.Once
-	closeKick  sync.Once
-	closeErr   error
-	workMu     sync.Mutex
-	workWG     sync.WaitGroup
-	workClosed bool
-	persistMu  sync.Mutex
-	finalizeMu sync.Mutex
-	finalized  bool
-	persisted  bool
-	hookDone   bool
+	ctx          context.Context
+	cancel       context.CancelFunc
+	start        chan struct{}
+	done         chan struct{}
+	startOnce    sync.Once
+	closeOnce    sync.Once
+	closeKick    sync.Once
+	closeErr     error
+	workMu       sync.Mutex
+	workWG       sync.WaitGroup
+	workClosed   bool
+	outputBuffer consolepersistence.Buffer
+	finalizeMu   sync.Mutex
+	finalized    bool
+	persisted    bool
+	hookDone     bool
 
 	mu              sync.Mutex
 	execMu, inputMu sync.Mutex
-	outputMu        sync.Mutex
+	outputMu        consolepersistence.OutputGate
 	status          string
 	closing         bool
 	transcript      string
 	rawTranscript   string
 	rawBaseOffset   int64
-	pendingOutput   string
 	errText         string
 	stdin           io.WriteCloser
 	runtime         *RuntimeSession
@@ -267,7 +265,6 @@ type managedConsoleSession struct {
 	manualActive    *consoleSessionManualCapture
 	manualPause     *consoleSessionManualPause
 	filterUntil     time.Time
-	persistTimer    *time.Timer
 	startErr        error
 	finalStatus     string
 	finalMessage    string
