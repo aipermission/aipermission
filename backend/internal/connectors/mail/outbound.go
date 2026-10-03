@@ -169,7 +169,11 @@ func parseAddressInput(value any, allowedDomains []string) ([]*mail.Address, err
 		}
 		parsed = addresses
 	} else {
-		for _, item := range stringSlice(value) {
+		items, err := stringSlice(value)
+		if err != nil {
+			return nil, fmt.Errorf("invalid recipient address list: %w", err)
+		}
+		for _, item := range items {
 			address, err := parseMailboxAddress(item)
 			if err != nil {
 				return nil, err

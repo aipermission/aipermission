@@ -34,19 +34,21 @@ export function mailPublicProfile(profile: Record<string, unknown>) {
     reply_to: optionalConsoleText(profile.reply_to, "Mail", "reply_to"),
     imap_enabled: optionalConsoleBoolean(profile.imap_enabled, "Mail", "imap_enabled"),
     smtp_auth_mode: optionalConsoleText(profile.smtp_auth_mode, "Mail", "smtp_auth_mode"),
-    allowed_read_folders: optionalConsoleTextList(profile.allowed_read_folders, "Mail", "allowed_read_folders"),
-    allowed_mutation_source_folders: optionalConsoleTextList(
-      profile.allowed_mutation_source_folders,
-      "Mail",
-      "allowed_mutation_source_folders",
-    ),
-    allowed_mutation_destination_folders: optionalConsoleTextList(
+    allowed_read_folders: mailPolicyList(profile.allowed_read_folders, "allowed_read_folders"),
+    allowed_mutation_source_folders: mailPolicyList(profile.allowed_mutation_source_folders, "allowed_mutation_source_folders"),
+    allowed_mutation_destination_folders: mailPolicyList(
       profile.allowed_mutation_destination_folders,
-      "Mail",
       "allowed_mutation_destination_folders",
     ),
     sent_folder: optionalConsoleText(profile.sent_folder, "Mail", "sent_folder"),
     archive_folder: optionalConsoleText(profile.archive_folder, "Mail", "archive_folder"),
     trash_folder: optionalConsoleText(profile.trash_folder, "Mail", "trash_folder"),
   };
+}
+
+export function mailPolicyList(value: unknown, field: string) {
+  const list = optionalConsoleTextList(value === null ? undefined : value, "Mail", field);
+  const entries = typeof list === "string" ? list.split(/[,\n]/).filter((item) => item !== "") : list;
+  if (entries?.some((item) => item.trim() === "")) throw new Error(`Invalid Mail console target ${field}.`);
+  return list;
 }

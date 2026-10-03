@@ -741,12 +741,6 @@
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/editor/credential-family-boundary.tsx": {
-      "statements": 100,
-      "branches": 100,
-      "functions": 100,
-      "lines": 100
-    },
     "src/connectors/editor/credential-menu.tsx": {
       "statements": 100,
       "branches": 100,
@@ -760,6 +754,12 @@
       "lines": 100
     },
     "src/connectors/editor/editor-support.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/editor/inventory-row-boundary.tsx": {
       "statements": 100,
       "branches": 100,
       "functions": 100,
