@@ -25,6 +25,7 @@ type fakeBulkRequestOwner struct {
 	finishedActive chan console.SessionHandle
 	workerContext  context.Context
 	bulkRecords    map[string]fakeBulkRecord
+	claimError     error
 }
 
 type fakeBulkRecord struct {
@@ -49,6 +50,10 @@ func (owner *fakeBulkRequestOwner) InsertPrepared(context.Context, Executor, Pre
 func (owner *fakeBulkRequestOwner) SetSession(_ context.Context, requestID, sessionID int64) error {
 	owner.setSession <- [2]int64{requestID, sessionID}
 	return nil
+}
+
+func (owner *fakeBulkRequestOwner) ClaimDispatch(context.Context, int64) error {
+	return owner.claimError
 }
 
 func (owner *fakeBulkRequestOwner) Finish(_ context.Context, completion Completion) error {
@@ -102,7 +107,7 @@ func (sessions *blockingBulkSessions) Exec(ctx context.Context, _ executionprinc
 	return console.ExecResult{}, errors.New("console session closed")
 }
 
-func TestBulkRunDefersDispatchedShutdownOutcomeToCoordinator(t *testing.T) {
+func TestBulkRunRetainsDispatchedShutdownUncertainty(t *testing.T) {
 	runtime, owner, _ := newBulkTestRuntime(t)
 	workerContext, cancelWorker := context.WithCancel(t.Context())
 	owner.workerContext = workerContext
@@ -122,8 +127,11 @@ func TestBulkRunDefersDispatchedShutdownOutcomeToCoordinator(t *testing.T) {
 	cancelWorker()
 	select {
 	case completion := <-owner.finish:
-		t.Fatalf("shutdown worker persisted terminal completion %#v", completion)
-	case <-time.After(50 * time.Millisecond):
+		if completion.Status != "outcome_unknown" {
+			t.Fatalf("shutdown worker asserted a terminal completion %#v", completion)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shutdown worker did not retain uncertainty")
 	}
 }
 

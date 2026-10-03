@@ -105,7 +105,7 @@ func TestStoreFinishesAndCancelsOnlyRequestedScopes(t *testing.T) {
 		t.Fatalf("runtime canceled = %d", affected)
 	}
 	for id, expected := range map[int64]string{
-		finishedID: "completed", sessionCanceledID: "error", runtimeCanceledID: "error",
+		finishedID: "completed", sessionCanceledID: "outcome_unknown", runtimeCanceledID: "outcome_unknown",
 	} {
 		var status string
 		if err := database.QueryRowContext(t.Context(), `SELECT status FROM command_requests WHERE id = ?`, id).Scan(&status); err != nil {

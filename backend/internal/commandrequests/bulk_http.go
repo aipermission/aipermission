@@ -35,6 +35,7 @@ type BulkTarget struct {
 type BulkRequestOwner interface {
 	Prepare(context.Context, Insert) (PreparedInsert, error)
 	InsertPrepared(context.Context, Executor, PreparedInsert) (int64, error)
+	ClaimDispatch(context.Context, int64) error
 	SetSession(context.Context, int64, int64) error
 	Finish(context.Context, Completion) error
 	FinishActive(context.Context, int64, executionprincipal.Principal, console.SessionHandle)
@@ -168,7 +169,7 @@ func (h *BulkHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	for _, target := range targets {
 		item, err := runtime.Requests.Prepare(r.Context(), Insert{
 			RuntimeID: target.RuntimeID, Source: SourceManual,
-			Command: request.Command, Reason: request.Reason, Status: "running",
+			Command: request.Command, Reason: request.Reason, Status: "running", Queued: true,
 		})
 		if err != nil {
 			httptransport.WriteInternalError(w)
@@ -254,7 +255,7 @@ func (runtime *BulkHTTPRuntime) run(command string, items []BulkHTTPResponseItem
 	}) {
 		for _, item := range items {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			_ = runtime.Requests.Finish(ctx, Completion{ID: item.RequestID, Status: "error", Error: "command runtime is shutting down"})
+			_ = runtime.Requests.Finish(ctx, Completion{ID: item.RequestID, Status: "canceled", Error: "command runtime is shutting down before dispatch"})
 			cancel()
 		}
 	}
@@ -278,12 +279,19 @@ func (runtime *BulkHTTPRuntime) runOne(workerContext context.Context, item BulkH
 		runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: err.Error()})
 		return
 	}
-	result, err := runtime.Sessions.Exec(ctx, principal, item.TargetID, command)
-	if workerContext.Err() != nil {
+	if err := runtime.Requests.ClaimDispatch(ctx, item.RequestID); err != nil {
+		if !errors.Is(err, ErrNotRunning) {
+			runtime.finish(Completion{ID: item.RequestID, Status: "error", Error: "command dispatch admission failed"})
+		}
 		return
 	}
+	if ctx.Err() != nil {
+		runtime.finish(Completion{ID: item.RequestID, Status: "canceled", Error: "command canceled before dispatch"})
+		return
+	}
+	result, err := runtime.Sessions.Exec(ctx, principal, item.TargetID, command)
 	if err != nil {
-		if errors.Is(err, console.ErrCommandOutcomeUnknown) {
+		if workerContext.Err() != nil || errors.Is(err, console.ErrCommandOutcomeUnknown) {
 			runtime.finish(unknownCommandCompletion(item.RequestID, result.SessionID, ""))
 			return
 		}

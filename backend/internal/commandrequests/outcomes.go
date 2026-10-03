@@ -5,7 +5,7 @@ import (
 	"errors"
 )
 
-const commandObservationUnknown = "command was dispatched, but its outcome is unknown; inspect the existing console session and external state before retrying"
+const commandObservationUnknown = "command may have been dispatched, but its outcome is unknown; inspect the existing console session and external state before retrying"
 
 func unknownCommandCompletion(id, sessionID int64, detail string) Completion {
 	message := commandObservationUnknown

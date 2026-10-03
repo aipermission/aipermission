@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests/finality"
 	"github.com/aipermission/aipermission/backend/internal/runtimeoutcome"
 )
 
@@ -98,10 +99,12 @@ func runMigrationMaintenance(database *sql.DB) error {
 		return fmt.Errorf("begin migration maintenance: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.Exec(finality.RecoverySQL("status = 'running'"), "gateway restarted while command was running"); err != nil {
+		return fmt.Errorf("recover interrupted commands: %w", err)
+	}
 
 	for _, statement := range []string{
 		`UPDATE console_sessions SET status = 'closed', error = 'gateway restarted', closed_at = COALESCE(closed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status IN ('connecting', 'connected')`,
-		`UPDATE command_requests SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')) WHERE status = 'running'`,
 		`UPDATE connector_action_requests SET status = 'outcome_unknown', error = '` + runtimeoutcome.ConnectorActionUnknown + `', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')) WHERE status = 'running'`,
 		`UPDATE vault_action_requests SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status = 'running'`,
 		`UPDATE vault_session_leases SET status = 'revoked', updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status = 'active'`,
@@ -109,7 +112,7 @@ func runMigrationMaintenance(database *sql.DB) error {
 		`UPDATE file_transfers SET status = 'failed', error = 'gateway restarted while file transfer was running', failure_kind = 'outcome_unknown', failure_details_json = CASE WHEN remote_staging_ref != '' THEN json_patch(failure_details_json, json_object('remote_cleanup_pending', json('true'), 'recovery_hint', 'Connector-owned staging cleanup will be retried when this workspace opens.')) ELSE failure_details_json END, completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status IN ('running', 'paused')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', failure_kind = 'interrupted', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status IN ('pending', 'pending_approval')`,
 		`UPDATE file_transfer_batches SET status = 'failed', error = 'gateway restarted while file transfer queue was running', failure_kind = 'outcome_unknown', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE status IN ('running', 'paused')`,
-		`UPDATE history_entries SET status = 'error', error = 'gateway restarted while command was running', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE source_ref_type = 'command_request' AND status = 'running'`,
+		`UPDATE history_entries SET status = (SELECT status FROM command_requests WHERE id = source_ref_id), error = (SELECT error FROM command_requests WHERE id = source_ref_id), exit_code = (SELECT exit_code FROM command_requests WHERE id = source_ref_id), completed_at = (SELECT completed_at FROM command_requests WHERE id = source_ref_id), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE source_ref_type = 'command_request' AND status = 'running' AND EXISTS (SELECT 1 FROM command_requests WHERE id = source_ref_id)`,
 		`UPDATE history_entries SET status = 'outcome_unknown', error = '` + runtimeoutcome.ConnectorActionUnknown + `', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE source_ref_type = 'connector_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while the Vault action was running', completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE source_ref_type = 'vault_action_request' AND status = 'running'`,
 		`UPDATE history_entries SET status = 'failed', error = 'gateway restarted while file transfer was running', preview_json = json_object('failure_kind', 'interrupted'), completed_at = COALESCE(completed_at, strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now')), updated_at = strftime('%Y-%m-%dT%H:%M:%f000000Z', 'now') WHERE source_ref_type = 'file_transfer' AND status IN ('pending', 'pending_approval')`,

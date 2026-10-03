@@ -1086,7 +1086,7 @@ func TestLockPromotesRemainingUnlockedWorkspaceForMCP(t *testing.T) {
 	}
 }
 
-func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
+func TestLockPreservesRunningCommandOutcomeUncertainty(t *testing.T) {
 	server := newLockedAPITestServer(t)
 	handler := server.Handler()
 	defer server.Close()
@@ -1128,8 +1128,8 @@ func TestLockMarksRunningCommandRequestsAsError(t *testing.T) {
 	if err := reopened.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, requestID).Scan(&status, &errorText); err != nil {
 		t.Fatalf("read command request: %v", err)
 	}
-	if status != "error" || !strings.Contains(errorText, "workspace locked") {
-		t.Fatalf("running request should be marked error on lock, status=%s error=%q", status, errorText)
+	if status != "outcome_unknown" || !strings.Contains(errorText, "workspace locked") {
+		t.Fatalf("running request should preserve uncertainty on lock, status=%s error=%q", status, errorText)
 	}
 }
 

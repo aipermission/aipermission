@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests/finality"
 	"github.com/aipermission/aipermission/backend/internal/db/auditmigration"
 )
 
@@ -84,6 +85,7 @@ func migrations() []migration {
 		vaultActionRetentionIndexMigration,
 		vaultActionIdempotencyTombstoneMigration,
 		vaultFinalizationMigration,
+		migration{version: 42, description: "durable command dispatch admission", statements: []string{finality.DispatchColumn}},
 	)
 }
 

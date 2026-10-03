@@ -37,6 +37,8 @@ type Insert struct {
 	Command   string
 	Reason    string
 	Status    string
+	// Queued proves this owner has not yet admitted remote execution.
+	Queued bool
 }
 
 type PreparedInsert struct {

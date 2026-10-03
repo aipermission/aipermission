@@ -271,7 +271,7 @@ func TestRuntimeShutdownLeavesActiveCommandForCanonicalRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if recovered.Status != "error" || recovered.Error != "workspace locked while command was running" {
+	if recovered.Status != "outcome_unknown" || !strings.Contains(recovered.Error, "workspace locked while command was running") {
 		t.Fatalf("canonical recovery result = %#v", recovered)
 	}
 }

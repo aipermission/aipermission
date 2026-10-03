@@ -75,8 +75,8 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if err := fixture.db.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, runningRequestID).Scan(&closedRequestStatus, &closedRequestError); err != nil {
 		t.Fatalf("read closed running request: %v", err)
 	}
-	if closedRequestStatus != "error" || !strings.Contains(closedRequestError, "console session closed") {
-		t.Fatalf("close should mark session running request error, status=%s error=%q", closedRequestStatus, closedRequestError)
+	if closedRequestStatus != "outcome_unknown" || !strings.Contains(closedRequestError, "console session closed") {
+		t.Fatalf("close should preserve running request uncertainty, status=%s error=%q", closedRequestStatus, closedRequestError)
 	}
 
 	restartServer := fixture.createKeyAndServer(t, "worker-restart")
@@ -124,8 +124,8 @@ func TestMessageAndConsoleRoutes(t *testing.T) {
 	if err := fixture.db.QueryRow(`SELECT status, error FROM command_requests WHERE id = ?`, restartRequestID).Scan(&restartedRequestStatus, &restartedRequestError); err != nil {
 		t.Fatalf("read restarted request: %v", err)
 	}
-	if restartedRequestStatus != "error" || !strings.Contains(restartedRequestError, "restarted by local user") {
-		t.Fatalf("restart should mark running request error, status=%s error=%q", restartedRequestStatus, restartedRequestError)
+	if restartedRequestStatus != "outcome_unknown" || !strings.Contains(restartedRequestError, "restarted by local user") {
+		t.Fatalf("restart should preserve running request uncertainty, status=%s error=%q", restartedRequestStatus, restartedRequestError)
 	}
 
 }

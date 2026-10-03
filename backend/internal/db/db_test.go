@@ -568,6 +568,7 @@ func TestOpenEncryptedScrubsLegacyS3UploadProjections(t *testing.T) {
 	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
 		t.Fatalf("remove Vault request envelope from schema 19 fixture: %v", err)
 	}
+	removeCommandDispatchEvidence(t, database)
 	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 20`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 19: %v", err)
 	}
@@ -969,6 +970,7 @@ func downgradeDatabaseToSchema18(t *testing.T, database *sql.DB) {
 	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
 		t.Fatalf("remove Vault request envelope from schema 18 fixture: %v", err)
 	}
+	removeCommandDispatchEvidence(t, database)
 	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 19`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 18: %v", err)
 	}
