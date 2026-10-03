@@ -7,7 +7,7 @@ Product screenshots used by the root README and release notes.
 - `01-database-setup.png` - first-run encrypted database setup
 - `02-database-unlock.png` - database unlock screen
 - `03-dashboard-light.png` - light dashboard overview
-- `04-credentials.png` - gateway credential management
+- [04-ssh-keys.png](04-ssh-keys.png) - historical SSH key management view
 - `05-add-server.png` - server setup with public key install command
 - `06-tokens-create.png` - token management and token creation
 - `07-approval-health-snapshot.png` - approval prompt for a read-only health snapshot

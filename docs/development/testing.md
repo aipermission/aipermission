@@ -41,6 +41,17 @@ canonical repository root.
 make -f Makefile release-check
 ```
 
+`make hygiene` is a repository and executable-tooling gate, not a static-only
+scan. Besides tracked-file and policy checks, it runs dependency audits, Go
+tooling, an actual Docker build-context fixture, ephemeral loopback Vite
+servers, and dependency-optimizer/build checks. Have the supported Node/Go
+toolchains, installed dependencies, a working Docker daemon, and network access
+for audits available; tooling fixtures also need local loopback listeners.
+It does not run Gitleaks or inspect full Git history. Use
+`make secret-history-check` for the pinned full-history scan. Both checks are
+mandatory in `make release-check` and CI; hygiene alone is not release
+qualification.
+
 This runs:
 
 - repository secret, line-ending, source-size, and frontend hook-debt budgets
