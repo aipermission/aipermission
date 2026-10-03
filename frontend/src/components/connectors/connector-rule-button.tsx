@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes } from "react";
+import type { ExecutionRule } from "../../lib/gateway-contracts/security-contracts";
 
 type ConnectorRuleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { active: boolean };
 
@@ -17,5 +18,39 @@ export function ConnectorRuleButton({ active, children, className = "", title, .
     >
       {children}
     </button>
+  );
+}
+
+const rules: readonly { value: ExecutionRule | ""; label: string }[] = [
+  { value: "", label: "Disabled" },
+  { value: "blocked", label: "Blocked" },
+  { value: "approval_required", label: "Prompt" },
+  { value: "always_run", label: "Always" },
+];
+
+export function ConnectorRuleButtons({
+  rule,
+  saving = false,
+  disabled = false,
+  onSetRule,
+}: {
+  rule: string;
+  saving?: boolean;
+  disabled?: boolean;
+  onSetRule: (_rule: ExecutionRule | "") => unknown;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-1">
+      {rules.map((choice) => (
+        <ConnectorRuleButton
+          key={choice.value}
+          active={rule === choice.value && !disabled}
+          disabled={saving || disabled}
+          onClick={() => onSetRule(choice.value)}
+        >
+          {choice.label}
+        </ConnectorRuleButton>
+      ))}
+    </div>
   );
 }

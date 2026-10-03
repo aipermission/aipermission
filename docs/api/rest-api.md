@@ -1336,6 +1336,13 @@ and a bounded compact permission snapshot. If that snapshot exceeds the audit
 budget, `permissions_truncated` is true; the revision still identifies the full
 permission set. A mutation that cannot be audited rolls back.
 
+The browser permission editor freezes rule changes and dismissal while its
+submitted mutation and parent refresh are pending. The validated response
+becomes the displayed snapshot; editing afterwards clears the saved notice.
+A parent refresh failure is reported separately from a successful permission
+commit. Changing tokens retires local response ownership, not a gateway
+mutation already admitted; reopen the token to reconcile its current revision.
+
 `expires_at` is optional and must be an RFC3339 timestamp in the future when
 present. It creates a temporary token action permission grant. Expired grants
 are kept in the local database for audit clarity, but MCP discovery and
