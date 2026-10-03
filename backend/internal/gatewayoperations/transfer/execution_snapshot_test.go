@@ -135,7 +135,7 @@ func invokeTestUploadBatch(t *testing.T, fixture transferTestFixture) *httptest.
 	return response
 }
 
-func newMultipartTransferRequest(t *testing.T, runtimeID int64, remotePath string, remoteDir string) *http.Request {
+func newMultipartTransferRequest(t *testing.T, runtimeID int64, remotePath string, remoteDir string, extraFields ...map[string]string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -148,6 +148,13 @@ func newMultipartTransferRequest(t *testing.T, runtimeID int64, remotePath strin
 	} {
 		if err := writer.WriteField(key, value); err != nil {
 			t.Fatal(err)
+		}
+	}
+	for _, fields := range extraFields {
+		for key, value := range fields {
+			if err := writer.WriteField(key, value); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	file, err := writer.CreateFormFile("file", "upload.txt")

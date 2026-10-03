@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -11,7 +12,7 @@ import (
 )
 
 func (s *Server) configureConnectorActionApplication() error {
-	application, err := s.connectorActionOwner.NewConnectorActionApplication(connectorActionJSONBodyBytes, gatewayinfra.ConnectorActionPorts{
+	application, err := s.connectorActionOwner.NewConnectorActionApplication(httptransport.ConnectorActionJSONBodyBytes, gatewayinfra.ConnectorActionPorts{
 		Capabilities: func(runtime *gatewayinfra.WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, finish gatewayinfra.ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
 			return s.connectorRuntime.ActionCapabilities(runtime, kind, dependencies, finish)
 		},

@@ -3,11 +3,12 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+const defaultJSONBodyBytes = 1 << 20
 
 func TestWriteErrorWithCodePreservesStableMachineContract(t *testing.T) {
 	recorder := httptest.NewRecorder()
@@ -45,28 +46,26 @@ func TestDecodeJSONUsesConservativeDefaultLimit(t *testing.T) {
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	var payload map[string]any
-	err := decodeJSONBody(recorder, request, &payload)
-	var maxBytesErr *http.MaxBytesError
-	if !errors.As(err, &maxBytesErr) {
-		t.Fatalf("decode error = %v, want MaxBytesError", err)
-	}
-	if maxBytesErr.Limit != defaultJSONBodyBytes {
-		t.Fatalf("limit = %d, want %d", maxBytesErr.Limit, defaultJSONBodyBytes)
+	if decodeJSON(recorder, request, &payload) || recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("oversized body accepted: status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
 func TestDecodeJSONAllowsExplicitConnectorActionLimit(t *testing.T) {
 	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call"} {
 		t.Run(path, func(t *testing.T) {
-			if got := jsonBodyLimitForPath(path); got != connectorActionJSONBodyBytes {
-				t.Fatalf("limit = %d, want %d", got, connectorActionJSONBodyBytes)
-			}
 			request := httptest.NewRequest(http.MethodPost, path, bytes.NewReader(jsonBodyLargerThan(defaultJSONBodyBytes)))
 			request.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 			var payload map[string]any
-			if err := decodeJSONBody(recorder, request, &payload); err != nil {
-				t.Fatalf("decode connector action body: %v", err)
+			if !decodeJSON(recorder, request, &payload) {
+				t.Fatalf("decode connector action body: %s", recorder.Body.String())
+			}
+			request = httptest.NewRequest(http.MethodPost, path, bytes.NewReader(jsonBodyLargerThan(32<<20)))
+			request.Header.Set("Content-Type", "application/json")
+			recorder = httptest.NewRecorder()
+			if decodeJSON(recorder, request, &payload) || recorder.Code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("action route exceeded its 32 MiB limit: status=%d", recorder.Code)
 			}
 		})
 	}

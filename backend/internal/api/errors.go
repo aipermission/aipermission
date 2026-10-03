@@ -1,17 +1,9 @@
 package api
 
 import (
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
-	"mime"
 	"net/http"
-)
 
-const (
-	defaultJSONBodyBytes         = 1 << 20
-	connectorActionJSONBodyBytes = 32 << 20
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 )
 
 type errorResponse struct {
@@ -32,42 +24,5 @@ func writeInternalError(w http.ResponseWriter) {
 }
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, target any) bool {
-	if err := decodeJSONBody(w, r, target); err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			writeErrorWithCode(w, http.StatusRequestEntityTooLarge, "request body is too large", "request_body_too_large")
-			return false
-		}
-		writeError(w, http.StatusBadRequest, "invalid json body")
-		return false
-	}
-	return true
-}
-
-func decodeJSONBody(w http.ResponseWriter, r *http.Request, target any) error {
-	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || contentType != "application/json" {
-		return fmt.Errorf("content type must be application/json")
-	}
-	r.Body = http.MaxBytesReader(w, r.Body, jsonBodyLimitForPath(r.URL.Path))
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	decoder.UseNumber()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); err != io.EOF {
-		return fmt.Errorf("invalid json body")
-	}
-	return nil
-}
-
-func jsonBodyLimitForPath(path string) int64 {
-	switch path {
-	case "/api/connector-actions/local-run", "/api/mcp/connector-actions/call":
-		return connectorActionJSONBodyBytes
-	default:
-		return defaultJSONBodyBytes
-	}
+	return httptransport.DecodeJSON(w, r, target)
 }
