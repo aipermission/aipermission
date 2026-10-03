@@ -42,13 +42,13 @@ tar -cf "$stage/source.tar" --null --verbatim-files-from -T "$stage/files"
 tar -xf "$stage/source.tar" -C "$stage/source"
 
 started=1
-dc build runner protocols
-if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols; then
-  dc logs --no-color --tail 100 kafka protocols >&2 || true
+dc build runner protocols kube-api
+if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api; then
+  dc logs --no-color --tail 100 kafka protocols kube-api >&2 || true
   exit 1
 fi
 dc run --rm --no-deps -T minio-init
 if ! dc run --rm --no-deps -T runner; then
-  dc logs --no-color --tail 100 kafka protocols >&2 || true
+  dc logs --no-color --tail 100 kafka protocols kube-api >&2 || true
   exit 1
 fi

@@ -1,10 +1,30 @@
 services:
+  kube-api:
+    build:
+      context: ${AIPERMISSION_CONFORMANCE_SOURCE:?run make connector-conformance to prepare the source snapshot}
+      dockerfile: backend/testdata/connector-conformance/kubernetes/Dockerfile
+    volumes:
+      - kube-material:/kube-material
+    tmpfs:
+      - /run:size=256m,mode=755,exec
+    cap_drop: [ALL]
+    cap_add: [CHOWN]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1536m
+    cpus: 1
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /run/kube/ready && /bin/kubectl --kubeconfig /run/kube/admin.yaml --request-timeout=3s get --raw /readyz >/dev/null"]
+      interval: 2s
+      timeout: 5s
+      retries: 50
+
   protocols:
     build:
       context: ${AIPERMISSION_CONFORMANCE_SOURCE:?run make connector-conformance to prepare the source snapshot}
       dockerfile: backend/testdata/connector-conformance/protocols/Dockerfile
     volumes:
       - fixture-material:/fixture-material
+      - kube-material:/kube-material:ro
     tmpfs:
       - /run:size=32m,mode=755
     mem_limit: 256m
@@ -125,6 +145,7 @@ services:
       AIPERMISSION_CONFORMANCE: "1"
       AIPERMISSION_PROTOCOL_HOST: protocols
       SSL_CERT_FILE: /fixture-material/ca.crt
+      AIPERMISSION_KUBERNETES_HOST: kube-api
       AIPERMISSION_KAFKA_HOST: kafka
       AIPERMISSION_KAFKA_PORT: "9092"
       AIPERMISSION_POSTGRES_HOST: postgres
@@ -140,6 +161,7 @@ services:
     volumes:
       - compiler-cache:/cache
       - fixture-material:/fixture-material:ro
+      - kube-material:/kube-material:ro
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     mem_limit: 2g
@@ -153,3 +175,4 @@ networks:
 volumes:
   compiler-cache:
   fixture-material:
+  kube-material:

@@ -30,6 +30,7 @@ test("connector conformance documentation matches the required workflow", () => 
     minio: "S3",
     kafka: "Kafka",
     protocols: "Mail",
+    "kube-api": "Kubernetes",
   };
   for (const service of Object.keys(families)) {
     assert.ok(
@@ -73,6 +74,7 @@ test("connector conformance documentation matches the required workflow", () => 
   assert.deepEqual(compose.services.runner.volumes, [
     "compiler-cache:/cache",
     "fixture-material:/fixture-material:ro",
+    "kube-material:/kube-material:ro",
   ]);
   assert.equal(
     compose.services.runner.environment.SSL_CERT_FILE,
@@ -94,5 +96,23 @@ test("connector conformance documentation matches the required workflow", () => 
   assert.doesNotMatch(
     read(`${protocolRoot}/start.sh`),
     /cp .*tls\.key .*fixture-material/,
+  );
+  assert.deepEqual(compose.services["kube-api"].cap_drop, ["ALL"]);
+  assert.deepEqual(compose.services["kube-api"].cap_add, ["CHOWN"]);
+  assert.deepEqual(compose.services.protocols.volumes, [
+    "fixture-material:/fixture-material",
+    "kube-material:/kube-material:ro",
+  ]);
+  const kube = read("backend/testdata/connector-conformance/kubernetes/start.sh");
+  assert.match(kube, /--disable-agent --disable-scheduler/);
+  assert.match(kube, /--egress-selector-mode disabled/);
+  assert.match(kube, /chmod 600 "\$config" \/kube-material\/observer-token \/kube-material\/scoped-token/);
+  const audit = parseYAML("backend/testdata/connector-conformance/kubernetes/audit.yaml");
+  assert.deepEqual(audit.rules.map((rule) => rule.level), ["Metadata", "None"]);
+  assert.deepEqual(audit.rules[0].verbs, ["patch"]);
+  assert.deepEqual(audit.omitStages, ["RequestReceived"]);
+  assert.match(
+    read(`${protocolRoot}/kubectl-contained`),
+    /--kubeconfig=\/kube-material\/scoped\.yaml --request-timeout=15s/,
   );
 });

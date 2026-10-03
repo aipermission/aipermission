@@ -293,8 +293,20 @@ The fixture target requires a Linux shell, GNU tar, Compose v2, and a local
 Unix-socket Docker endpoint; remote Docker contexts are rejected before setup.
 Compose does not load operator `.env` files for this isolated target.
 The protected check keeps its existing name for branch-protection continuity.
-Docker and Kubernetes retain focused protocol tests until a bounded,
-deterministic real-service fixture is reviewed.
+Docker retains focused protocol tests until a bounded, deterministic daemon
+fixture is reviewed. Kubernetes additionally uses a digest-pinned, agentless
+K3s API fixture without privilege, host sockets, external routes or inherited
+kubeconfigs. The connector invokes the pinned CLI over the owned SSH daemon,
+with a namespace-limited service account. Independent TLS-verified HTTP
+readback checks real API persistence, RBAC refusal and resourceVersion
+preconditions; selected-scope connection tests cover empty and populated
+namespaces. Stale conditional restarts must not mutate a second time.
+Metadata-only server audit independently witnesses one accepted PATCH, one
+stale-version conflict and one RBAC-denied workload PATCH, without recording
+request/response content or headers. Denied mutations preserve resource readback.
+The observer's elevated fixture token is root-only and unavailable to the SSH
+connector user. This API-only scenario does not qualify kubelet logs, pod
+exec, scheduling, readiness or an actual rolling workload restart.
 
 OpenSSH conformance covers explicit owned host-key approval, changed-key refusal
 before dispatch, stdout/stderr/exit identity, cancellation, and atomic SFTP
