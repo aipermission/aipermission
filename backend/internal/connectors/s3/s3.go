@@ -91,7 +91,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	case ActionListObjects:
 		prefix := stringValue(input, "prefix")
 		search := strings.TrimSpace(stringValue(input, "search"))
-		cursor := strings.TrimSpace(stringValue(input, "cursor"))
+		cursor := stringValue(input, "cursor")
 		if search != "" {
 			if _, err := decodeS3SearchCursor(cursor, prefix, strings.ToLower(search)); err != nil {
 				return connectors.PreparedAction{}, err
@@ -436,7 +436,7 @@ func executeBucketInfo(ctx context.Context, client *s3Client) (connectors.Action
 func executeListObjects(ctx context.Context, client *s3Client, input map[string]any) (connectors.ActionResult, error) {
 	prefix := stringValue(input, "prefix")
 	search := strings.ToLower(strings.TrimSpace(stringValue(input, "search")))
-	cursor := strings.TrimSpace(stringValue(input, "cursor"))
+	cursor := stringValue(input, "cursor")
 	limit := clampedInt(input, "limit", defaultS3ListLimit, 1, maxS3ListLimit)
 	if search != "" {
 		return executeSearchObjects(ctx, client, prefix, search, cursor, limit)

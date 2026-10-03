@@ -31,11 +31,17 @@ func executeSearchObjects(ctx context.Context, client *s3Client, prefix string, 
 	scanned := 0
 	pageToken := position.PageToken
 	offset := position.Offset
+	seen := make(map[string]struct{})
 
 	for page := 0; page < maxS3SearchPages; page++ {
 		result, err := client.ListObjects(ctx, prefix, pageToken, maxS3ListLimit, false)
 		if err != nil {
 			return connectors.ActionResult{}, err
+		}
+		if result.IsTruncated {
+			if err := requireListingProgress(pageToken, result.NextContinuationToken, result.NextContinuationToken == "", seen); err != nil {
+				return connectors.ActionResult{}, err
+			}
 		}
 		if offset > len(result.Contents) {
 			return connectors.ActionResult{}, fmt.Errorf("invalid S3 search cursor offset")
@@ -55,7 +61,7 @@ func executeSearchObjects(ctx context.Context, client *s3Client, prefix string, 
 				return s3ListResult(client.bucket, prefix, search, nil, objects, hasMore, nextCursor, scanned, false, limit), nil
 			}
 		}
-		if !result.IsTruncated || strings.TrimSpace(result.NextContinuationToken) == "" {
+		if !result.IsTruncated {
 			return s3ListResult(client.bucket, prefix, search, nil, objects, false, "", scanned, false, limit), nil
 		}
 		pageToken = result.NextContinuationToken
@@ -74,7 +80,7 @@ func nextS3SearchCursor(prefix string, search string, pageToken string, nextOffs
 	if nextOffset < len(result.Contents) {
 		position.PageToken = pageToken
 		position.Offset = nextOffset
-	} else if result.IsTruncated && strings.TrimSpace(result.NextContinuationToken) != "" {
+	} else if result.IsTruncated {
 		position.PageToken = result.NextContinuationToken
 	} else {
 		return "", false, nil
