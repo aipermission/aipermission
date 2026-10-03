@@ -11,9 +11,8 @@ import (
 )
 
 var (
-	dockerAbsoluteCommandPattern = regexp.MustCompile(`^/[A-Za-z0-9_./+-]+$`)
-	dockerContainerRefPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$`)
-	dockerContainerIDPrefix      = regexp.MustCompile(`^[a-fA-F0-9]{6,64}$`)
+	dockerContainerRefPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$`)
+	dockerContainerIDPrefix   = regexp.MustCompile(`^[a-fA-F0-9]{6,64}$`)
 )
 
 type dockerScope struct {
@@ -122,14 +121,8 @@ func ConnectionMode(target connectors.TargetView) string {
 // docker binary or an absolute wrapper path is accepted; arguments belong to
 // connector-owned command templates.
 func DockerCommand(target connectors.TargetView) (string, error) {
-	command := strings.TrimSpace(stringValue(target.Config, "docker_command"))
-	if command == "" {
-		command = defaultDockerCommand
-	}
-	if command == defaultDockerCommand {
-		return command, nil
-	}
-	if len(command) > 1024 || !path.IsAbs(command) || !dockerAbsoluteCommandPattern.MatchString(command) || strings.Contains(command, "/../") || strings.HasSuffix(command, "/..") {
+	command, err := connectors.NormalizeCommandExecutable(stringValue(target.Config, "docker_command"), defaultDockerCommand)
+	if err != nil {
 		return "", fmt.Errorf("%w: docker_command must be docker or an absolute wrapper path without arguments; replace legacy values such as 'sudo docker' or 'docker --context ...' with a wrapper script path", ErrInvalidConfig)
 	}
 	return command, nil

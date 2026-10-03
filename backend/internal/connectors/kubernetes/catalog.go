@@ -33,7 +33,7 @@ func (Connector) TargetSchema() connectors.Schema {
 			Label:       "kubectl command",
 			Type:        connectors.FieldString,
 			Default:     defaultKubectlCommand,
-			Description: "kubectl executable name or wrapper path on the remote host. Shell arguments and operators are not accepted.",
+			Description: "kubectl or an absolute wrapper path on the remote host. Relative paths, parent traversal, shell arguments, and operators are not accepted.",
 		},
 		{
 			Name:        "context",
@@ -103,6 +103,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use rollout_restart only when the operator intends a deployment restart.",
 		},
 		Warnings: []string{
+			"The standard kubectl invocation bypasses shell aliases and functions. A custom executable must be an absolute wrapper path without parent traversal; put required flags in that operator-managed wrapper.",
 			"Kubernetes actions run through a selected SSH transport profile. The connector does not expose raw kubectl, apply, delete, pod exec, or Secret value browsing.",
 			"Logs and resource JSON may contain sensitive application data. Redaction is best-effort; avoid requesting sensitive logs unless approved.",
 			"Credential profile namespace scope can restrict AI access to a selected set of namespaces.",

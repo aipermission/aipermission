@@ -154,6 +154,10 @@ func TestKubectlCommandValidation(t *testing.T) {
 		{name: "redirect", command: "kubectl>/tmp/output"},
 		{name: "newline", command: "kubectl\nid"},
 		{name: "arguments", command: "sudo kubectl"},
+		{name: "relative wrapper", command: "./kubectl"},
+		{name: "other binary", command: "my-kubectl"},
+		{name: "parent walk", command: "/usr/local/../bin/kubectl"},
+		{name: "parent ending", command: "/usr/local/.."},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -194,7 +198,7 @@ func TestExecuteActionRejectsUnsafeKubectlCommandBeforeTransport(t *testing.T) {
 func TestListPodsUsesSelectedNamespaces(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
-			"kubectl get pods -n 'production' -o json": {Stdout: `{"items":[{"metadata":{"namespace":"production","name":"api","creationTimestamp":"2026-01-01T00:00:00Z"},"status":{"phase":"Running","containerStatuses":[{"ready":true,"restartCount":1}]},"spec":{"nodeName":"node-1"}}]}`},
+			"command kubectl get pods -n 'production' -o json": {Stdout: `{"items":[{"metadata":{"namespace":"production","name":"api","creationTimestamp":"2026-01-01T00:00:00Z"},"status":{"phase":"Running","containerStatuses":[{"ready":true,"restartCount":1}]},"spec":{"nodeName":"node-1"}}]}`},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -214,7 +218,7 @@ func TestListPodsUsesSelectedNamespaces(t *testing.T) {
 
 func TestConnectionSelectedScopeDoesNotRequireClusterNamespaceList(t *testing.T) {
 	transport := &fakeCommandTransport{results: map[string]connectors.CommandRunResult{
-		"kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'": {Stdout: `{"items":[]}`, DurationMS: 5},
+		"command kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'": {Stdout: `{"items":[]}`, DurationMS: 5},
 	}}
 	result, err := New().TestConnection(context.Background(), connectors.RuntimeContext{
 		Target: kubeTarget(), Profile: kubeProfile("selected"), Capabilities: fakeCapabilities{transport: transport},
@@ -222,7 +226,7 @@ func TestConnectionSelectedScopeDoesNotRequireClusterNamespaceList(t *testing.T)
 	if err != nil || result.Status != connectors.TestOK {
 		t.Fatalf("test connection result=%#v err=%v", result, err)
 	}
-	if len(transport.commands) != 1 || transport.commands[0] != "kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'" {
+	if len(transport.commands) != 1 || transport.commands[0] != "command kubectl get --raw '/api/v1/namespaces/production/pods?limit=1'" {
 		t.Fatalf("commands = %#v", transport.commands)
 	}
 }
@@ -259,7 +263,7 @@ func TestLogsRejectsOutOfScopeNamespace(t *testing.T) {
 func TestRolloutRestartRunsBoundedKubectlTemplate(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
-			"kubectl rollout restart deployment/'api' -n 'production' 2>&1": {Stdout: "deployment.apps/api restarted\n", ExitCode: 0, DurationMS: 9},
+			"command kubectl rollout restart deployment/'api' -n 'production' 2>&1": {Stdout: "deployment.apps/api restarted\n", ExitCode: 0, DurationMS: 9},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
@@ -446,7 +450,7 @@ func TestRolloutRestartDoesNotTreatIncidentalConflictTextAsDefiniteResponse(t *t
 func TestDescribeReturnsResourceSummary(t *testing.T) {
 	transport := &fakeCommandTransport{
 		results: map[string]connectors.CommandRunResult{
-			"kubectl get deployment 'api' -n 'production' -o json": {Stdout: `{"kind":"Deployment","metadata":{"namespace":"production","name":"api","creationTimestamp":"2026-01-01T00:00:00Z"}}`},
+			"command kubectl get deployment 'api' -n 'production' -o json": {Stdout: `{"kind":"Deployment","metadata":{"namespace":"production","name":"api","creationTimestamp":"2026-01-01T00:00:00Z"}}`},
 		},
 	}
 	result, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
