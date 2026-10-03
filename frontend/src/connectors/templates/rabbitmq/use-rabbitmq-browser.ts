@@ -3,7 +3,14 @@ import { useRequestGuard } from "../../../lib/request-guard";
 import { currentWorkspaceBinding } from "../../../lib/api";
 import { connectorActionBusy } from "../_shared/action-state";
 import { runGuardedConnectorAction } from "../_shared/action-runner";
-import { filterQueues, isRabbitRecord, parsePublishProperties, readRabbitQueue, readRabbitQueues, readRabbitRecords } from "./helpers";
+import {
+  filterQueues,
+  isRabbitRecord,
+  parsePublishProperties,
+  readRabbitQueue,
+  readRabbitQueueDiscovery,
+  readRabbitRecords,
+} from "./helpers";
 import { useConnectorMutationOwnership } from "../_shared/use-connector-mutation-ownership";
 import type { RabbitBrowserProps, RabbitMessage, RabbitQueue } from "./browser-types";
 import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
@@ -23,6 +30,7 @@ const defaultPeekCount = 5;
 const defaultPayloadBytes = 65536;
 const defaultProperties = '{"content_type":"application/json"}';
 const mutationActions = ["publish_message"] as const;
+const emptyQueueDiscovery = { appliedPattern: "", partial: false, scanLimitReached: false };
 
 export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivity }: RabbitBrowserProps) {
   const activeSession = session || { active: false, startedAt: "" };
@@ -30,6 +38,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
   const [vhost, setVhost] = useState(target.config?.vhost || "/");
   const [vhostDraft, setVhostDraft] = useState(target.config?.vhost || "/");
   const [queues, setQueues] = useState<RabbitQueue[]>([]);
+  const [queueDiscovery, setQueueDiscovery] = useState(emptyQueueDiscovery);
   const [activeQueue, setActiveQueue] = useState("");
   const [queueDetail, setQueueDetail] = useState<RabbitQueue | null>(null);
   const [bindings, setBindings] = useState<Record<string, unknown>[]>([]);
@@ -70,6 +79,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     setVhost(target.config?.vhost || "/");
     setVhostDraft(target.config?.vhost || "/");
     setQueues([]);
+    setQueueDiscovery(emptyQueueDiscovery);
     setActiveQueue("");
     setQueueDetail(null);
     setBindings([]);
@@ -121,15 +131,17 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
 
   async function refreshQueues() {
     if (!activeSession.active || publishOwnerRef.current || unresolvedPublish) return;
+    const appliedPattern = pattern.trim();
     try {
       const item = await runRabbitAction({
         actionName: "list_queues",
-        input: { vhost, pattern: "", limit: defaultQueueLimit },
+        input: { vhost, pattern: appliedPattern, limit: defaultQueueLimit },
         reason: "manual RabbitMQ browser queue list",
         busy: "loading",
       });
       if (!item) return;
-      const next = readRabbitQueues(isRabbitRecord(item.output) ? item.output.queues : null);
+      const { queues: next, discovery } = readRabbitQueueDiscovery(item.output, appliedPattern);
+      setQueueDiscovery(discovery);
       setQueues(next);
       setActiveQueue((current) => (current && !next.some((queue) => queue.name === current) ? "" : current));
     } catch {
@@ -206,6 +218,8 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     requestGuard.setScope(JSON.stringify([sessionScopeKey, nextVhost, activeSession.active]));
     setVhost(nextVhost);
     setVhostDraft(nextVhost);
+    setQueues([]);
+    setQueueDiscovery(emptyQueueDiscovery);
     setActiveQueue("");
     setQueueDetail(null);
     setBindings([]);
@@ -259,6 +273,7 @@ export function useRabbitMQBrowser({ target, approvals, session, onRefreshActivi
     setVhostDraft,
     applyVhost,
     queues,
+    queueDiscovery,
     filteredQueues,
     activeQueue,
     queueDetail,

@@ -31,6 +31,7 @@ function browser(overrides: Partial<RabbitBrowser> = {}): RabbitBrowser {
     pattern: "",
     publishLocked: false,
     queues: [],
+    queueDiscovery: { appliedPattern: "", partial: false, scanLimitReached: false },
     refreshQueues: vi.fn(async () => {}),
     selectQueue: vi.fn(async () => {}),
     setPattern: vi.fn(),
