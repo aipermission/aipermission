@@ -722,6 +722,13 @@ the command record retains the available session ID but withholds output that
 could not be authorized. A background timeout also remains uncertain even if
 an interrupt was sent, because interruption does not prove completion or rollback.
 Inspect that existing session and external state before starting a new attempt.
+Lock, shutdown, and startup recovery apply the same rule. A durable dispatch
+admission is recorded before executing a queued command. Only records proved
+to be still queued without a bound session become `canceled`; admitted commands
+and older records without dispatch evidence become `outcome_unknown` with no
+exit code. Admission is not proof of remote delivery or success. Already-known
+terminal results are preserved, including replies observed during shutdown.
+Canonical command, history, and audit-outbox status changes are transactional.
 If terminal persistence retries are exhausted, the running gateway retains a
 sanitized pending completion and available session ID for shutdown recovery;
 this does not guarantee recovery after process loss while storage is unwritable.
@@ -1531,8 +1538,9 @@ interrupt; an observed exit code still distinguishes completed from failed.
 `POST /api/console/runtime-surfaces/{id}/restart` is the local UI recovery
 action for a stuck persistent console session. The id is the connector-profile
 runtime surface id, not a generic connector target id. It closes live console
-sessions for that runtime surface, marks running command requests for that
-runtime as `error`, writes an audit event, and lets the next command open a
+sessions for that runtime surface, settles running command requests using
+their dispatch evidence (`outcome_unknown` after possible dispatch, without
+inventing an exit code), writes an audit event, and lets the next command open a
 fresh connector runtime session. This route is protected by the UI session and
 CSRF checks.
 

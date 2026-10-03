@@ -60,11 +60,12 @@ func TestConnectorTargetDeleteFinalizesSSHRuntimeState(t *testing.T) {
 		t.Fatalf("delete connector target failed: %d %s", response.Code, response.Body.String())
 	}
 	var commandStatus string
-	if err := fixture.db.QueryRow(`SELECT status FROM command_requests WHERE runtime_id = ?`, server.ID).Scan(&commandStatus); err != nil {
+	var commandExit *int
+	if err := fixture.db.QueryRow(`SELECT status, exit_code FROM command_requests WHERE runtime_id = ?`, server.ID).Scan(&commandStatus, &commandExit); err != nil {
 		t.Fatalf("read command status: %v", err)
 	}
-	if commandStatus != "error" {
-		t.Fatalf("running command should be marked error after target delete, got %q", commandStatus)
+	if commandStatus != "outcome_unknown" || commandExit != nil {
+		t.Fatalf("unobserved dispatch after target delete: status=%q exit=%v", commandStatus, commandExit)
 	}
 	var sessionStatus string
 	if err := fixture.db.QueryRow(`SELECT status FROM console_sessions WHERE runtime_id = ?`, server.ID).Scan(&sessionStatus); err != nil {

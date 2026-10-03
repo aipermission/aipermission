@@ -330,12 +330,7 @@ func (r *Runtime) CancelRunning(ctx context.Context, errorText string) error {
 	if err := r.recoverPendingCompletions(ctx); err != nil {
 		return ignoreClosedDatabase(err)
 	}
-	var err error
-	if r.hasWorkerErrors() {
-		err = r.store.MarkRunningOutcomeUnknown(ctx, r.projection, r.redact(ctx, commandOutcomeUnknown))
-	} else {
-		err = r.store.CancelRunning(ctx, r.projection, r.redact(ctx, errorText))
-	}
+	err := r.store.CancelRunning(ctx, r.projection, r.redact(ctx, errorText))
 	return ignoreClosedDatabase(err)
 }
 

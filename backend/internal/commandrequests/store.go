@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/commandrequests/finality"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
@@ -76,11 +77,11 @@ func (s *Store) InsertWithExecutor(
 		request.insert.Source = SourceMCP
 	}
 	result, err := executor.ExecContext(ctx, `
-		INSERT INTO command_requests (token_id, runtime_id, source, command, encrypted_command, reason, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		INSERT INTO command_requests (token_id, runtime_id, source, command, encrypted_command, reason, status, created_at, dispatch_state)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		nullableTokenID(request.insert.TokenID), request.insert.RuntimeID, request.insert.Source,
 		request.storedCommand, "", request.storedReason, request.insert.Status,
-		timeformat.UTC(time.Now()),
+		timeformat.UTC(time.Now()), finality.InitialState(request.insert.Queued),
 	)
 	if err != nil {
 		return 0, err
@@ -124,8 +125,16 @@ func (s *Store) ExecutionCommand(ctx context.Context, codec CommandCodec, id int
 
 func (s *Store) SetSession(ctx context.Context, projection Projection, id, sessionID int64) error {
 	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
-		if _, err := executor.ExecContext(ctx, `UPDATE command_requests SET session_id = ? WHERE id = ?`, sessionID, id); err != nil {
+		result, err := executor.ExecContext(ctx, `UPDATE command_requests SET session_id = ? WHERE id = ? AND status = 'running'`, sessionID, id)
+		if err != nil {
 			return nil, err
+		}
+		affected, err := sqldb.RowsAffected(result, "bind running command session")
+		if err != nil {
+			return nil, err
+		}
+		if affected != 1 {
+			return nil, ErrNotRunning
 		}
 		return []int64{id}, nil
 	})
@@ -145,10 +154,10 @@ func (s *Store) Finish(ctx context.Context, projection Projection, completion Co
 	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
 		result, err := executor.ExecContext(ctx, `
 			UPDATE command_requests
-			SET status = ?, session_id = NULLIF(?, 0), stdout = ?, stderr = ?, exit_code = ?, error = ?, completed_at = ?
+			SET status = ?, session_id = NULLIF(?, 0), stdout = ?, stderr = ?, exit_code = CASE WHEN ? IN ('outcome_unknown', 'canceled') THEN NULL ELSE ? END, error = ?, completed_at = ?
 			WHERE id = ? AND status = 'running'`,
 			completion.Status, completion.SessionID, completion.Stdout, completion.Stderr,
-			completion.ExitCode, completion.Error, timeformat.UTC(time.Now()), completion.ID,
+			completion.Status, completion.ExitCode, completion.Error, timeformat.UTC(time.Now()), completion.ID,
 		)
 		if err != nil {
 			return nil, err
@@ -174,11 +183,8 @@ func (s *Store) Status(ctx context.Context, id int64) (string, error) {
 }
 
 func (s *Store) CancelRunning(ctx context.Context, projection Projection, errorText string) error {
-	return s.cancel(ctx, projection, "status = 'running'", nil, errorText)
-}
-
-func (s *Store) MarkRunningOutcomeUnknown(ctx context.Context, projection Projection, errorText string) error {
-	return s.finishRunning(ctx, projection, "outcome_unknown", errorText)
+	_, err := s.cancel(ctx, projection, "status = 'running'", nil, errorText)
+	return err
 }
 
 func (s *Store) CancelRunningForSession(
@@ -190,7 +196,8 @@ func (s *Store) CancelRunningForSession(
 	if sessionID < 1 {
 		return nil
 	}
-	return s.cancel(ctx, projection, "status = 'running' AND session_id = ?", []any{sessionID}, errorText)
+	_, err := s.cancel(ctx, projection, "status = 'running' AND session_id = ?", []any{sessionID}, errorText)
+	return err
 }
 
 func (s *Store) CancelRunningForRuntime(
@@ -202,25 +209,7 @@ func (s *Store) CancelRunningForRuntime(
 	if runtimeID < 1 {
 		return 0, nil
 	}
-	var affected int64
-	err := s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
-		ids, err := requestIDs(ctx, executor, "status = 'running' AND runtime_id = ?", runtimeID)
-		if err != nil {
-			return nil, err
-		}
-		result, err := executor.ExecContext(ctx, `
-			UPDATE command_requests
-			SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
-			WHERE status = 'running' AND runtime_id = ?`,
-			errorText, timeformat.UTC(time.Now()), runtimeID,
-		)
-		if err != nil {
-			return nil, err
-		}
-		affected, err = sqldb.RowsAffected(result, "cancel running command requests for runtime")
-		return ids, err
-	})
-	return affected, err
+	return s.cancel(ctx, projection, "status = 'running' AND runtime_id = ?", []any{runtimeID}, errorText)
 }
 
 func (s *Store) cancel(
@@ -229,34 +218,24 @@ func (s *Store) cancel(
 	where string,
 	args []any,
 	errorText string,
-) error {
-	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
+) (int64, error) {
+	var affected int64
+	err := s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
 		ids, err := requestIDs(ctx, executor, where, args...)
 		if err != nil {
 			return nil, err
 		}
-		query := `UPDATE command_requests
-			SET status = 'error', error = ?, completed_at = COALESCE(completed_at, ?)
-			WHERE ` + where
-		_, err = executor.ExecContext(ctx, query, append([]any{errorText, timeformat.UTC(time.Now())}, args...)...)
-		return ids, err
-	})
-}
-
-func (s *Store) finishRunning(ctx context.Context, projection Projection, status, errorText string) error {
-	return s.withProjectionTransaction(ctx, projection, func(executor Executor) ([]int64, error) {
-		ids, err := requestIDs(ctx, executor, "status = 'running'")
+		result, err := executor.ExecContext(ctx, finality.RecoverySQL(where), append([]any{errorText}, args...)...)
 		if err != nil {
 			return nil, err
 		}
-		_, err = executor.ExecContext(ctx, `
-			UPDATE command_requests
-			SET status = ?, error = ?, completed_at = COALESCE(completed_at, ?)
-			WHERE status = 'running'`,
-			status, errorText, timeformat.UTC(time.Now()),
-		)
+		affected, err = sqldb.RowsAffected(result, "recover running command requests")
 		return ids, err
 	})
+	if err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
 func (s *Store) withProjectionTransaction(

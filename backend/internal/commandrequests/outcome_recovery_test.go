@@ -98,7 +98,7 @@ func TestPendingRecoveryRetainsFailedBindingAndRespectsTerminalWinner(t *testing
 				t.Fatal("recovery did not clear retained failures")
 			}
 			other, err := owner.Get(t.Context(), otherID, 0, "")
-			if err != nil || other.Status != "error" || other.Error != "workspace closed" {
+			if err != nil || other.Status != "outcome_unknown" || !strings.Contains(other.Error, "workspace closed") {
 				t.Fatalf("scoped recovery relabeled unrelated shutdown: %#v, %v", other, err)
 			}
 		})
