@@ -95,6 +95,10 @@ mode never reads or prints a bearer token: it emits `YOUR_TOKEN_HERE`, writes no
 config or skill, and requires you to replace the placeholder through the
 client's private environment or config mechanism. Run `install-skill`
 separately when needed.
+
+The gateway URL must be a loopback HTTP origin, without a path, query or
+fragment. Even an empty `?` or `#` suffix is rejected consistently by setup,
+doctor and the MCP runtime; it must not change the generated API request path.
 If a token config is committed or shared, revoke that token in the web UI. Re-run setup
 when you intentionally upgrade the package used by that client.
 

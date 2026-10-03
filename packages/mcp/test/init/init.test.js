@@ -145,6 +145,14 @@ test("normalizeLocalAPIURL only accepts local gateway origins", () => {
   );
 });
 
+test("setup rejects bare query and fragment markers rather than retaining an ambiguous origin", () => {
+  for (const host of ["localhost", "127.0.0.1", "[::1]"]) {
+    for (const marker of ["?", "#", "?#", "/?", "/#"]) {
+      assert.throws(() => normalizeURL(`http://${host}:3210${marker}`), /origin only/);
+    }
+  }
+});
+
 test("toml helpers quote unsafe names and strings", () => {
   assert.equal(tomlKey("aipermission-default"), "aipermission-default");
   assert.equal(tomlKey("aipermission default"), '"aipermission default"');
