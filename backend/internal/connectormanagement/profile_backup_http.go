@@ -282,15 +282,14 @@ func (h *ProfileBackupHTTPHandler) resolveProfileWithScope(w http.ResponseWriter
 		httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
 		return resolvedProfileBackup{}, false
 	}
-	secrets, err := decryptCredentialSecrets(r.Context(), profile, scope.Runtime.DecryptSecret)
+	runtime, boundary, err := PrepareCredentialOperationRuntime(r.Context(), scope.Runtime, target, profile)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return resolvedProfileBackup{}, false
 	}
-	boundary := actionresult.NewCredentialBoundary(secrets)
 	return resolvedProfileBackup{
 		scope: scope, target: target, profile: profile, connector: connector,
-		runtime: scope.Runtime.RuntimeContext(target, profile, secrets, boundary), boundary: boundary,
+		runtime: runtime, boundary: boundary,
 	}, true
 }
 
