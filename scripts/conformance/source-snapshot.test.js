@@ -95,7 +95,7 @@ for (const failure of ["", "build", "up", "run", "runner", "down"]) {
         "owned snapshot must be removed",
       );
     }
-    assert.equal(events.at(-1).action === "down", failure !== "build");
+    assert.equal(events.at(-1).action, "down");
     assert.equal(
       fs.readFileSync(path.join(directory, ".env"), "utf8"),
       "operator-file-not-source",
