@@ -210,8 +210,8 @@ func (s FileTransferHTTPHandlers) BrowseRemoteFiles(w http.ResponseWriter, r *ht
 	defer cancel()
 	page := connectorapi.RemoteFilePage{}
 	if paginated, ok := execution.adapter.(connectorapi.PaginatedFileTransferAdapter); ok {
-		page, err = paginated.BrowseRemoteFilesPage(ctx, execution.gateway, execution.runtime, request.RuntimeID, remotePath, strings.TrimSpace(request.Cursor))
-	} else if strings.TrimSpace(request.Cursor) != "" {
+		page, err = paginated.BrowseRemoteFilesPage(ctx, execution.gateway, execution.runtime, request.RuntimeID, remotePath, request.Cursor)
+	} else if request.Cursor != "" {
 		writeError(w, http.StatusBadRequest, "this connector does not support paginated file browsing")
 		return
 	} else {
