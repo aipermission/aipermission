@@ -82,7 +82,7 @@ func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContex
 		return RemoteFilePage{}, err
 	}
 	prefix := directoryPrefix(remotePath)
-	result, err := client.ListObjects(ctx, prefix, strings.TrimSpace(cursor), maxS3ListLimit, true)
+	result, err := client.ListObjects(ctx, prefix, cursor, maxS3ListLimit, true)
 	if err != nil {
 		return RemoteFilePage{}, err
 	}
@@ -113,7 +113,7 @@ func BrowseRemoteFilesPage(ctx context.Context, runtime connectors.RuntimeContex
 		}
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
-	return RemoteFilePage{Entries: entries, NextCursor: result.NextContinuationToken, HasMore: result.IsTruncated && strings.TrimSpace(result.NextContinuationToken) != ""}, nil
+	return RemoteFilePage{Entries: entries, NextCursor: result.NextContinuationToken, HasMore: result.IsTruncated}, nil
 }
 
 func StatRemotePath(ctx context.Context, runtime connectors.RuntimeContext, remotePath string) (RemotePathStatus, error) {
@@ -177,10 +177,16 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 	entries := make([]RemoteFileEntry, 0)
 	var total int64
 	token := ""
-	for {
+	seen := make(map[string]struct{})
+	for page := 0; page < maxS3RecursivePages; page++ {
 		result, err := client.ListObjects(ctx, prefix, token, maxS3ListLimit, false)
 		if err != nil {
 			return nil, err
+		}
+		if result.IsTruncated {
+			if err := requireListingProgress(token, result.NextContinuationToken, result.NextContinuationToken == "", seen); err != nil {
+				return nil, err
+			}
 		}
 		for _, item := range result.Contents {
 			if strings.HasSuffix(item.Key, "/") {
@@ -201,12 +207,12 @@ func ListRecursiveFiles(ctx context.Context, runtime connectors.RuntimeContext, 
 			}
 			entries = append(entries, RemoteFileEntry{Name: path.Base(item.Key), Path: virtualObjectPath(item.Key), Type: "file", Size: item.Size, ModifiedAt: item.LastModified})
 		}
-		if !result.IsTruncated || strings.TrimSpace(result.NextContinuationToken) == "" {
-			break
+		if !result.IsTruncated {
+			return entries, nil
 		}
 		token = result.NextContinuationToken
 	}
-	return entries, nil
+	return nil, fmt.Errorf("%w: selected prefix exceeds the %d page limit", ErrTransferLimit, maxS3RecursivePages)
 }
 
 func UploadFile(ctx context.Context, runtime connectors.RuntimeContext, localPath string, remotePath string, overwrite bool, options TransferOptions) (TransferResult, error) {

@@ -58,10 +58,17 @@ func executeListObjectVersions(ctx context.Context, client *s3Client, input map[
 	}
 	var result s3VersionListResult
 	items := make([]map[string]any, 0, len(result.Versions)+len(result.DeleteMarkers))
+	seen := make(map[s3VersionCursor]struct{})
 	for page := 0; page < maxVersionEmptyPages; page++ {
 		result, err = client.ListObjectVersions(ctx, key, cursor, limit)
 		if err != nil {
 			return connectors.ActionResult{}, err
+		}
+		if result.IsTruncated {
+			next := s3VersionCursor{KeyMarker: result.NextKeyMarker, VersionIDMarker: result.NextVersionIDMarker}
+			if err := requireListingProgress(cursor, next, next.KeyMarker == "", seen); err != nil {
+				return connectors.ActionResult{}, err
+			}
 		}
 		for _, version := range result.Versions {
 			if version.Key == key {
@@ -195,6 +202,12 @@ func (client *s3Client) ListObjectVersions(ctx context.Context, key string, curs
 	}
 	if err := decodeListingNames(result.EncodingType, names...); err != nil {
 		return s3VersionListResult{}, err
+	}
+	if result.IsTruncated {
+		next := s3VersionCursor{KeyMarker: result.NextKeyMarker, VersionIDMarker: result.NextVersionIDMarker}
+		if err := requireListingProgress(cursor, next, next.KeyMarker == "", nil); err != nil {
+			return s3VersionListResult{}, err
+		}
 	}
 	return result, nil
 }

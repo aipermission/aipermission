@@ -126,6 +126,11 @@ func (client *s3Client) ListObjects(ctx context.Context, prefix string, token st
 	if err := decodeListingNames(result.EncodingType, names...); err != nil {
 		return s3ListBucketResult{}, err
 	}
+	if result.IsTruncated {
+		if err := requireListingProgress(token, result.NextContinuationToken, result.NextContinuationToken == "", nil); err != nil {
+			return s3ListBucketResult{}, err
+		}
+	}
 	return result, nil
 }
 
