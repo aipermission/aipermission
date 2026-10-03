@@ -118,9 +118,15 @@
   "local_release_recipe_migrations": [
     {
       "target": "$makefile",
-      "from": "fea87709559b8490621f9fe056d9df50f5bc5c06f944161bfeb0f56b8435d0de",
-      "to": "1bc77da611f6c8faa88b23d89144ca8644c28cd3c8252a72c223f9edf2b22877",
-      "reason": "Preauthorize the next release's native backend-build target in both build and release-check; retain every existing protected recipe and gate."
+      "from": "1bc77da611f6c8faa88b23d89144ca8644c28cd3c8252a72c223f9edf2b22877",
+      "to": "67b693abbe7abc5c79078f4faddcf435785c2aa0c20ba50f7795093328633a82",
+      "reason": "Preauthorize a later release's contained native conformance runner with an operator-file-free candidate snapshot; retain all other protected targets and gates."
+    },
+    {
+      "target": "connector-conformance",
+      "from": "df3b4d5334c0fd3f62f20d2e73e378ef95f83bda36987e1652b5cb99357b9fc5",
+      "to": "1379916cd9d723e3288a210ff6c92843146bc291d7beb46f1e7ba98175347f81",
+      "reason": "Preauthorize a later release's snapshot-based offline fixture runner without changing this release's active conformance recipe or required test inventory."
     },
     {
       "target": "backend-vuln",
