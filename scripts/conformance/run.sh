@@ -41,8 +41,8 @@ git ls-files -z --cached --others --exclude-standard -- \
 tar -cf "$stage/source.tar" --null --verbatim-files-from -T "$stage/files"
 tar -xf "$stage/source.tar" -C "$stage/source"
 
-dc build runner protocols
 started=1
+dc build runner protocols
 if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols; then
   dc logs --no-color --tail 100 kafka protocols >&2 || true
   exit 1
