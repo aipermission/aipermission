@@ -330,7 +330,13 @@ func openSMTPWithTLSConfig(ctx context.Context, runtime connectors.RuntimeContex
 	}
 	smtpClient.CommandTimeout = commandTimeout
 	smtpClient.SubmissionTimeout = smtpActionTimeout
-	if _, ok := smtpClient.TLSConnectionState(); !ok {
+	// Auth capability probes hide greeting errors; complete the post-TLS
+	// exchange explicitly so certificate failures retain their classification.
+	if err := smtpClient.Hello("localhost"); err != nil {
+		_ = smtpClient.Close()
+		return nil, classifyProtocolError("SMTP post-TLS capability", err)
+	}
+	if state, ok := smtpClient.TLSConnectionState(); !ok || !state.HandshakeComplete {
 		_ = smtpClient.Close()
 		return nil, fmt.Errorf("SMTP authentication refused because verified TLS is not active")
 	}
