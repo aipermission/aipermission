@@ -293,8 +293,18 @@ The fixture target requires a Linux shell, GNU tar, Compose v2, and a local
 Unix-socket Docker endpoint; remote Docker contexts are rejected before setup.
 Compose does not load operator `.env` files for this isolated target.
 The protected check keeps its existing name for branch-protection continuity.
-Docker retains focused protocol tests until a bounded, deterministic daemon
-fixture is reviewed. Kubernetes additionally uses a digest-pinned, agentless
+Docker runs in a no-NIC QEMU guest nested inside the unprivileged runner, using
+TCG rather than KVM. The Linux/amd64 guest has its own RAM filesystem, pinned
+Docker 28.5.1 daemon, VFS storage, owned loopback OpenSSH and two offline-seeded
+containers. No host socket, device, shared directory or network is available.
+Real scope refusal, redacted inspect, logs, exec/exit identity and stop/start
+persistence are checked against the daemon; guest memory is discarded on exit.
+The guest test is CGO-free; the enclosing gateway suite remains CGO-enabled.
+Distribution kernel, SSH and QEMU packages resolve during image builds, so this
+qualification is not a byte-reproducible dependency or native desktop-platform
+claim. Allocate sufficient resources for the software-emulated guest (1 GiB
+guest RAM in addition to the runner and service fixtures).
+Kubernetes additionally uses a digest-pinned, agentless
 K3s API fixture without privilege, host sockets, external routes or inherited
 kubeconfigs. The connector invokes the pinned CLI over the owned SSH daemon,
 with a namespace-limited service account. Independent TLS-verified HTTP

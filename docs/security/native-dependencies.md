@@ -82,3 +82,14 @@ maintainer can review it deliberately.
 
 Dependabot and `govulncheck` remain useful signals for the Go wrapper, but they
 are not treated as complete native-code CVE coverage.
+
+## Disposable Protocol Qualification
+
+The conformance-only Docker VM uses Docker 28.5.1 from its immutable image
+digest in `backend/testdata/connector-conformance/Dockerfile`. Alpine's kernel
+and OpenSSH, and Debian's QEMU/CPIO, resolve from distribution repositories at
+fixture-image build time. They are not application runtime dependencies and
+are not claimed to be byte-reproducible. The guest has no NIC or host mounts;
+its daemon uses only owned RAM storage. Dovecot/Postfix/OpenSSH fixtures have
+the same build-time distribution-package limitation. Production SQLCipher and
+container-base checks above remain unchanged.

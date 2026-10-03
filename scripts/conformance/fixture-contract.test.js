@@ -44,6 +44,7 @@ test("connector conformance documentation matches the required workflow", () => 
     for (const service of Object.values(families)) {
       assert.match(guide, new RegExp(`\\b${service}\\b`));
     }
+    assert.match(guide, /no-NIC QEMU guest/);
   }
   assert.doesNotMatch(connectorGuide, /not part of every pull request/);
   assert.equal(compose.networks.default.internal, true);
@@ -103,16 +104,52 @@ test("connector conformance documentation matches the required workflow", () => 
     "fixture-material:/fixture-material",
     "kube-material:/kube-material:ro",
   ]);
-  const kube = read("backend/testdata/connector-conformance/kubernetes/start.sh");
+  const kube = read(
+    "backend/testdata/connector-conformance/kubernetes/start.sh",
+  );
   assert.match(kube, /--disable-agent --disable-scheduler/);
   assert.match(kube, /--egress-selector-mode disabled/);
-  assert.match(kube, /chmod 600 "\$config" \/kube-material\/observer-token \/kube-material\/scoped-token/);
-  const audit = parseYAML("backend/testdata/connector-conformance/kubernetes/audit.yaml");
-  assert.deepEqual(audit.rules.map((rule) => rule.level), ["Metadata", "None"]);
+  assert.match(
+    kube,
+    /chmod 600 "\$config" \/kube-material\/observer-token \/kube-material\/scoped-token/,
+  );
+  const audit = parseYAML(
+    "backend/testdata/connector-conformance/kubernetes/audit.yaml",
+  );
+  assert.deepEqual(
+    audit.rules.map((rule) => rule.level),
+    ["Metadata", "None"],
+  );
   assert.deepEqual(audit.rules[0].verbs, ["patch"]);
   assert.deepEqual(audit.omitStages, ["RequestReceived"]);
   assert.match(
     read(`${protocolRoot}/kubectl-contained`),
     /--kubeconfig=\/kube-material\/scoped\.yaml --request-timeout=15s/,
+  );
+});
+
+test("Docker daemon qualification cannot reach the host daemon or network", () => {
+  const prefix = "backend/testdata/connector-conformance/docker-vm";
+  const build = read("backend/testdata/connector-conformance/Dockerfile");
+  assert.match(build, /docker:28\.5\.1-dind@sha256:[a-f0-9]{64} AS guest/);
+  assert.match(build, /CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go test -c/);
+  assert.match(build, /adduser -S -D -u 1000 -s \/bin\/sh/);
+  const scenario = read(
+    "backend/internal/connectors/conformance/docker_vm_test.go",
+  );
+  assert.match(scenario, /"-accel", "tcg,thread=multi,tb-size=64"/);
+  assert.match(scenario, /"-nic", "none"/);
+  assert.doesNotMatch(scenario, /-enable-kvm|-virtfs|-netdev|-drive|-device/);
+  const init = read(`${prefix}/init`);
+  assert.match(init, /test "\$\(ls \/sys\/class\/net\)" = lo/);
+  assert.match(init, /--pull=never --network none/);
+  assert.match(init, /DOCKER_RAMDISK=1 dockerd/);
+  assert.match(init, /chmod 755 \/fixture\/docker-config/);
+  assert.match(init, /trap cleanup EXIT/);
+  assert.match(init, /poweroff -f/);
+  assert.match(read(`${prefix}/sshd.conf`), /^ListenAddress 127\.0\.0\.1$/m);
+  assert.match(
+    read(`${prefix}/docker-contained`),
+    /--host unix:\/\/\/run\/docker\.sock/,
   );
 });

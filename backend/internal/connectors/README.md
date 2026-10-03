@@ -408,6 +408,13 @@ coverage. Mail uses verified implicit TLS and STARTTLS, a fixture-only CA,
 and independently observed local recipient delivery. Neither service fixture
 loads operator keys, relays internet mail, or relaxes production TLS verification.
 
+Docker qualification executes in a no-NIC QEMU guest with software emulation,
+owned RAM storage, OpenSSH and an offline-seeded pair of containers. The real
+daemon verifies container scope, inspect redaction, logs, exec completion and
+stop/start readback. It never mounts the host Docker socket or inherits host
+files. Guest artifacts are Linux/amd64; native Windows/macOS execution and
+gateway approval/session lifecycle are not proved by this protocol fixture.
+
 Kubernetes uses a pinned agentless K3s API, a scoped kubeconfig and the owned
 SSH daemon. Real RBAC denial and conditional resourceVersion patch/readback
 are independent server witnesses. This API-only fixture does not cover live
