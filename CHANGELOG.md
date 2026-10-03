@@ -9,6 +9,80 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.67] - 2026-10-06
+
+### Security
+
+- Mandatory credential masking checks canonical numeric and boolean result leaves
+  through the shared boundary before delivery and durable history, without changing
+  unrelated scalar types.
+- Backup service JSON decoder errors use fixed diagnostics, while transport and
+  download-reader errors with known credential forms are withheld before exposure or
+  upload-journal persistence; malformed upload success metadata retains its original
+  outcome_unknown identity.
+- MCP's transitive proxy-addr dependency is locked to 2.0.8 for GHSA-jqcg-44mw-7w3h,
+  with SDK-resolved IPv4-mapped IPv6 trust regression coverage and reviewed dependency
+  metadata.
+- Frontend development source-map-js is locked to 1.2.2 for GHSA-68fv-2mgg-jv7q, with
+  Vite/PostCSS-resolved malformed and cumulative nested offset regressions; production
+  dependency audit remains clean.
+
+### Fixed
+
+- Shared target HTTP errors, console restart admission, startup failure handling and
+  credential dispatch preparation preserve connector-owned behavior without duplicate
+  gateway policy.
+- Initial SSH trust survives retry, maintenance console attachments remain bounded, and
+  retained maintenance snapshots preserve UTF-8 across buffer trimming and WebSocket
+  reconnects.
+- SMTP STARTTLS completes its verified handshake before authentication capability
+  discovery, preserving certificate and post-TLS greeting failure classification.
+- Database import progress owns its watchdog lifecycle; existing databases remain
+  openable while new password selections reject SQLCipher raw-key syntax that bypasses
+  passphrase derivation.
+- New token projects require explicit opt-in, internal console launch inputs retain
+  exact provenance, and Kubernetes execution uses the connector's validated CLI path
+  contract.
+
+### Maintenance
+
+- Credential compensation, backup rollback and bounded cleanup regressions strengthen
+  assurance without lowering coverage floors or increasing source budgets.
+- SQL result display, clipboard and Blob exports preserve exact numeric strings;
+  combined Mail admission rejects malformed policy before persistence, and S3 HTTP
+  regressions retain replacement-character and surrogate-pair object identities without
+  dispatching malformed JSON.
+- Schema definitions, console input observation, SSH transfer metadata, credential
+  preparation, backup journals and token action capacity have cohesive owners with
+  unchanged parent budgets and stricter local child guards.
+- Native authority, approval, audit and delivery regressions raise explicit coverage
+  floors for runtime, gateway, transport and action owners; shared template persistence
+  and typed action and HTTP responses reduce duplicated implementation without widening
+  connector capabilities.
+- Canonical disposable-service qualification now includes owned OpenSSH, IMAP/SMTP,
+  Kafka, Kubernetes API and an isolated Docker daemon alongside PostgreSQL, ClickHouse,
+  Valkey, RabbitMQ and S3.
+- Compose loopback binding, strict preview ports, method-scoped browser isolation,
+  workflow Go pins, build-context exclusions and exact local verification recipes are
+  checked by structured contracts.
+- Contributor navigation, setup-lock diagnostics, status and retention examples,
+  screenshot references, security documentation and the offline dependency-license
+  inventory remain aligned.
+- Maintainer-owned Lucide React 1.50.0 update keeps exact package integrity and license
+  metadata aligned without merging bot-authored commits.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- Real-service qualification is bounded Linux AMD64 evidence, not complete platform
+  certification. The Kubernetes API-only fixture does not claim actual pod logs, exec,
+  readiness or workload rolling restart; Docker qualification cannot access the host
+  daemon or network.
+- Native Windows/macOS runtime checks and signed release images require their separate
+  CI runners; package pins and local receipts do not imply bit-for-bit reproducibility
+  or an independent security audit.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.66] - 2026-10-05
 
 ### Fixed
