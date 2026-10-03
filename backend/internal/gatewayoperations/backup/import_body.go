@@ -13,6 +13,8 @@ const importBodyIdleTimeout = 30 * time.Second
 
 var errImportBodyIdle = errors.New("database import body stopped making progress")
 
+type importIdleTimer interface{ Stop() bool }
+
 type importProgressReader struct {
 	body        io.ReadCloser
 	controller  *http.ResponseController
@@ -22,6 +24,9 @@ type importProgressReader struct {
 	mu          sync.Mutex
 	finished    bool
 	interrupted bool
+	newTimer    func(time.Duration, func()) importIdleTimer
+	generation  uint64
+	activeRead  uint64
 }
 
 // Transport deadlines unblock socket reads; closing the body also covers
@@ -54,15 +59,27 @@ func (reader *importProgressReader) Read(buffer []byte) (int, error) {
 		return 0, err
 	}
 	_ = reader.controller.SetReadDeadline(time.Now().Add(reader.timeout))
+	reader.generation++
+	generation := reader.generation
+	reader.activeRead = generation
 	reader.mu.Unlock()
-	timer := time.AfterFunc(reader.timeout, func() { reader.interrupt(errImportBodyIdle) })
-	n, err := reader.body.Read(buffer)
-	if !timer.Stop() {
-		reader.interrupt(errImportBodyIdle)
+	start := reader.newTimer
+	if start == nil {
+		start = func(timeout time.Duration, callback func()) importIdleTimer { return time.AfterFunc(timeout, callback) }
 	}
+	timer := start(reader.timeout, func() { reader.interruptRead(generation) })
+	n, err := reader.body.Read(buffer)
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	if reader.activeRead == generation {
+		reader.activeRead = 0
+	}
+	// A queued callback may still run after Stop=false. Its read generation,
+	// rather than the stop result, decides whether it still owns cancellation.
+	timer.Stop()
 	var timeout interface{ Timeout() bool }
 	if errors.As(err, &timeout) && timeout.Timeout() {
-		reader.interrupt(errImportBodyIdle)
+		reader.interruptLocked(errImportBodyIdle)
 	}
 	if cause := context.Cause(reader.ctx); cause != nil {
 		return 0, cause
@@ -73,6 +90,18 @@ func (reader *importProgressReader) Read(buffer []byte) (int, error) {
 func (reader *importProgressReader) interrupt(cause error) {
 	reader.mu.Lock()
 	defer reader.mu.Unlock()
+	reader.interruptLocked(cause)
+}
+
+func (reader *importProgressReader) interruptRead(generation uint64) {
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	if reader.activeRead == generation {
+		reader.interruptLocked(errImportBodyIdle)
+	}
+}
+
+func (reader *importProgressReader) interruptLocked(cause error) {
 	if reader.finished || reader.interrupted {
 		return
 	}
