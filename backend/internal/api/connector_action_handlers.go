@@ -14,7 +14,6 @@ func (s *Server) localConnectorActionHTTP() gatewayactions.LocalHTTPHandlers {
 		ActiveRuntime: s.activeRuntimeOrLocked,
 		DecodeJSON:    decodeJSON,
 		WriteError:    writeError, WriteErrorCode: writeErrorWithCode, WriteJSON: writeJSON,
-		HandleTargetError: connectormgmt.WriteTargetError,
 		Response: func(request connectormgmt.ActionRequest, result connectors.ActionResult, replayed bool) any {
 			response := gatewayactions.MCPResponseFromResult(connectormgmt.ReleaseActionRequest(request), result, s.connectorRuntime.RunningHintPort())
 			response.Replayed = replayed

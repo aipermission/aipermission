@@ -12,6 +12,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -63,12 +64,12 @@ func (h *HTTPHandlers) ListConnectorPermissions(w http.ResponseWriter, r *http.R
 	store := connectortargets.NewStore(scope.Database)
 	rawPermissions, err := store.ListActionPermissions(r.Context(), tokenID)
 	if err != nil {
-		writeConnectorTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	permissions, err := filterSupportedConnectorPermissions(r.Context(), scope.Database, scope.Registry, rawPermissions)
 	if err != nil {
-		writeConnectorTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	revision, err := connectorPermissionsRevision(rawPermissions)
@@ -99,7 +100,7 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 	store := connectortargets.NewStore(scope.Database)
 	inputs, err := connectorPermissionInputs(r.Context(), scope.Registry, store, request.Permissions)
 	if err != nil {
-		writeConnectorTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	var permissions []connectortargets.ActionPermission
@@ -141,7 +142,7 @@ func (h *HTTPHandlers) UpdateConnectorPermissions(w http.ResponseWriter, r *http
 		if writeAuthorizationRevisionError(w, err) {
 			return
 		}
-		writeConnectorTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	httptransport.WriteJSON(w, http.StatusOK, map[string]any{
@@ -341,22 +342,4 @@ func connectorPermissionResponses(permissions []connectortargets.ActionPermissio
 		})
 	}
 	return items
-}
-
-func writeConnectorTargetError(w http.ResponseWriter, err error) {
-	var validation connectortargets.ValidationError
-	switch {
-	case errors.Is(err, connectortargets.ErrTargetUpdateConflict),
-		errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict):
-		httptransport.WriteError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, connectortargets.ErrTargetNotFound),
-		errors.Is(err, connectortargets.ErrTargetProfileNotFound):
-		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
-	case errors.Is(err, connectortargets.ErrInvalidTargetRef):
-		httptransport.WriteError(w, http.StatusBadRequest, "invalid connector target ref")
-	case errors.As(err, &validation):
-		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
-	default:
-		httptransport.WriteInternalError(w)
-	}
 }

@@ -8,16 +8,16 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 )
 
 type LocalHTTPDependencies struct {
-	ActiveRuntime     func(http.ResponseWriter) (Workspace, bool)
-	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
-	WriteError        func(http.ResponseWriter, int, string)
-	WriteErrorCode    func(http.ResponseWriter, int, string, string)
-	WriteJSON         func(http.ResponseWriter, int, any)
-	HandleTargetError func(http.ResponseWriter, error)
-	Response          func(connectortargets.ActionRequest, connectors.ActionResult, bool) any
+	ActiveRuntime  func(http.ResponseWriter) (Workspace, bool)
+	DecodeJSON     func(http.ResponseWriter, *http.Request, any) bool
+	WriteError     func(http.ResponseWriter, int, string)
+	WriteErrorCode func(http.ResponseWriter, int, string, string)
+	WriteJSON      func(http.ResponseWriter, int, any)
+	Response       func(connectortargets.ActionRequest, connectors.ActionResult, bool) any
 }
 
 type LocalHTTPHandlers struct {
@@ -94,7 +94,7 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, connectortargets.ErrInvalidTargetRef) || errors.Is(err, connectortargets.ErrTargetProfileNotFound) {
-		handlers.dependencies.HandleTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	handlers.dependencies.WriteErrorCode(w, http.StatusBadRequest, runtime.Workflow.RedactBasic(r.Context(), err.Error()), connectors.ErrorCode(err))

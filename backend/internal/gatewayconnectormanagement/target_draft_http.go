@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -42,7 +43,7 @@ func (handler *TargetDraftHTTPHandler) Test(w http.ResponseWriter, r *http.Reque
 	request.Config = config
 	if err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).
 		ValidateTargetTransport(r.Context(), request.ProjectID, request.Config); err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	adapter, _ := handler.component.dependencies.Adapters.For(request.ConnectorKind).(connectorapi.DraftTester)
