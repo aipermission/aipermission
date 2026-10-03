@@ -86,8 +86,15 @@ files and locks are cleaned up without changing the outside edit. This is
 optimistic conflict detection, not an atomic compare-and-swap guarantee against
 writers that ignore the lock; an outside writer can still race the final
 comparison and rename. Close other config editors while running setup.
-A lock is never stolen automatically: after a crash,
-first confirm no other setup process is running, then remove the
+A lock is never stolen automatically. `doctor` reports an existing config or
+skill setup lock using bounded PID, host and timestamp metadata, never its
+ownership token. Legacy or malformed records may lack that information.
+Platforms without nonblocking no-follow file opens report only lock presence,
+not owner contents; no unsafe fallback is used. Each read is capped at 4096 bytes
+and changed, replaced or grown records are rejected.
+Metadata is advisory: age, a missing PID or a matching hostname alone does not
+prove the lock is abandoned (PIDs can be reused). After a crash, close all setup
+processes and verify the exact owner/path before manually removing the
 `.aipermission.lock` path named in the timeout error and retry. Config and skill
 paths reject symbolic links or junctions anywhere in their managed path. Use
 `init --print` and update a link-managed config through its owning tool. Print
