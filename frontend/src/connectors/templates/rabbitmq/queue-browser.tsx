@@ -20,6 +20,10 @@ export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styl
             <p className={`text-xs ${styles.muted}`}>
               {browser.filteredQueues.length} shown · {browser.queues.length} loaded
             </p>
+            <p className={`min-h-4 text-xs ${styles.muted}`}>
+              {browser.queueDiscovery.partial ? "Partial queue list" : "Queue list"}
+              {browser.queueDiscovery.scanLimitReached ? " · scan limit reached" : ""}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             {browser.latestAction ? <Badge tone={actionTone(browser.latestAction.status)}>{browser.latestAction.action_name}</Badge> : null}
@@ -38,15 +42,31 @@ export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styl
         </div>
       </div>
       <div className={`grid gap-2 border-b p-3 ${styles.border}`}>
-        <div className="relative">
-          <Search className={`pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 ${styles.muted}`} />
+        <form
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void browser.refreshQueues();
+          }}
+        >
           <Input
-            className={`pl-9 ${styles.input}`}
+            className={styles.input}
             value={browser.pattern}
             onChange={(event) => browser.setPattern(event.target.value)}
             placeholder="Filter queues"
+            disabled={browser.publishLocked}
           />
-        </div>
+          <Button
+            type="submit"
+            variant="outline"
+            className="h-10 w-10 px-0"
+            title="Search queues"
+            aria-label="Search queues"
+            disabled={connectorActionBusy(browser.state) || browser.publishLocked}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        </form>
         <form
           className="grid grid-cols-[minmax(0,1fr)_auto] gap-2"
           onSubmit={(event) => {
@@ -86,13 +106,17 @@ export function QueueBrowser({ browser, styles }: { browser: RabbitBrowser; styl
             </span>
           </button>
         ))}
-        {browser.filteredQueues.length === 0 ? (
-          <Notice>{browser.state.state === "loading" ? "Loading RabbitMQ queues..." : "No queues found for this vhost/filter."}</Notice>
-        ) : null}
+        {browser.filteredQueues.length === 0 ? <Notice>{emptyQueueMessage(browser)}</Notice> : null}
       </div>
       <QueueTotalsStrip queues={browser.queues} mutedClass={styles.muted} borderClass={styles.border} />
     </section>
   );
+}
+
+function emptyQueueMessage(browser: RabbitBrowser) {
+  if (browser.state.state === "loading") return "Loading RabbitMQ queues...";
+  if (browser.pattern.trim() !== browser.queueDiscovery.appliedPattern) return "No loaded queues match.";
+  return browser.queueDiscovery.partial ? "No queues shown in this partial result." : "No queues found for this vhost/filter.";
 }
 
 function QueueTotalsStrip({

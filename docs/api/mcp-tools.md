@@ -342,6 +342,13 @@ with `ack_requeue_true`, plus explicit `publish_message` writes. Message
 payload previews and published payloads may contain secrets or customer data;
 prefer approval-required access until the workflow is trusted.
 
+Queue discovery is bounded: `list_queues` applies `pattern` on the server,
+then returns at most `limit` rows plus `truncated` and `scan_limit_reached`.
+These flags mean the result may be incomplete, not that additional queues are
+absent. The native browser submits its filter through the same action, retains
+an immediate loaded-row preview, and labels partial lists explicitly. Refine
+the server filter to reach a queue outside the initial 250-row window.
+
 Vhost, queue, exchange and routing-key values are exact UTF-8 identities,
 including leading, trailing and whitespace-only names. Preserve returned names
 when selecting, approving and dispatching actions. Only absent or exactly empty

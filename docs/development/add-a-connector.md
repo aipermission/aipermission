@@ -875,6 +875,13 @@ session retires pending reads even if its timestamp is retained, and queue,
 vhost, workspace, or session changes retire prior peek handlers. Late results
 cannot replace the current queue's messages or feedback after reopening.
 
+Queue search also uses this guarded read path: Enter/search or refresh sends
+the captured filter to `list_queues`. Only a completed current response replaces
+the loaded window and its partial-result metadata. Editing the filter alone
+previews loaded rows; an empty preview is not proof that the broker has no match.
+Missing completion flags are conservatively displayed as partial. Vhost changes
+clear the prior window before fetching the new scope.
+
 Vhost, queue, exchange and routing-key fields use `PreserveWhitespace` and a
 connector-owned identity validator at preparation and execution. Discovery and
 selection retain exact strings; picker labels may quote names but must not

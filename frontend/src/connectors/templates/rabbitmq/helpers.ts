@@ -81,6 +81,18 @@ export function readRabbitQueues(value: unknown): RabbitQueue[] {
   return Array.isArray(value) ? value.map(readRabbitQueue).filter((queue) => queue !== null) : [];
 }
 
+export function readRabbitQueueDiscovery(value: unknown, appliedPattern: string) {
+  const output = isRabbitRecord(value) ? value : {};
+  return {
+    queues: readRabbitQueues(output.queues),
+    discovery: {
+      appliedPattern,
+      partial: output.truncated !== false || output.scan_limit_reached !== false,
+      scanLimitReached: output.scan_limit_reached === true,
+    },
+  };
+}
+
 export function readRabbitRecords(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value) ? value.filter(isRabbitRecord) : [];
 }

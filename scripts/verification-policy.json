@@ -489,6 +489,7 @@
     "TestPostgresRoleCleanupLostCommitReplyRetainsIntentWithoutReplayRealService",
     "TestRabbitMQRealService",
     "TestRabbitMQResourceIdentityRealService",
+    "TestRabbitMQServerSearchBeyondInitialWindowRealService",
     "TestValkeyRealService",
     "TestValkeyBinaryKeyIdentityRealService",
     "TestS3RealService"
