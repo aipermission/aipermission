@@ -778,10 +778,10 @@
       "lines": 100
     },
     "src/connectors/editor/use-connector-editor.ts": {
-      "statements": 84.07,
-      "branches": 70.9,
-      "functions": 86.36,
-      "lines": 85.85
+      "statements": 87.4,
+      "branches": 80.24,
+      "functions": 91.3,
+      "lines": 87.61
     },
     "src/connectors/editor/use-connector-family-host.ts": {
       "statements": 100,
