@@ -1,15 +1,15 @@
 import { expect } from "@playwright/test";
 import { cleanupFixture } from "../src/connectors/templates/ssh/cleanup-test-fixtures";
 
-export async function verifySSHCleanupBrowser({ page, testInfo, width, unlock, expectNoModerateAccessibilityViolations }) {
+export async function verifySSHCleanupBrowser({ page, apiIsolation, testInfo, width, unlock, expectNoModerateAccessibilityViolations }) {
   const { wire, acknowledgement } = cleanupFixture(1);
   let mutations = 0;
-  await page.route("http://localhost:8080/api/connector-targets/1/operations/key-cleanup-status", async (route) => {
+  await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/1/operations/key-cleanup-status", ["POST"], async (route) => {
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({});
     await route.fulfill({ json: wire });
   });
-  await page.route("http://localhost:8080/api/connector-targets/1/operations/key-cleanup-attest", async (route) => {
+  await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/1/operations/key-cleanup-attest", ["POST"], async (route) => {
     mutations += 1;
     const input = route.request().postDataJSON();
     expect(input).toMatchObject({
@@ -67,4 +67,31 @@ export async function verifySSHCleanupBrowser({ page, testInfo, width, unlock, e
   expect(mutations).toBe(1);
   await expectNoModerateAccessibilityViolations(page, '[role="dialog"]');
   await page.screenshot({ path: testInfo.outputPath(`ssh-cleanup-${width}.png`) });
+  await apiIsolation.route(page, "http://localhost:8080/__cleanup-probe", ["GET"], (route) =>
+    route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Isolated method probe</title>" }),
+  );
+  await page.goto("http://localhost:8080/__cleanup-probe");
+  const expectedBlocked = [];
+  for (const operation of ["key-cleanup-status", "key-cleanup-attest"]) {
+    const url = `http://localhost:8080/api/connector-targets/1/operations/${operation}`;
+    for (const method of ["GET", "PUT", "DELETE"]) {
+      const blocked = await page.evaluate(
+        async ({ url, method }) => {
+          try {
+            await fetch(url, { method });
+            return false;
+          } catch {
+            return true;
+          }
+        },
+        { url, method },
+      );
+      expect(blocked).toBe(true);
+      expectedBlocked.push(`${method} ${url}`);
+    }
+  }
+  expect(apiIsolation.unexpectedCalls).toEqual(expectedBlocked);
+  // Retire only the six asserted deliberate probes; accidental calls still fail.
+  apiIsolation.unexpectedCalls.splice(0, expectedBlocked.length);
+  expect(mutations).toBe(1);
 }
