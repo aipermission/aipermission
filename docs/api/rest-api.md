@@ -1313,6 +1313,9 @@ A maintenance session admits at most eight simultaneous browser websocket
 clients. Excess attachments receive an `error` frame with `client_limit` status
 and are closed without replacing existing clients. Disconnecting a client or
 failing an initial snapshot/ready frame releases its admission slot.
+The retained transcript is capped at 200 KiB on UTF-8 character boundaries;
+reconnecting clients receive the same valid, bounded snapshot. Trimming old
+output never retains only part of a multibyte character.
 
 `GET /api/settings/diagnostics` downloads a bounded JSON support report after
 normal local UI-session authentication. The strict allowlist includes release,
