@@ -53,6 +53,8 @@ jobs:
         run: node scripts/verification-policy.js --verify-ratchet
       - name: CI policy tests
         run: node scripts/run-tooling-tests.js scripts/ci
+      - name: Toolchain policy tests
+        run: node scripts/run-tooling-tests.js scripts/toolchains
       - name: Verification policy tests
         run: node scripts/run-tooling-tests.js scripts/verification
       - name: Maintenance policy tests

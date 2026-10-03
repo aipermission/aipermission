@@ -155,24 +155,24 @@ function workflowJobs(source) {
   );
 }
 
-function workflowSetupNodeVersions(source, sourcePath = "workflow") {
+function workflowSetupVersions(source, action, field, sourcePath = "workflow") {
   const workflow = parseWorkflow(source, sourcePath);
   const versions = [];
-  for (const [jobID, job] of Object.entries(workflow.jobs || {})) {
+  for (const [jobID, job] of Object.entries(
+    workflow.jobs || { composite: workflow.runs },
+  )) {
     if (!plainObject(job) || !Array.isArray(job.steps)) continue;
     job.steps.forEach((step, index) => {
       if (!plainObject(step) || typeof step.uses !== "string") return;
-      if (!step.uses.startsWith("actions/setup-node@")) return;
-      const version = plainObject(step.with)
-        ? step.with["node-version"]
-        : undefined;
+      if (!step.uses.startsWith(`${action}@`)) return;
+      const version = plainObject(step.with) ? step.with[field] : undefined;
       if (
         version != null &&
         typeof version !== "string" &&
         typeof version !== "number"
       ) {
         throw new Error(
-          `${sourcePath} job ${jobID} step ${index + 1} node-version must be a string or number`,
+          `${sourcePath} job ${jobID} step ${index + 1} ${field} must be a string or number`,
         );
       }
       versions.push(version == null ? undefined : String(version));
@@ -531,5 +531,13 @@ module.exports = {
   verifyWorkflowRuntimeContract,
   workflowJobContracts,
   workflowJobs,
-  workflowSetupNodeVersions,
+  workflowSetupNodeVersions: (source, sourcePath) =>
+    workflowSetupVersions(
+      source,
+      "actions/setup-node",
+      "node-version",
+      sourcePath,
+    ),
+  workflowSetupGoVersions: (source, sourcePath) =>
+    workflowSetupVersions(source, "actions/setup-go", "go-version", sourcePath),
 };

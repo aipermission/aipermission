@@ -228,6 +228,7 @@
         "sh scripts/gitleaks-history-scan.sh",
         "node scripts/line-ending-check.js",
         "node scripts/run-tooling-tests.js scripts/ci",
+        "node scripts/run-tooling-tests.js scripts/toolchains",
         "node scripts/run-tooling-tests.js scripts/verification",
         "node scripts/run-tooling-tests.js scripts/maintenance",
         "node scripts/run-tooling-tests.js scripts/dependencies",

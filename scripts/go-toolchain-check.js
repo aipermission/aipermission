@@ -1,26 +1,70 @@
 const fs = require("node:fs");
+const path = require("node:path");
+const { workflowFiles } = require("./workflow-files");
+const { workflowSetupGoVersions } = require("./workflow-contracts");
 
-const read = (path) => fs.readFileSync(path, "utf8");
-const requireMatch = (path, pattern, label) => {
-  const match = read(path).match(pattern);
-  if (!match) {
-    throw new Error(`${path} does not declare ${label}`);
+const repositoryRoot = path.resolve(__dirname, "..");
+const requireMatches = (root, filename, pattern, label) => {
+  const matches = [
+    ...fs.readFileSync(path.join(root, filename), "utf8").matchAll(pattern),
+  ];
+  if (matches.length === 0) {
+    throw new Error(`${filename} does not declare ${label}`);
   }
-  return match[1];
+  return matches.map((match) => match[1]);
 };
 
-const expected = requireMatch("backend/go.mod", /^toolchain go([^\s]+)$/m, "a Go toolchain");
-const declarations = [
-  ["backend/Dockerfile", /^FROM golang:([^\s-]+)-/m, "a Go builder image"],
-  [".github/workflows/ci.yml", /go-version: "([^"]+)"/, "a Go CI version"],
-  [".github/workflows/codeql.yml", /go-version: "([^"]+)"/, "a Go CodeQL version"],
-];
+function verifyGoToolchain({ root = repositoryRoot } = {}) {
+  const expected = requireMatches(
+    root,
+    "backend/go.mod",
+    /^toolchain go([^\s]+)$/gm,
+    "a Go toolchain",
+  );
+  if (expected.length !== 1 || !/^\d+\.\d+\.\d+$/.test(expected[0])) {
+    throw new Error(
+      "backend/go.mod must declare one exact Go toolchain version",
+    );
+  }
+  const check = (filename, actual) => {
+    if (actual !== expected[0]) {
+      throw new Error(
+        `${filename} uses Go ${actual || "without a version"}; expected ${expected[0]} from backend/go.mod`,
+      );
+    }
+  };
+  for (const version of requireMatches(
+    root,
+    "backend/Dockerfile",
+    /^FROM(?:\s+--platform=\S+)?\s+golang:([^\s@-]+)/gim,
+    "a Go builder image",
+  )) {
+    check("backend/Dockerfile", version);
+  }
+  let count = 0;
+  for (const filename of workflowFiles(root)) {
+    for (const version of workflowSetupGoVersions(
+      fs.readFileSync(filename, "utf8"),
+      path.relative(root, filename),
+    )) {
+      count++;
+      check(path.relative(root, filename), version);
+    }
+  }
+  if (count === 0)
+    throw new Error("GitHub workflows do not declare actions/setup-go");
+  return expected[0];
+}
 
-for (const [path, pattern, label] of declarations) {
-  const actual = requireMatch(path, pattern, label);
-  if (actual !== expected) {
-    throw new Error(`${path} uses Go ${actual}; expected ${expected} from backend/go.mod`);
+if (require.main === module) {
+  try {
+    process.stdout.write(
+      `Go toolchain declarations match ${verifyGoToolchain()}.\n`,
+    );
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
   }
 }
 
-process.stdout.write(`Go toolchain declarations match ${expected}.\n`);
+module.exports = { verifyGoToolchain };
