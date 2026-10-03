@@ -1,9 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiGet, apiPost } from "../lib/api";
+import { invalidateUISession } from "../lib/ui-session-events.ts";
 import { useDatabaseLifecycle } from "./use-database-lifecycle";
 
 vi.mock("../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock("../lib/ui-session-events.ts", () => ({ invalidateUISession: vi.fn() }));
 
 function renderLifecycle(pollIsCurrent = () => true) {
   const disconnectAllConsoleSessions = vi.fn();
@@ -15,6 +17,7 @@ describe("useDatabaseLifecycle", () => {
   beforeEach(() => {
     vi.mocked(apiGet).mockReset();
     vi.mocked(apiPost).mockReset();
+    vi.mocked(invalidateUISession).mockReset();
   });
 
   it("ignores a database status response from a stale poll generation", async () => {
@@ -91,6 +94,27 @@ describe("useDatabaseLifecycle", () => {
     expect(apiPost).toHaveBeenCalledWith("/api/lock", { scope: "current" });
     expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
     expect(result.current.lockDialog).toMatchObject({ open: true, state: "error", error: "lock failed" });
+    expect(invalidateUISession).not.toHaveBeenCalled();
+  });
+
+  it.each(["current", "all"] as const)("invalidates sibling views only after a confirmed %s lock", async (scope) => {
+    vi.mocked(apiPost).mockResolvedValue({});
+    const { result, disconnectAllConsoleSessions } = renderLifecycle();
+    const reload = vi.fn();
+    vi.stubGlobal("window", { location: { reload } });
+    try {
+      await act(async () => result.current.lock(scope));
+      expect(apiPost).toHaveBeenCalledExactlyOnceWith("/api/lock", { scope });
+      expect(disconnectAllConsoleSessions).toHaveBeenCalledOnce();
+      expect(invalidateUISession).toHaveBeenCalledOnce();
+      expect(reload).toHaveBeenCalledOnce();
+      expect(disconnectAllConsoleSessions.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(invalidateUISession).mock.invocationCallOrder[0],
+      );
+      expect(vi.mocked(invalidateUISession).mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("closes without switching when the current database is selected", async () => {

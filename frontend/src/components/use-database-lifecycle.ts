@@ -5,6 +5,7 @@ import { pollReadOptions } from "../lib/async-resource";
 import { databaseStatusResponse } from "../lib/gateway-contracts/database-status-contract.ts";
 import type { DatabaseStatus } from "../lib/gateway-contracts/database-status-contract.ts";
 import { errorMessage } from "../lib/errors.ts";
+import { invalidateUISession } from "../lib/ui-session-events.ts";
 
 type SwitchDialogState = {
   open: boolean;
@@ -48,6 +49,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
       try {
         await apiPost("/api/lock", { scope });
         disconnectAllConsoleSessions();
+        invalidateUISession();
         window.location.reload();
       } catch (error) {
         setLockDialog((current) => ({

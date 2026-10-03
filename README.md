@@ -238,6 +238,9 @@ Important boundaries:
   exact class-specific response and redaction contract.
 - MCP clients authenticate with scoped API tokens, not connector credentials.
 - Web mutations require the unlocked local browser session and CSRF checks.
+- Lock/session invalidation hides cached unlocked views in active same-origin
+  tabs. Focus and bounded status checks reconcile other clients; browser
+  notifications cannot unlock a database or grant authorization.
 - Connector outputs, command text, mail content, paths, and notes are untrusted
   data and may contain secrets.
 - Gateway-held credentials and correctly declared sensitive fields use a

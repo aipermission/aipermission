@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { ComponentProps } from "react";
 import { Link, Outlet, useLocation } from "react-router";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import App from "./App";
 import { apiGet } from "./lib/api";
 import { errorMessage } from "./lib/errors.ts";
+import { useUnlockStatus } from "./lib/use-unlock-status.ts";
 import type { UnlockPage, UnlockShell } from "./pages/unlock.tsx";
 import type { Shell } from "./components/app-shell.tsx";
 
@@ -205,7 +206,7 @@ it("loads unlock status and forwards lifecycle cancellation to reconciliation", 
   await user.click(await screen.findByRole("button", { name: "Refresh unlock status" }));
 
   await waitFor(() => expect(apiGet).toHaveBeenCalledTimes(2));
-  expect(get.mock.calls[1]).toEqual(["/api/unlock/status", { signal: expect.any(AbortSignal) }]);
+  expect(get.mock.calls[1]).toEqual(["/api/unlock/status", { signal: expect.any(AbortSignal), timeoutMs: 4000 }]);
 });
 
 it("keeps the unlock workflow mounted when lifecycle status reconciliation fails", async () => {
@@ -271,4 +272,125 @@ it("keeps the unlock form available after malformed lifecycle reconciliation", a
   await user.click(await screen.findByRole("button", { name: "Refresh unlock status" }));
   expect(await screen.findByText("Invalid database status response.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Refresh unlock status" })).toBeVisible();
+});
+
+it.each([401, 423].flatMap((status) => [null, "absent", "", "foreign", "pinned"].map((binding) => ({ status, binding }))))(
+  "unmounts sensitive views immediately on authorization failure %j",
+  async ({ status, binding }) => {
+    window.history.replaceState(null, "", "/tokens");
+    const pendingStatus = deferred();
+    get.mockResolvedValueOnce({ state: "unlocked", databases: [] }).mockReturnValueOnce(pendingStatus.promise);
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "Tokens route" })).toBeVisible();
+    const actualAPI = await vi.importActual<typeof import("./lib/api")>("./lib/api");
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: status === 423 ? "database is locked" : "ui session required" }), {
+        status,
+        headers: {
+          "Content-Type": "application/json",
+          ...(binding === null || binding === "absent" ? {} : { "X-AIPermission-Workspace": binding }),
+        },
+      }),
+    );
+
+    await act(async () => {
+      const request =
+        binding === null ? actualAPI.apiGet("/api/tokens") : actualAPI.apiPost("/api/settings", {}, { workspaceBinding: "pinned" });
+      if (binding === null || binding === "pinned") await expect(request).rejects.toMatchObject({ status });
+      else await expect(request).rejects.toThrow(/workspace binding mismatch/);
+    });
+
+    expect(screen.queryByRole("heading", { name: "Tokens route" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Unlocked workspace")).not.toBeInTheDocument();
+    expect(screen.getByText("Checking encrypted database...")).toBeVisible();
+    await act(async () => pendingStatus.resolve({ state: "locked", databases: [] }));
+    expect(await screen.findByText("Unlock state: locked")).toBeVisible();
+  },
+);
+
+it.each(["focus", "visibility"])("rechecks the gateway on %s and clears a stale unlocked view", async (event) => {
+  get.mockResolvedValueOnce({ state: "unlocked", databases: [] }).mockResolvedValueOnce({ state: "session_required", databases: [] });
+  render(<App />);
+  expect(await screen.findByText("Unlocked workspace")).toBeVisible();
+  await act(async () => {
+    if (event === "focus") window.dispatchEvent(new Event("focus"));
+    else document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(await screen.findByText("Unlock state: session_required")).toBeVisible();
+  expect(screen.queryByText("Unlocked workspace")).not.toBeInTheDocument();
+});
+
+it("aborts replaced and unmounted status requests and ignores late unlocked replies", async () => {
+  const first = deferred();
+  const latest = deferred();
+  get.mockReturnValueOnce(first.promise).mockReturnValueOnce(latest.promise);
+  const { unmount } = render(<App />);
+  const initialSignal = get.mock.calls[0][1]?.signal;
+  act(() => window.dispatchEvent(new Event("aipermission:ui-session-required")));
+  expect(initialSignal?.aborted).toBe(true);
+  await act(async () => latest.resolve({ state: "locked", databases: [] }));
+  await act(async () => first.resolve({ state: "unlocked", databases: [] }));
+  expect(screen.queryByText("Unlocked workspace")).not.toBeInTheDocument();
+
+  const unmounted = deferred();
+  get.mockReturnValueOnce(unmounted.promise);
+  act(() => window.dispatchEvent(new Event("aipermission:ui-session-required")));
+  const unmountedSignal = get.mock.calls[2][1]?.signal;
+  unmount();
+  expect(unmountedSignal?.aborted).toBe(true);
+  await act(async () => unmounted.resolve({ state: "unlocked", databases: [] }));
+  act(() => window.dispatchEvent(new Event("focus")));
+  expect(get).toHaveBeenCalledTimes(3);
+});
+
+it("joins caller cancellation and does not start an already canceled status reconciliation", async () => {
+  get.mockResolvedValueOnce({ state: "session_required", databases: [] });
+  const hook = renderHook(useUnlockStatus);
+  await waitFor(() => expect(hook.result.current.unlock.state).toBe("ready"));
+  const controller = new AbortController();
+  controller.abort();
+  await act(async () => hook.result.current.loadUnlockStatus(controller.signal));
+  expect(get).toHaveBeenCalledTimes(1);
+
+  const pendingStatus = deferred();
+  get.mockReturnValueOnce(pendingStatus.promise);
+  const active = new AbortController();
+  let reconcile!: Promise<void>;
+  act(() => {
+    reconcile = hook.result.current.loadUnlockStatus(active.signal);
+  });
+  active.abort();
+  expect(get.mock.calls[1][1]?.signal?.aborted).toBe(true);
+  await act(async () => {
+    pendingStatus.reject(new Error("late canceled failure"));
+    await reconcile;
+  });
+  expect(hook.result.current.unlock).toMatchObject({ state: "ready", data: { state: "session_required" } });
+});
+
+it("coalesces focus and periodic checks, skips hidden tabs, and clears its timer on unmount", async () => {
+  vi.useFakeTimers();
+  try {
+    get.mockResolvedValueOnce({ state: "unlocked", databases: [] });
+    const hook = renderHook(useUnlockStatus);
+    await act(async () => {});
+    expect(hook.result.current.unlock).toMatchObject({ state: "ready", data: { state: "unlocked" } });
+    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    await act(async () => vi.advanceTimersByTime(30000));
+    expect(get).toHaveBeenCalledTimes(1);
+    visibility.mockReturnValue("visible");
+    const pendingStatus = deferred();
+    get.mockReturnValueOnce(pendingStatus.promise);
+    await act(async () => vi.advanceTimersByTime(30000));
+    act(() => window.dispatchEvent(new Event("focus")));
+    await act(async () => vi.advanceTimersByTime(30000));
+    expect(get).toHaveBeenCalledTimes(2);
+    await act(async () => pendingStatus.resolve({ state: "session_required", databases: [] }));
+    expect(hook.result.current.unlock).toMatchObject({ state: "ready", data: { state: "session_required" } });
+    hook.unmount();
+    await act(async () => vi.advanceTimersByTime(60000));
+    expect(get).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
