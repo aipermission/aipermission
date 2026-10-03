@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/db/keymaterial"
+
 	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
 
@@ -67,7 +69,7 @@ func openEncrypted(path string, password string, options openOptions) (*sql.DB, 
 	values := url.Values{}
 	values.Set("_foreign_keys", "ON")
 	if password != "" {
-		values.Set("_key", quoteSQLDoubleQuotedString(password))
+		values.Set("_key", keymaterial.EscapeDoubleQuoted(password))
 	}
 
 	absolutePath, err := filepath.Abs(path)
@@ -362,6 +364,9 @@ func Rekey(database *sql.DB, newPassword string) error {
 }
 
 func RekeyContext(ctx context.Context, database *sql.DB, newPassword string) error {
+	if err := keymaterial.ValidatePassphrase(newPassword); err != nil {
+		return err
+	}
 	if database == nil {
 		return ErrDatabaseNotOpen
 	}
@@ -380,7 +385,7 @@ func RekeyContext(ctx context.Context, database *sql.DB, newPassword string) err
 	// driver. Escape double quotes because the driver and SQLCipher examples use
 	// double-quoted PRAGMA key/rekey passphrases. Once dispatch starts, finish the
 	// irreversible operation even if the originating request is canceled.
-	if _, err := connection.ExecContext(context.WithoutCancel(ctx), `PRAGMA rekey = "`+quoteSQLDoubleQuotedString(newPassword)+`"`); err != nil {
+	if _, err := connection.ExecContext(context.WithoutCancel(ctx), `PRAGMA rekey = "`+keymaterial.EscapeDoubleQuoted(newPassword)+`"`); err != nil {
 		return fmt.Errorf("rekey encrypted sqlite: %w", err)
 	}
 	return nil
@@ -404,8 +409,4 @@ func SnapshotContext(ctx context.Context, database *sql.DB, targetPath string) e
 		return fmt.Errorf("chmod sqlite snapshot: %w", err)
 	}
 	return nil
-}
-
-func quoteSQLDoubleQuotedString(value string) string {
-	return strings.ReplaceAll(value, `"`, `""`)
 }

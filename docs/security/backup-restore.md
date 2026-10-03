@@ -92,6 +92,9 @@ character diversity, and rejection of common, repeated, sequential,
 product-related, and database-name-derived patterns. The stronger gate matters
 because theft of an encrypted remote backup permits offline password guessing.
 Changing the password while remote backup remains active applies the same gate.
+SQLCipher raw-key notation is rejected because it bypasses passphrase key
+derivation; an existing raw-key database must first be changed to a normal
+passphrase locally. Unlock and import remain supported for the original file.
 
 The service token is encrypted with the local gateway vault and is never
 returned by list/detail responses. Archiving a provider clears its encrypted

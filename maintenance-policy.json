@@ -422,6 +422,7 @@
     "internal/databasecatalog": 75.5,
     "internal/databaseownership": 75,
     "internal/db": 75,
+    "internal/db/keymaterial": 100,
     "internal/db/auditmigration": 98,
     "internal/db/backupmigration": 64.5,
     "internal/db/timestampmigration": 72,

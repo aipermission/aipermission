@@ -1,6 +1,18 @@
 package passwordpolicy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestRawKeyNotationRequiresChangingToAPassphrase(t *testing.T) {
+	for _, length := range []int{64, 96, 160} {
+		password := "X'" + strings.Repeat("Ab90cD27ef68", length/12) + strings.Repeat("A", length%12) + "'"
+		if err := Validate(password, "Example"); err == nil || !strings.Contains(err.Error(), "raw-key notation") {
+			t.Fatalf("raw-key backup rejection = %v", err)
+		}
+	}
+}
 
 func TestValidate(t *testing.T) {
 	if err := Validate("M7!river-Quartz_92fox", "My Database"); err != nil {
