@@ -42,6 +42,7 @@ func TestPostgresUnicodeTypedLiteralRealService(t *testing.T) {
 	runtime.Profile.Public["username"] = "aipermission_literal_reader"
 	runtime.Secrets = fixtureSecrets{"password": "literal-fixture-only"}
 	assertConnection(t, connector, runtime)
+	assertPostgresNumericResult(t, connector, runtime)
 	for _, query := range []string{
 		`SELECT public.dömain 'x'`,
 		`SELECT püb.domain 'x'`,

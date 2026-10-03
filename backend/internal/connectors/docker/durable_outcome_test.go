@@ -67,9 +67,9 @@ func TestDockerDurableUnknownOutcomeSameKeyReplay(t *testing.T) {
 				SELECT status, output_text, output_json, error FROM history_entries
 				WHERE source_ref_type = 'connector_action_request' AND source_ref_id = ?`, stored.ID).
 				Scan(&historyStatus, &historyText, &historyOutput, &historyError))
-			var historyDetails map[string]any
-			durableDockerCheck(t, json.Unmarshal([]byte(historyOutput), &historyDetails))
-			if historyStatus != string(stored.Status) || historyText != "" || historyError != stored.Error || !reflect.DeepEqual(historyDetails, stored.Output) || strings.Contains(historyOutput, durableDockerEOF) {
+			expectedHistory, err := json.Marshal(stored.Output)
+			durableDockerCheck(t, err)
+			if historyStatus != string(stored.Status) || historyText != "" || historyError != stored.Error || historyOutput != string(expectedHistory) || strings.Contains(historyOutput, durableDockerEOF) {
 				t.Fatalf("history differs from durable unknown: %s %q %s %q", historyStatus, historyText, historyOutput, historyError)
 			}
 			var auditPayload string
