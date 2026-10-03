@@ -625,7 +625,10 @@ stable action contract for the selected target/profile pair. The route is
 contextual for labels, refs, and future validation metadata; it should not make
 the action catalog depend on network state or raw credential values.
 
-Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. It rejects
+Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. Schema-qualified
+typed literals are rejected for ASCII, Unicode, quoted, and `U&"..." UESCAPE`
+identifier forms: user-defined domain checks can have side effects even for an
+ordinary database role inside a read-only transaction. The action rejects
 obvious writes plus session/transaction and dynamic-execution statements such as
 `SELECT INTO`, `SET`, `NOTIFY`, `PREPARE`, and `EXECUTE`. It also runs inside a
 read-only transaction, accepts only an audited set of read-only `pg_catalog`

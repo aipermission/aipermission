@@ -379,7 +379,12 @@ func ValidatePostgreSQLResolutionSyntax(sql string) error {
 
 var postgresOperatorPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])operator\s*\(`)
 var postgresCastPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])cast\s*\(`)
-var postgresQualifiedTypedLiteralPattern = regexp.MustCompile(`(?i)(?:^|[^\pL\pN_$])(?:[a-z_][a-z0-9_$]*|quoted_identifier)\s*\.\s*(?:[a-z_][a-z0-9_$]*|quoted_identifier)\s+(?:e\s*)?string_literal(?:\s|$)`)
+
+// PostgreSQL accepts every non-ASCII character in unquoted identifiers, not
+// just Unicode letters. Normalization preserves U& prefixes and UESCAPE clauses.
+const postgresNormalizedIdentifier = `(?:[a-z_\x{0080}-\x{10FFFF}][a-z0-9_$\x{0080}-\x{10FFFF}]*|u\s*&\s*quoted_identifier(?:\s+uescape\s+string_literal)?)`
+
+var postgresQualifiedTypedLiteralPattern = regexp.MustCompile(`(?i)(?:^|[^a-z0-9_$\x{0080}-\x{10FFFF}])` + postgresNormalizedIdentifier + `\s*\.\s*` + postgresNormalizedIdentifier + `\s+(?:(?:e|n|b|x|u\s*&)\s*)?string_literal(?:\s|$)`)
 
 func isFunctionSyntaxKeyword(value string) bool {
 	switch strings.ToLower(value) {
