@@ -36,16 +36,19 @@ trap 'exit 143' TERM
 mkdir "$stage/source"
 git ls-files -z --cached --others --exclude-standard -- \
   backend/go.mod backend/go.sum backend/cmd backend/internal \
-  backend/testdata/connector-conformance/Dockerfile \
+  backend/testdata/connector-conformance \
   scripts/verification-policy.json > "$stage/files"
 tar -cf "$stage/source.tar" --null --verbatim-files-from -T "$stage/files"
 tar -xf "$stage/source.tar" -C "$stage/source"
 
-dc build runner
+dc build runner protocols
 started=1
-dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka
+if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols; then
+  dc logs --no-color --tail 100 kafka protocols >&2 || true
+  exit 1
+fi
 dc run --rm --no-deps -T minio-init
 if ! dc run --rm --no-deps -T runner; then
-  dc logs --no-color --tail 100 kafka >&2 || true
+  dc logs --no-color --tail 100 kafka protocols >&2 || true
   exit 1
 fi
