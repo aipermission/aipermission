@@ -191,7 +191,7 @@ func (gateway LiveConsoleGateway) ConnectorOpenLiveConsole(ctx context.Context, 
 	}
 	sourceGateway := gateway
 	sourceGateway.sourceTargetRef = connectors.FormatTargetRef(target.ConnectorKind, target.ID, profile.ID)
-	return transport.OpenLiveConsole(ctx, sourceGateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params})
+	return transport.OpenLiveConsole(ctx, sourceGateway, LiveRuntime(gateway.workspace, target.ConnectorKind), connectorapi.LiveConsoleOpenRequest{RuntimeID: surface.ID, Rows: rows, Cols: cols, Params: params, NestedTransport: true})
 }
 
 func (gateway LiveConsoleGateway) ConnectorRunCommand(ctx context.Context, request connectors.CommandRunRequest) (connectors.CommandRunResult, error) {

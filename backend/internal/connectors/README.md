@@ -231,6 +231,12 @@ arguments and parent traversal without rewriting the selected path. The owning
 connector still constructs the invocation and must bypass shell aliases or
 functions when resolving its standard executable.
 
+Live-console adapters receive `LiveConsoleOpenRequest.NestedTransport` only for
+connector-owned calls through `LiveConsoleGateway.ConnectorOpenLiveConsole`.
+The generic public opener leaves it false and the field cannot be decoded from
+JSON. An adapter must not let public `Params` override configured transport
+startup restrictions; any nested-launch override stays connector-owned.
+
 Keep protocol unit tests in the connector package. Tests that assemble the
 gateway HTTP server and a concrete connector belong in `backend/integration/`,
 not in that connector's package: the assembly imports the built-in catalog and

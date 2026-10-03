@@ -30,11 +30,19 @@ func (Transport) OpenLiveConsole(ctx context.Context, server connectorapi.LiveCo
 	if err != nil {
 		return nil, fmt.Errorf("resolve ssh material: %w", err)
 	}
-	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey.PrivateKey, request.Rows, request.Cols, LiveConsoleOptions{
+	return openLiveConsoleWithMaterial(ctx, gateway, target, privateKey.PrivateKey, request.Rows, request.Cols, liveConsoleOptions(request))
+}
+
+func liveConsoleOptions(request connectorapi.LiveConsoleOpenRequest) LiveConsoleOptions {
+	command := ""
+	if request.NestedTransport {
+		command = strings.TrimSpace(stringPayload(request.Params, "force_shell_command"))
+	}
+	return LiveConsoleOptions{
 		Generation:        request.Generation,
 		HasEnvironment:    request.HasEnvironment,
-		ForceShellCommand: strings.TrimSpace(stringPayload(request.Params, "force_shell_command")),
-	})
+		ForceShellCommand: command,
+	}
 }
 
 func (Transport) ExpectedLiveConsolePeerIdentities(ctx context.Context, server connectorapi.PeerIdentityGateway, runtime connectorapi.LiveConsoleRuntime, runtimeID int64) ([]string, error) {

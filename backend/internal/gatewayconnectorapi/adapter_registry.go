@@ -158,6 +158,8 @@ type LiveConsoleOpenRequest struct {
 	Cols           int
 	Params         map[string]any
 	HasEnvironment bool
+	// NestedTransport is set only by connector-owned delegation, never HTTP input.
+	NestedTransport bool `json:"-"`
 }
 
 type LiveConsoleSession struct {
