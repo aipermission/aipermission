@@ -21,11 +21,14 @@ import (
 const (
 	MaxInputBytes                        = 64 << 10
 	MaxTranscriptBytes                   = 200 << 10
+	maintenanceConsoleMaxClients         = 8
 	maintenanceConsoleDefaultCols        = 120
 	maintenanceConsoleDefaultRows        = 32
 	maintenanceConsolePingInterval       = 25 * time.Second
 	maintenanceConsoleProcessGracePeriod = 750 * time.Millisecond
 )
+
+var errMaintenanceConsoleClientLimit = errors.New("maintenance console client limit reached")
 
 type maintenanceConsoleClientMessage struct {
 	Type string `json:"type"`
@@ -300,11 +303,15 @@ func (s *Session) isLive() bool {
 
 func (s *Session) Attach(ws *websocket.Conn) {
 	writeMu := &sync.Mutex{}
-	if !s.addClient(ws, writeMu) {
+	if err := s.addClient(ws, writeMu); err != nil {
+		status, message := "closed", "maintenance console is no longer open"
+		if errors.Is(err, errMaintenanceConsoleClientLimit) {
+			status, message = "client_limit", errMaintenanceConsoleClientLimit.Error()
+		}
 		_ = writeMaintenanceConsoleMessage(ws, writeMu, maintenanceConsoleServerMessage{
 			Type:   "error",
-			Status: "closed",
-			Data:   "maintenance console is no longer open",
+			Status: status,
+			Data:   message,
 		})
 		_ = ws.Close()
 		return
@@ -348,7 +355,7 @@ func (s *Session) Attach(ws *websocket.Conn) {
 	}
 }
 
-func (s *Session) addClient(ws *websocket.Conn, writeMu *sync.Mutex) bool {
+func (s *Session) addClient(ws *websocket.Conn, writeMu *sync.Mutex) error {
 	return s.initializeClient(ws, writeMu, func(message maintenanceConsoleServerMessage) error {
 		return writeMaintenanceConsoleMessageLocked(ws, message)
 	})
@@ -358,15 +365,15 @@ func (s *Session) initializeClient(
 	ws *websocket.Conn,
 	writeMu *sync.Mutex,
 	send func(maintenanceConsoleServerMessage) error,
-) bool {
+) error {
 	if writeMu == nil || send == nil {
-		return false
+		return errors.New("maintenance console client writer is required")
 	}
 	writeMu.Lock()
 	defer writeMu.Unlock()
-	snapshot, ok := s.registerClient(ws, writeMu)
-	if !ok {
-		return false
+	snapshot, err := s.registerClient(ws, writeMu)
+	if err != nil {
+		return err
 	}
 	if err := send(maintenanceConsoleServerMessage{
 		Type:   "snapshot",
@@ -375,7 +382,7 @@ func (s *Session) initializeClient(
 		Data:   snapshot.Transcript,
 	}); err != nil {
 		s.unregisterClient(ws)
-		return false
+		return err
 	}
 	if err := send(maintenanceConsoleServerMessage{
 		Type:   "ready",
@@ -383,19 +390,22 @@ func (s *Session) initializeClient(
 		Shell:  snapshot.Shell,
 	}); err != nil {
 		s.unregisterClient(ws)
-		return false
+		return err
 	}
-	return true
+	return nil
 }
 
-func (s *Session) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (gatewayoperations.MaintenanceConsoleSnapshot, bool) {
+func (s *Session) registerClient(ws *websocket.Conn, writeMu *sync.Mutex) (gatewayoperations.MaintenanceConsoleSnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.status != "connected" || s.pty == nil {
-		return gatewayoperations.MaintenanceConsoleSnapshot{}, false
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, errors.New("maintenance console is no longer open")
+	}
+	if len(s.clients) >= maintenanceConsoleMaxClients {
+		return gatewayoperations.MaintenanceConsoleSnapshot{}, errMaintenanceConsoleClientLimit
 	}
 	s.clients[ws] = writeMu
-	return gatewayoperations.MaintenanceConsoleSnapshot{Status: s.status, Shell: s.shell, Transcript: s.transcript}, true
+	return gatewayoperations.MaintenanceConsoleSnapshot{Status: s.status, Shell: s.shell, Transcript: s.transcript}, nil
 }
 
 func (s *Session) removeClient(ws *websocket.Conn) {

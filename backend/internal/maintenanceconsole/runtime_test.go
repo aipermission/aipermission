@@ -228,7 +228,7 @@ func TestMaintenanceConsoleRejectsClientRegistrationAfterClosingStarts(t *testin
 		status:  "closing",
 		clients: map[*websocket.Conn]*sync.Mutex{},
 	}
-	if _, ok := session.registerClient(nil, &sync.Mutex{}); ok {
+	if _, err := session.registerClient(nil, &sync.Mutex{}); err == nil {
 		t.Fatal("closing maintenance session accepted a websocket client")
 	}
 }
@@ -246,7 +246,7 @@ func TestMaintenanceConsoleInitialFramesPrecedeConcurrentOutput(t *testing.T) {
 	releaseSnapshot := make(chan struct{})
 	frames := []string{}
 	var framesMu sync.Mutex
-	done := make(chan bool, 1)
+	done := make(chan error, 1)
 	go func() {
 		done <- session.initializeClient(nil, writeMu, func(message maintenanceConsoleServerMessage) error {
 			if message.Type == "snapshot" {
@@ -277,8 +277,8 @@ func TestMaintenanceConsoleInitialFramesPrecedeConcurrentOutput(t *testing.T) {
 	}()
 	<-outputStarted
 	close(releaseSnapshot)
-	if ok := <-done; !ok {
-		t.Fatal("client initialization failed")
+	if err := <-done; err != nil {
+		t.Fatalf("client initialization failed: %v", err)
 	}
 	<-outputDone
 	framesMu.Lock()
@@ -296,15 +296,15 @@ func TestMaintenanceConsoleOutputBelongsToEitherSnapshotOrBroadcast(t *testing.T
 	if clients := appendedFirst.appendTranscriptAndClients("after\n"); len(clients) != 0 {
 		t.Fatalf("output captured clients before registration: %d", len(clients))
 	}
-	snapshot, ok := appendedFirst.registerClient(client, writeMu)
-	if !ok || snapshot.Transcript != "after\n" {
-		t.Fatalf("post-output snapshot = %#v ok=%t", snapshot, ok)
+	snapshot, err := appendedFirst.registerClient(client, writeMu)
+	if err != nil || snapshot.Transcript != "after\n" {
+		t.Fatalf("post-output snapshot = %#v error=%v", snapshot, err)
 	}
 
 	registeredFirst := &Session{status: "connected", pty: &os.File{}, clients: map[*websocket.Conn]*sync.Mutex{}}
-	snapshot, ok = registeredFirst.registerClient(client, writeMu)
-	if !ok || snapshot.Transcript != "" {
-		t.Fatalf("pre-output snapshot = %#v ok=%t", snapshot, ok)
+	snapshot, err = registeredFirst.registerClient(client, writeMu)
+	if err != nil || snapshot.Transcript != "" {
+		t.Fatalf("pre-output snapshot = %#v error=%v", snapshot, err)
 	}
 	clients := registeredFirst.appendTranscriptAndClients("after\n")
 	if clients[client] != writeMu || len(clients) != 1 {
@@ -318,9 +318,9 @@ func TestMaintenanceConsoleInitialWriteFailureUnregistersClient(t *testing.T) {
 		status:  "connected",
 		clients: map[*websocket.Conn]*sync.Mutex{},
 	}
-	if session.initializeClient(nil, &sync.Mutex{}, func(maintenanceConsoleServerMessage) error {
+	if err := session.initializeClient(nil, &sync.Mutex{}, func(maintenanceConsoleServerMessage) error {
 		return io.ErrClosedPipe
-	}) {
+	}); err == nil {
 		t.Fatal("failed initial write reported a connected client")
 	}
 	session.mu.Lock()

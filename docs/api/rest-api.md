@@ -1293,6 +1293,11 @@ not inherited. This is a trusted local-operator diagnostic shell inside the
 gateway container, not a sandbox boundary against the gateway process or its
 local filesystem.
 
+A maintenance session admits at most eight simultaneous browser websocket
+clients. Excess attachments receive an `error` frame with `client_limit` status
+and are closed without replacing existing clients. Disconnecting a client or
+failing an initial snapshot/ready frame releases its admission slot.
+
 `GET /api/settings/diagnostics` downloads a bounded JSON support report after
 normal local UI-session authentication. The strict allowlist includes release,
 architecture, schema, connector-version, runtime-health, aggregate
