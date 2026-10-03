@@ -14,6 +14,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 )
@@ -246,7 +247,7 @@ func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope,
 	case errors.Is(err, connectortargets.ErrActionRequestCapacity):
 		writeResourceLimit(w, time.Minute)
 	case errors.Is(err, connectortargets.ErrInvalidTargetRef), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
-		writeTargetError(w, err)
+		targethttp.WriteError(w, err)
 	default:
 		writeCodedError(w, http.StatusBadRequest, scope.Redact(r.Context(), err.Error()), connectors.ErrorCode(err))
 	}

@@ -413,6 +413,7 @@
     "internal/connectors/ssh/sshconfig": 78,
     "internal/connectors/ssh/sshkeys": 80,
     "internal/connectortargets": 63,
+    "internal/connectortargets/httpapi": 100,
     "internal/connectortransport": 18,
     "internal/console": 80,
     "internal/console/persistence": 74,

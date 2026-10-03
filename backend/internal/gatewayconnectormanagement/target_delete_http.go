@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -36,7 +37,7 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 	defer release()
 	target, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), id)
 	if err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 
@@ -62,7 +63,7 @@ func (handler *TargetDeleteHTTPHandler) Delete(w http.ResponseWriter, r *http.Re
 		return
 	}
 	if err := workspace.Lifecycle.DeleteTarget(r.Context(), target, nil); err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	if _, err := workspace.Lifecycle.FinalizeTarget(r.Context(), target, deletedTargetStaleReason); err != nil {

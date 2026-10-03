@@ -101,6 +101,9 @@ func TestTargetOperationHandlerRejectsUnsupportedOrIncompletePorts(t *testing.T)
 			if response.Code != testCase.wantStatus {
 				t.Fatalf("response=%d %s", response.Code, response.Body.String())
 			}
+			if testCase.name == "unknown target" && response.Body.String() != "{\"error\":\"connector target not found\"}\n" {
+				t.Fatalf("target error presentation=%s", response.Body.String())
+			}
 		})
 	}
 }

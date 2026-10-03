@@ -209,13 +209,12 @@ func (component *ConnectorActionApplication) SensitiveOutputFields(hints ...conn
 }
 
 type ConnectorLocalHTTPDependencies struct {
-	ActiveRuntime     func(http.ResponseWriter) (*WorkspaceHandle, bool)
-	DecodeJSON        func(http.ResponseWriter, *http.Request, any) bool
-	WriteError        func(http.ResponseWriter, int, string)
-	WriteErrorCode    func(http.ResponseWriter, int, string, string)
-	WriteJSON         func(http.ResponseWriter, int, any)
-	HandleTargetError func(http.ResponseWriter, error)
-	Response          func(connectormgmt.ActionRequest, connectors.ActionResult, bool) any
+	ActiveRuntime  func(http.ResponseWriter) (*WorkspaceHandle, bool)
+	DecodeJSON     func(http.ResponseWriter, *http.Request, any) bool
+	WriteError     func(http.ResponseWriter, int, string)
+	WriteErrorCode func(http.ResponseWriter, int, string, string)
+	WriteJSON      func(http.ResponseWriter, int, any)
+	Response       func(connectormgmt.ActionRequest, connectors.ActionResult, bool) any
 }
 
 func (component *ConnectorActionApplication) LocalHTTP(dependencies ConnectorLocalHTTPDependencies) gatewayactions.LocalHTTPHandlers {
@@ -229,7 +228,6 @@ func (component *ConnectorActionApplication) LocalHTTP(dependencies ConnectorLoc
 		},
 		DecodeJSON: dependencies.DecodeJSON, WriteError: dependencies.WriteError,
 		WriteErrorCode: dependencies.WriteErrorCode, WriteJSON: dependencies.WriteJSON,
-		HandleTargetError: dependencies.HandleTargetError,
-		Response:          connectormgmt.DomainActionResponse(dependencies.Response),
+		Response: connectormgmt.DomainActionResponse(dependencies.Response),
 	})
 }

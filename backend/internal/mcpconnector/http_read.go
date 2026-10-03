@@ -3,12 +3,12 @@ package mcpconnector
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -71,7 +71,7 @@ func (h *HTTPHandlers) ListTargets(w http.ResponseWriter, r *http.Request) {
 	}
 	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
-		writeTargetError(w, err)
+		targethttp.WriteError(w, err)
 		return
 	}
 	store := connectortargets.NewStore(scope.Database)
@@ -98,7 +98,7 @@ func (h *HTTPHandlers) ListTargets(w http.ResponseWriter, r *http.Request) {
 			if exposeMetadata {
 				target, profile, err := store.ResolveTargetProfileViews(r.Context(), permission.TargetID, permission.ProfileID)
 				if err != nil {
-					writeTargetError(w, err)
+					targethttp.WriteError(w, err)
 					return
 				}
 				item.Metadata = scope.Metadata(target, profile)
@@ -150,7 +150,7 @@ func (h *HTTPHandlers) GetActions(w http.ResponseWriter, r *http.Request) {
 	}
 	allowed, err := permittedActions(r, scope, target.ID, profile.ID)
 	if err != nil {
-		writeTargetError(w, err)
+		targethttp.WriteError(w, err)
 		return
 	}
 	filtered := make([]connectors.ActionDefinition, 0, len(definitions))
@@ -187,7 +187,7 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, scope Scope) (connect
 	}
 	permissions, err := scope.Permissions(r.Context())
 	if err != nil {
-		writeTargetError(w, err)
+		targethttp.WriteError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
 	visible := false
@@ -204,7 +204,7 @@ func resolveTarget(w http.ResponseWriter, r *http.Request, scope Scope) (connect
 	}
 	target, profile, err := connectortargets.NewStore(scope.Database).ResolveConnectorActionTarget(r.Context(), targetRef)
 	if err != nil {
-		writeTargetError(w, err)
+		targethttp.WriteError(w, err)
 		return connectors.TargetView{}, connectors.CredentialProfileView{}, nil, false
 	}
 	for _, permission := range permissions {
@@ -233,20 +233,6 @@ func permittedActions(r *http.Request, scope Scope, targetID, profileID int64) (
 		}
 	}
 	return allowed, nil
-}
-
-func writeTargetError(w http.ResponseWriter, err error) {
-	var validation connectortargets.ValidationError
-	switch {
-	case errors.Is(err, connectortargets.ErrTargetNotFound), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
-		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
-	case errors.Is(err, connectortargets.ErrInvalidTargetRef):
-		httptransport.WriteError(w, http.StatusBadRequest, "invalid connector target ref")
-	case errors.As(err, &validation):
-		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
-	default:
-		httptransport.WriteInternalError(w)
-	}
 }
 
 func targetHints() []string {

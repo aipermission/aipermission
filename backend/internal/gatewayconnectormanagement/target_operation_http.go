@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -30,7 +31,7 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 	}
 	target, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), targetID)
 	if err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	adapter := handler.component.dependencies.Adapters.For(target.ConnectorKind)
@@ -59,7 +60,7 @@ func (handler *TargetOperationHTTPHandler) Run(w http.ResponseWriter, r *http.Re
 	defer release()
 	fresh, err := handler.component.Catalog(workspace.Storage.Database, workspace.Storage.Registry).Target(r.Context(), targetID)
 	if err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	if fresh.ConnectorKind != target.ConnectorKind {

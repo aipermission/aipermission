@@ -9,6 +9,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -21,7 +22,7 @@ func runCredentialTargetOperation(w http.ResponseWriter, r *http.Request, worksp
 	}
 	profile, err := connectortargets.NewStore(workspace.Storage.Database).GetCredentialProfile(r.Context(), target.ID, profileID)
 	if err != nil {
-		WriteTargetError(w, err)
+		targethttp.WriteManagementError(w, err)
 		return
 	}
 	if workspace.Storage.Registry == nil {

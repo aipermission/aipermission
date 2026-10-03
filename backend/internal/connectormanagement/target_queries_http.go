@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
+	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -183,20 +184,10 @@ func (h *HTTPHandlers) ListCredentialProfileActions(w http.ResponseWriter, r *ht
 }
 
 func writeTargetError(w http.ResponseWriter, err error) {
-	var validation connectortargets.ValidationError
 	switch {
-	case errors.Is(err, connectortargets.ErrTargetUpdateConflict),
-		errors.Is(err, connectortargets.ErrCredentialProfileUpdateConflict),
-		errors.Is(err, connectortargets.ErrRemoteCleanupPending):
+	case errors.Is(err, connectortargets.ErrRemoteCleanupPending):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, connectortargets.ErrTargetNotFound),
-		errors.Is(err, connectortargets.ErrTargetProfileNotFound):
-		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
-	case errors.Is(err, connectortargets.ErrInvalidTargetRef):
-		httptransport.WriteError(w, http.StatusBadRequest, "invalid connector target ref")
-	case errors.As(err, &validation):
-		httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 	default:
-		httptransport.WriteInternalError(w)
+		targethttp.WriteManagementError(w, err)
 	}
 }
