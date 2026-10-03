@@ -4,12 +4,17 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/aipermission/aipermission/backend/internal/db/keymaterial"
 )
 
 const minimumLength = 18
 
 // Validate checks whether a database password is suitable for remote backups.
 func Validate(password, databaseName string) error {
+	if err := keymaterial.ValidatePassphrase(password); err != nil {
+		return err
+	}
 	if len(password) < minimumLength {
 		return fmt.Errorf("remote backup requires a database password of at least %d characters", minimumLength)
 	}

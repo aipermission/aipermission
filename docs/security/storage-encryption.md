@@ -63,9 +63,19 @@ readable before a native runtime update is accepted.
 
 The database password is escaped before it is passed to SQLCipher PRAGMA key/rekey handling. Regression tests cover quotes and semicolons so user-entered password text cannot change SQL parsing.
 
+New database passwords and password-change destinations must be passphrases,
+not SQLCipher raw-key notation. The pinned runtime recognizes `x'<hex>'`
+(case-insensitive `x`) with 64, 96, or 160 hex characters as direct key material
+rather than a PBKDF2 passphrase. All three forms are rejected for new password
+selection and remote-backup enablement. Existing raw-key databases remain
+readable through unlock/import; an operator can change their password to a
+normal passphrase before enabling remote backup. No key text is converted or
+rewritten silently. Encrypted-page regression tests verify this compatibility
+and the subsequent password change.
+
 Backend tests also assert the inventoried SQLCipher runtime is active, the
 configured 4096-byte cipher page size and 256,000 PBKDF2-HMAC-SHA512 iterations
-are applied, HMAC-SHA512 page authentication is active, and SQLite foreign keys
+are applied for passphrase-based databases, HMAC-SHA512 page authentication is active, and SQLite foreign keys
 are enabled on encrypted connections. Dependency updates are
 watched with `govulncheck` and Dependabot, while the embedded native runtime is
 tracked under the [native dependency inventory](native-dependencies.md).

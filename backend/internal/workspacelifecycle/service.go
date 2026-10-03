@@ -12,6 +12,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/db/keymaterial"
 )
 
 var (
@@ -160,6 +161,9 @@ func classify(kind, err error) error { return classifiedError{kind: kind, err: e
 func PasswordPolicyError(err error) error { return classify(ErrPasswordPolicy, err) }
 
 func ValidatePassword(password, confirmation string) error {
+	if err := keymaterial.ValidatePassphrase(password); err != nil {
+		return err
+	}
 	if len(password) < 14 {
 		return fmt.Errorf("password must be at least 14 characters")
 	}
