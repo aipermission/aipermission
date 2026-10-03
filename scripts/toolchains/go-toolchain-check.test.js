@@ -8,15 +8,20 @@ const { verifyGoToolchain } = require("../go-toolchain-check");
 function fixture(t, versions = ["1.26.6", "1.26.6"]) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "go-toolchain-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  fs.mkdirSync(path.join(root, "backend"));
   fs.mkdirSync(path.join(root, ".github", "workflows"), { recursive: true });
+  for (const filename of [
+    "backend/Dockerfile",
+    "backend/testdata/connector-conformance/Dockerfile",
+  ]) {
+    fs.mkdirSync(path.dirname(path.join(root, filename)), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, filename),
+      "FROM golang:1.26.6-bookworm AS build\n",
+    );
+  }
   fs.writeFileSync(
     path.join(root, "backend/go.mod"),
     "module fixture\n\ntoolchain go1.26.6\n",
-  );
-  fs.writeFileSync(
-    path.join(root, "backend/Dockerfile"),
-    "FROM golang:1.26.6-bookworm AS build\n",
   );
   const jobs = versions
     .map(
@@ -94,6 +99,39 @@ test("Go builder verification includes platform-qualified and bare image tags", 
       /Dockerfile uses Go 1.25.0/,
     );
   }
+});
+
+test("Go version verification rejects conformance-only builder drift", (t) => {
+  for (const declaration of [
+    "FROM --platform=linux/amd64 golang:1.25.0-bookworm AS other",
+    `FROM golang:1.25.0@sha256:${"b".repeat(64)} AS other`,
+  ]) {
+    const root = fixture(t);
+    const file = path.join(
+      root,
+      "backend/testdata/connector-conformance/Dockerfile",
+    );
+    fs.appendFileSync(file, declaration + "\n");
+    assert.throws(
+      () => verifyGoToolchain({ root }),
+      /connector-conformance\/Dockerfile uses Go 1.25.0/,
+    );
+  }
+});
+
+test("Go conformance builder declarations are required and may use multiple matching stages", (t) => {
+  const root = fixture(t);
+  const file = path.join(
+    root,
+    "backend/testdata/connector-conformance/Dockerfile",
+  );
+  fs.appendFileSync(file, "FROM --platform=linux/amd64 golang:1.26.6 AS other\n");
+  assert.equal(verifyGoToolchain({ root }), "1.26.6");
+  fs.writeFileSync(file, "FROM debian:bookworm-slim AS runtime\n");
+  assert.throws(
+    () => verifyGoToolchain({ root }),
+    /connector-conformance\/Dockerfile does not declare a Go builder image/,
+  );
 });
 
 test("Go version verification rejects absent setup and ambiguous canonical versions", (t) => {

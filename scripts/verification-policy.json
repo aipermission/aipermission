@@ -188,7 +188,7 @@
     "backend-vuln": "63f3a478cbd1ce7e64c9ee2f7320b0630e6019f2bb0aec66de9dbe686091e854",
     "recovery-drill": "7ebc6e5fac6ba0fb34ab495232bdc6568a867336f7e8571db18c1b70faa4d8bd",
     "bounded-fuzz": "422876afe12ff9b031fce8791e65b285f9787ce148870f1f8e03207628e64fa8",
-    "connector-conformance": "df3b4d5334c0fd3f62f20d2e73e378ef95f83bda36987e1652b5cb99357b9fc5",
+    "connector-conformance": "1379916cd9d723e3288a210ff6c92843146bc291d7beb46f1e7ba98175347f81",
     "frontend-lint": "980d7d78f1f8840d76a7e5987123b800842698de7be837a6e6de07b0badbb277",
     "frontend-format-check": "2fd9e9ef67ad1ac08d79ad621a8334d93a3126e188401e4ef178a667aeace08a",
     "frontend-test-config": "5e2a159c9d64375ae2962eee3000561b193434a5b68a4d122e443a6e9b89f4fe",
@@ -212,7 +212,7 @@
     "mcp-pack": "20b1b0edb68b6a7ca1427147c92515291e09fecd200ef1d79bccb9bab75fbbe8",
     "placeholder-pack": "d827715046b9eb45130cd192e6f7a7b6899d357bc5a1cef08020bcfb5aa57b58",
     "docs-hygiene": "2e5f8bae6dc3db56ee7ab91103992ec2c48f6bc7b05d685ac5f502c0d0e9b3d6",
-    "$makefile": "1bc77da611f6c8faa88b23d89144ca8644c28cd3c8252a72c223f9edf2b22877"
+    "$makefile": "67b693abbe7abc5c79078f4faddcf435785c2aa0c20ba50f7795093328633a82"
   },
   "required_checks": [
     {
@@ -228,6 +228,7 @@
         "sh scripts/gitleaks-history-scan.sh",
         "node scripts/line-ending-check.js",
         "node scripts/run-tooling-tests.js scripts/ci",
+        "node scripts/run-tooling-tests.js scripts/conformance",
         "node scripts/run-tooling-tests.js scripts/toolchains",
         "node scripts/run-tooling-tests.js scripts/verification",
         "node scripts/run-tooling-tests.js scripts/maintenance",
@@ -468,6 +469,8 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestKafkaWireProbe",
+    "TestKafkaRealService",
     "TestClickHouseRealService",
     "TestPostgresRealService",
     "TestPostgresBinaryFixtureReadOnlyPolicy",

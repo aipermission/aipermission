@@ -384,9 +384,14 @@ pipeline suites. Run the disposable real-service matrix with:
 make connector-conformance
 ```
 
-The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ, and
-RustFS (S3) fixtures on automatically assigned loopback ports, exercises real
-connector actions, and removes the containers, network, and volumes afterward.
+The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ,
+RustFS (S3), and Apache Kafka fixtures on an internal network without published
+ports. A disposable native runner exercises real connector actions, then the
+target removes the containers, network, and volumes afterward. The runner has
+an allowlisted source snapshot excluding ignored operator files, no checkout
+mount, and no host Docker socket or operator credentials.
+Use the documented Linux/Compose toolchain with a local Unix-socket Docker
+endpoint; remote contexts are rejected and operator `.env` files are not loaded.
 The required `Connector Conformance` GitHub workflow runs for pull requests and
 pushes to `main` and `dev`, as well as weekly and on demand.
 

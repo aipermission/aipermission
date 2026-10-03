@@ -282,10 +282,26 @@ millisecond/second duration capped at 30 seconds, for a different local pass.
 The bounded runner uses one fuzz worker so CI results remain reproducible.
 
 The required connector conformance workflow exercises ClickHouse, Postgres,
-Valkey, RabbitMQ, and S3 against disposable pinned service containers on pull
-requests and pushes to `main` and `dev`, weekly, and on demand. SSH, Docker,
-Kubernetes, Kafka, and Mail retain focused protocol tests until a bounded,
+Valkey, RabbitMQ, S3, and Apache Kafka against disposable pinned service
+containers on pull requests and pushes to `main` and `dev`, weekly, and on
+demand. The runner joins the internal fixture network, with no published ports,
+host Docker socket, host credentials or production target configurations.
+Its image contains an allowlisted source snapshot, including current new code
+but excluding ignored operator files; the working checkout is never mounted.
+Images and module dependencies are prepared before this offline execution.
+The fixture target requires a Linux shell, GNU tar, Compose v2, and a local
+Unix-socket Docker endpoint; remote Docker contexts are rejected before setup.
+Compose does not load operator `.env` files for this isolated target.
+The protected check keeps its existing name for branch-protection continuity.
+SSH, Docker, Kubernetes, and Mail retain focused protocol tests until a bounded,
 deterministic real-service fixture is reviewed.
+
+Kafka conformance covers the real single-broker KRaft implementation, binary
+publish/readback identity, bounded sampling without offset commits, exact
+single-partition offset mutation and refusal while a consumer is joined.
+Every bootstrap and advertised-broker dial is restricted to the fixture
+endpoint. Plaintext is fixture-only; this receipt is not proof of SASL/TLS,
+Redpanda parity, multi-broker failover or post-dispatch network-loss behavior.
 
 ## Manual Smoke
 
