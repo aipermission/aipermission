@@ -4,6 +4,52 @@ import test from "node:test";
 import { MAX_GATEWAY_RESPONSE_BYTES } from "../../src/response-body.js";
 import { clientForGatewayURL, withGateway } from "../support/http-gateway.js";
 
+test("packaged MCP preserves exact numeric output strings on call and replay", { timeout: 10000 }, async (t) => {
+  const client = await withGateway(
+    t,
+    (_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          request_id: 42,
+          target_ref: "postgres:1:1",
+          connector_kind: "postgres",
+          action_name: "query_readonly",
+          retry_policy: { class: "read_only", guidance: "Read again if needed." },
+          output: {
+            rows: [{ big: "9007199254740993", min: "-9223372036854775808", decimal: "0.10000000000000000001", safe: 42, fraction: 0.1 }],
+          },
+        }),
+      );
+    },
+    2000,
+  );
+  for (const [name, args] of [
+    [
+      "call_connector_action",
+      {
+        target_ref: "postgres:1:1",
+        action_name: "query_readonly",
+        input: { sql: "select 1" },
+        reason: "numeric fixture",
+        idempotency_key: "numeric-fixture",
+      },
+    ],
+    ["get_connector_action_request", { request_id: 42 }],
+  ]) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.notEqual(result.isError, true);
+    assert.deepEqual(JSON.parse(result.content[0].text).output.rows[0], {
+      big: "9007199254740993",
+      min: "-9223372036854775808",
+      decimal: "0.10000000000000000001",
+      safe: 42,
+      fraction: 0.1,
+    });
+  }
+});
+
 test("mutation connection refusal is classified before dispatch", { timeout: 10000 }, async (t) => {
   const unavailable = http.createServer();
   await new Promise((resolve) => unavailable.listen(0, "127.0.0.1", resolve));

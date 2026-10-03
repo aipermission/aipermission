@@ -4,6 +4,18 @@ import test from "node:test";
 import { apiDelete, apiDownload, apiGet, apiPost, apiPostForm, apiPut } from "../../lib/api.ts";
 import { APIError } from "../../lib/errors.ts";
 
+test("browser API preserves exact numeric output strings on call and replay", async (t) => {
+  const row = { big: "9007199254740993", min: "-9223372036854775808", decimal: "0.10000000000000000001", safe: 42, fraction: 0.1 };
+  t.mock.method(globalThis, "fetch", async () => response({ status: "completed", request_id: 42, output: { rows: [row] } }));
+  const called = await apiPost("/api/numeric-fixture", {});
+  const replayed = await apiGet("/api/numeric-fixture");
+  assert.ok(called && typeof called === "object" && "output" in called);
+  assert.ok(replayed && typeof replayed === "object" && "output" in replayed);
+  assert.deepEqual(called.output, { rows: [row] });
+  assert.deepEqual(replayed.output, { rows: [row] });
+  assert.equal(JSON.stringify(called.output), JSON.stringify(replayed.output));
+});
+
 test("all API helpers forward the caller AbortSignal", async () => {
   const originalFetch = globalThis.fetch;
   const controller = new AbortController();

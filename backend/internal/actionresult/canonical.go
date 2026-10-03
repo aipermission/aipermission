@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"github.com/aipermission/aipermission/backend/internal/jsonnumber"
 )
 
 const (
@@ -38,8 +40,8 @@ func DefaultLimits() Limits {
 }
 
 // Canonicalize converts any JSON-serializable Go value into the small set of
-// types produced by json.Decoder with UseNumber. This prevents typed structs,
-// slices, maps, and custom marshalers from bypassing later traversal.
+// types produced by json.Decoder with UseNumber. Inexact JavaScript numbers
+// become strings. Typed/custom values cannot bypass traversal or output limits.
 func Canonicalize(value any, limits Limits) (any, error) {
 	limits = normalizedLimits(limits)
 	encoded, err := json.Marshal(value)
@@ -59,6 +61,15 @@ func Canonicalize(value any, limits Limits) (any, error) {
 	nodes := 0
 	if err := validateCanonical(canonical, 1, &nodes, limits); err != nil {
 		return nil, err
+	}
+	canonical = jsonnumber.PublicValue(canonical)
+	nodes = 0
+	if err := validateCanonical(canonical, 1, &nodes, limits); err != nil {
+		return nil, err
+	}
+	projected, err := json.Marshal(canonical)
+	if err != nil || len(projected) > limits.EncodedBytes {
+		return nil, fmt.Errorf("%w: numeric projection exceeds encoded value limit", ErrInvalidValue)
 	}
 	return canonical, nil
 }

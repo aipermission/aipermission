@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/jsonnumber"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
 
@@ -86,10 +87,15 @@ func parseJSONValue(value string) (any, error) {
 		return nil, nil
 	}
 	var decoded any
-	if err := json.Unmarshal([]byte(value), &decoded); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(value))
+	decoder.UseNumber()
+	if !json.Valid([]byte(value)) {
+		return nil, fmt.Errorf("stored connector output is not valid JSON")
+	}
+	if err := decoder.Decode(&decoded); err != nil {
 		return nil, err
 	}
-	return decoded, nil
+	return jsonnumber.PublicValue(decoded), nil
 }
 
 type rowScanner interface {

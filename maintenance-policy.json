@@ -444,6 +444,7 @@
     "internal/httpattachment": 86.5,
     "internal/httptransport": 87.5,
     "internal/jsonidentity": 100,
+    "internal/jsonnumber": 95.5,
     "internal/legacymigration": 72,
     "internal/localfilename": 90,
     "internal/localhttp": 78,

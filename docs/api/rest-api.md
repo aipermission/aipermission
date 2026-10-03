@@ -625,6 +625,16 @@ stable action contract for the selected target/profile pair. The route is
 contextual for labels, refs, and future validation metadata; it should not make
 the action catalog depend on network state or raw credential values.
 
+The shared action projection preserves numeric data across persistence, replay,
+MCP and browser clients. Safe integers and round-trippable decimals remain JSON
+numbers. Integers outside `[-9007199254740991, 9007199254740991]`, decimals that
+would be rounded, overflow/underflow values and negative zero become their exact
+numeric text as JSON strings. Oversized numeric tokens (over 1024 bytes) also
+remain strings rather than incur unbounded rational-comparison work. Existing
+strings are unchanged; output/redaction limits still apply. Clients must not
+coerce these strings to JavaScript `Number`. This boundary cannot reconstruct
+precision already lost by an upstream driver or service.
+
 Postgres `query_readonly` is defense-in-depth, not a SQL sandbox. Schema-qualified
 typed literals are rejected for ASCII, Unicode, quoted, and `U&"..." UESCAPE`
 identifier forms: user-defined domain checks can have side effects even for an
