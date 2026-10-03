@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const test = require("node:test");
+const { assertComposeLoopback } = require("../compose-loopback-policy");
 
 const root = path.resolve(__dirname, "../..");
 
@@ -14,6 +15,7 @@ test("Compose environment example excludes MCP process-only variables", () => {
 
 function composeConfig(file) {
   const migrationPort = "43211";
+  const frontendPort = "43210";
   const output = execFileSync(
     "docker",
     [
@@ -32,20 +34,54 @@ function composeConfig(file) {
       env: {
         ...process.env,
         AIPERMISSION_MIGRATION_FRONTEND_PORT: migrationPort,
+        AIPERMISSION_FRONTEND_PORT: frontendPort,
       },
     },
   );
-  return { config: JSON.parse(output), migrationPort };
+  return { config: JSON.parse(output), migrationPort, frontendPort };
 }
 
 for (const file of ["docker-compose.yml", "docker-compose.release.yml"]) {
   test(`${file} exposes the Docker host alias to connector transports`, () => {
-    const { config } = composeConfig(file);
+    const { config, frontendPort } = composeConfig(file);
+    assertComposeLoopback(config, frontendPort);
     assert.equal(config.services.backend.network_mode, "service:frontend");
     assert.equal(config.services.backend.extra_hosts, undefined);
     assert.deepEqual(config.services.frontend.extra_hosts, [
       "host.docker.internal=host-gateway",
     ]);
+  });
+
+  test(`${file} loopback guard rejects published API and mutated ingress`, () => {
+    const { config, frontendPort } = composeConfig(file);
+    const port = config.services.frontend.ports[0];
+    for (const [service, field, value] of [
+      ["frontend", "ports", undefined],
+      ["frontend", "ports", [port, port]],
+      ...["0.0.0.0", "::", undefined].map((host_ip) => [
+        "frontend",
+        "ports",
+        [{ ...port, host_ip }],
+      ]),
+      ["frontend", "ports", [{ ...port, target: 8080 }]],
+      ["backend", "ports", [port]],
+      ["backend", "network_mode", "host"],
+      [
+        "backend",
+        "environment",
+        {
+          ...config.services.backend.environment,
+          AIPERMISSION_BACKEND_HOST: "0.0.0.0",
+        },
+      ],
+    ]) {
+      const changed = structuredClone(config);
+      changed.services[service][field] = value;
+      assert.throws(
+        () => assertComposeLoopback(changed, frontendPort),
+        /Compose loopback topology/,
+      );
+    }
   });
 
   test(`${file} keeps migration behind its loopback proxy`, () => {

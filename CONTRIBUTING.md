@@ -86,6 +86,12 @@ warnings fail lint. Fix the code instead of adding inline suppressions; the
 prune command remains available if a temporary reviewed baseline is ever
 introduced.
 
+The source Vite dev server uses `http://127.0.0.1:3213`, not the persistent
+Docker gateway port 3210, and refuses to silently switch an occupied port.
+Before starting a source backend, set `AIPERMISSION_FRONTEND_PORT=3213` and use
+a separate development data directory. Keep its allowed origins aligned with
+the chosen Vite origin; do not point development at the dogfood database.
+
 Run Playwright when a change touches route-level UI, approval dialogs, console,
 or connector template rendering:
 

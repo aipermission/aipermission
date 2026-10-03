@@ -8,7 +8,9 @@ import { releaseNotesBoundary } from "./scripts/initial-js-budget.mjs";
 export default defineConfig({
   plugins: [productionSourceBoundary(), monacoSanitizer(), releaseNotesBoundary(), react(), tailwindcss()],
   server: {
-    port: 3210,
+    host: "127.0.0.1",
+    port: 3213,
+    strictPort: true,
   },
   build: {
     manifest: true,
