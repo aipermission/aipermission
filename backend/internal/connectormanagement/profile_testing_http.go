@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -96,12 +95,11 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 		writeTargetError(w, err)
 		return
 	}
-	secrets, err := decryptCredentialSecrets(r.Context(), fullProfile, scope.Runtime.DecryptSecret)
+	runtime, boundary, err := PrepareCredentialOperationRuntime(r.Context(), scope.Runtime, loadedTarget, fullProfile)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	boundary := actionresult.NewCredentialBoundary(secrets)
 	if response != nil {
 		status, payload, err := ProjectManagementResponse(r.Context(), scope.Runtime, *response, boundary)
 		if err != nil {
@@ -114,9 +112,7 @@ func (h *ProfileTestingHTTPHandler) Test(w http.ResponseWriter, r *http.Request)
 	ctx, cancel := context.WithTimeout(r.Context(), profileConnectionTestTimeout)
 	defer cancel()
 	start := time.Now()
-	result, err := testable.TestConnection(ctx, scope.Runtime.RuntimeContext(
-		loadedTarget, fullProfile, secrets, boundary,
-	))
+	result, err := testable.TestConnection(ctx, runtime)
 	if err != nil {
 		httptransport.WriteJSON(w, http.StatusOK, ConnectionTestResponse{
 			TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: target.ConnectorKind,

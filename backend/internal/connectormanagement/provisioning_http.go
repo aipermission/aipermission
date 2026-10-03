@@ -109,15 +109,12 @@ func (h *ProvisioningHTTPHandler) Provision(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteError(w, http.StatusBadRequest, "connector does not support credential provisioning")
 		return
 	}
-	secrets, err := decryptCredentialSecrets(r.Context(), adminProfile, scope.Runtime.DecryptSecret)
+	runtime, boundary, secrets, err := prepareCredentialOperationRuntime(r.Context(), scope.Runtime, target, adminProfile)
 	if err != nil {
 		httptransport.WriteInternalError(w)
 		return
 	}
-	boundary := actionresult.NewCredentialBoundary(secrets)
-	provisioned, err := provisioner.ProvisionCredentialProfile(
-		r.Context(), scope.Runtime.RuntimeContext(target, adminProfile, secrets, boundary), request.Input,
-	)
+	provisioned, err := provisioner.ProvisionCredentialProfile(r.Context(), runtime, request.Input)
 	if err != nil {
 		writeProvisionError(w, err, scope.Runtime.RedactCredentialText(r.Context(), err.Error(), boundary))
 		return

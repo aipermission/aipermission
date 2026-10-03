@@ -22,6 +22,13 @@ audit, history or credential pipeline. Browser completions must still belong
 to the current draft, dialog, session and request generation; matching an ID
 alone is not enough after switching away and back.
 
+Human credential testing, backup and provisioning are composed by
+`backend/internal/connectormanagement`. Reuse its credential operation runtime
+preparation after lifecycle admission; do not repeat decrypt, boundary and
+runtime construction in HTTP handlers. Cancellation during preparation must
+prevent connector dispatch. Provisioning retains its original secret boundary
+for bounded post-dispatch compensation, which must not inherit cancellation.
+
 Shell polling, request-generation invalidation and gateway context composition
 live in `frontend/src/components/use-app-shell-controller.ts`; the Shell owns
 rendering. Preserve settlement-based scheduling and route-specific refresh
