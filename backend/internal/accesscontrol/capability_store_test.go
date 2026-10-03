@@ -72,6 +72,9 @@ func TestDisabledProjectMakesCapabilityIneffective(t *testing.T) {
 	}}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.Effective(ctx, tokenID, projectID, VaultMetadataRead, time.Now()); err != nil {
+		t.Fatalf("enabled project should allow the capability before disabling: %v", err)
+	}
 	if _, err := db.Exec(`UPDATE token_project_scopes SET enabled = 0 WHERE token_id = ? AND project_id = ?`, tokenID, projectID); err != nil {
 		t.Fatal(err)
 	}
@@ -177,6 +180,9 @@ func seedCapabilityFixture(t *testing.T, db *sql.DB) (int64, int64) {
 	project, err := projects.NewStore(db).Create(ctx, "My Project")
 	if err != nil {
 		t.Fatalf("create project: %v", err)
+	}
+	if _, err := projects.NewStore(db).ReplaceTokenScopes(ctx, token.ID, []int64{project.ID}); err != nil {
+		t.Fatalf("enable token project scope: %v", err)
 	}
 	return token.ID, project.ID
 }

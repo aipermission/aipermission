@@ -123,7 +123,10 @@ PUT /api/tokens/{id}/project-capabilities
 
 Projects organize connector targets for one local developer. Existing targets
 are assigned to the protected `Ungrouped` project during migration. Creating a
-project also initializes an enabled project-scope row for existing API tokens.
+project initializes a disabled project-scope row for every existing API token;
+enable it explicitly before MCP discovery or execution. Existing scope states
+and revisions do not change. New token creation still enables all projects
+active at that time; it never opts that token into later project creation.
 Renaming a project preserves its stable slug. A project can be archived only
 after its active connector targets have been moved elsewhere; `Ungrouped`
 cannot be archived.

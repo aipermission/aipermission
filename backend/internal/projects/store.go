@@ -215,7 +215,7 @@ func createProject(ctx context.Context, executor storeDB, name string) (Project,
 	}
 	if _, err := executor.ExecContext(ctx, `
 		INSERT INTO token_project_scopes (token_id, project_id, enabled, created_at, updated_at)
-		SELECT id, ?, 1, ?, ? FROM api_tokens`, id, now, now); err != nil {
+		SELECT id, ?, 0, ?, ? FROM api_tokens`, id, now, now); err != nil {
 		return Project{}, fmt.Errorf("initialize token project scopes: %w", err)
 	}
 	return Project{ID: id, Name: name, Slug: slug, CreatedAt: now, UpdatedAt: now}, nil
