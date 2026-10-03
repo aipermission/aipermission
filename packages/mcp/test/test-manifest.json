@@ -21,7 +21,7 @@
     "test/transport/http-transport.test.js",
     "test/transport/withheld-output.test.js"
   ],
-  "minimumTests": 124,
+  "minimumTests": 209,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",

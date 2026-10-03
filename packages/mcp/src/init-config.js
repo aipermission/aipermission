@@ -1,9 +1,9 @@
-import fs from "node:fs/promises";
 import { adaptMCPServerConfig, resolveMCPConfigTarget } from "./client-registry.js";
 import { assertProjectConfigWritable, protectGitIgnoredConfig } from "./init-git.js";
 import { writeTOMLMCPConfig } from "./init-toml.js";
 import { updateJSONCServer } from "./jsonc-config.js";
 import { atomicWritePrivateFile, withPrivateFileLock } from "./private-file.js";
+import { readPrivateFileSnapshot } from "./private-file-snapshot.js";
 
 export async function writeProviderConfig(providerID, name, config, options = {}) {
   const projectRoot = options.projectDir || process.cwd();
@@ -43,16 +43,13 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
     filePath,
     async () => {
       await options.beforeWrite?.();
-      let content = "";
+      let snapshot;
       try {
-        content = await fs.readFile(filePath, "utf8");
+        snapshot = await readPrivateFileSnapshot(filePath);
       } catch (error) {
-        if (error.code !== "ENOENT") {
-          throw new Error(`Could not read JSON config at ${filePath}; the existing file was left unchanged`, {
-            cause: error,
-          });
-        }
+        throw new Error(`Could not read JSON config at ${filePath}; the existing file was left unchanged`, { cause: error });
       }
+      const content = snapshot.content;
       let outputContent;
       if (options.jsonc) {
         outputContent = updateJSONCServer(content, rootKey, name, config);
@@ -75,7 +72,7 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
         outputContent = `${JSON.stringify(root, null, 2)}\n`;
       }
       await options.beforeWrite?.();
-      await atomicWritePrivateFile(filePath, outputContent, options);
+      await atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
     },
     options,
   );
