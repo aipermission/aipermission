@@ -83,3 +83,13 @@ Before granting release or security authority:
 
 The project should prefer explicit unassigned ownership over a nominal backup
 who cannot safely perform the role.
+
+## Continuity Limits
+
+Automated tests, AI-assisted reviews and reproducible releases do not constitute
+an independent human maintainer or remove the current single-person bus factor.
+Keep backup roles unassigned until an actual person accepts them. Review this
+matrix during each release and after any account or permission change; a release
+checklist cannot prove account recovery will succeed. If continuity is lost,
+use verified organization/registry recovery rather than granting an agent or
+unverified fork emergency publishing authority.
