@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fixture-allowed
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fixture-denied
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: fixture-allowed
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: default
+  namespace: fixture-denied
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scoped
+  namespace: fixture-allowed
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: observer
+  namespace: fixture-allowed
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: connector-scope
+  namespace: fixture-allowed
+rules:
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: connector-scope
+  namespace: fixture-allowed
+subjects:
+  - kind: ServiceAccount
+    name: scoped
+    namespace: fixture-allowed
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: connector-scope
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fixture-observer
+subjects:
+  - kind: ServiceAccount
+    name: observer
+    namespace: fixture-allowed
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin

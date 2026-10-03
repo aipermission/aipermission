@@ -469,6 +469,7 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestKubernetesAPIRealService",
     "TestOpenSSHRealService",
     "TestMailRealService",
     "TestMailRealServiceRejectsInvalidIdentity",

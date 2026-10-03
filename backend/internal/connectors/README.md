@@ -385,7 +385,7 @@ make connector-conformance
 ```
 
 The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ,
-RustFS (S3), Apache Kafka, OpenSSH, and Dovecot/Postfix Mail fixtures on an internal network without published
+RustFS (S3), Apache Kafka, OpenSSH, Dovecot/Postfix Mail, and Kubernetes API fixtures on an internal network without published
 ports. A disposable native runner exercises real connector actions, then the
 target removes the containers, network, and volumes afterward. The runner has
 an allowlisted source snapshot excluding ignored operator files, no checkout
@@ -407,6 +407,13 @@ it does not substitute a test runtime adapter or claim persistent gateway-sessio
 coverage. Mail uses verified implicit TLS and STARTTLS, a fixture-only CA,
 and independently observed local recipient delivery. Neither service fixture
 loads operator keys, relays internet mail, or relaxes production TLS verification.
+
+Kubernetes uses a pinned agentless K3s API, a scoped kubeconfig and the owned
+SSH daemon. Real RBAC denial and conditional resourceVersion patch/readback
+are independent server witnesses. This API-only fixture does not cover live
+pod logs/exec or prove an actual rolling restart; it has no kubelet or scheduler.
+Metadata-only fixture audit confirms server-received accepted, conflicting and
+RBAC-denied PATCH requests without retaining message bodies or credentials.
 
 When adding a compatible protocol connector, add its disposable service to
 `backend/testdata/connector-conformance/compose.yml` and a focused scenario in

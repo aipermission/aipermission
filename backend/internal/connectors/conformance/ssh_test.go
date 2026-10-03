@@ -21,11 +21,7 @@ func TestOpenSSHRealService(t *testing.T) {
 	requireProtocolFixture(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
-	key, err := os.ReadFile("/fixture-material/ssh_client")
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := execution.Target{Host: protocolFixtureHost, Port: 22, Username: "aipermission", PrivateKey: string(key), KnownHostsPath: filepath.Join(t.TempDir(), "known_hosts")}
+	target := protocolSSHTarget(t)
 	client, err := execution.DialSSH(ctx, target)
 	if client != nil {
 		_ = client.Close()

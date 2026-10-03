@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+unset KUBECONFIG KUBECTL_PLUGINS_PATH K3S_CONFIG_FILE K3S_TOKEN K3S_URL
+export HOME=/home/aipermission
+exec /usr/local/bin/kubectl --kubeconfig=/kube-material/scoped.yaml --request-timeout=15s "$@"

@@ -28,6 +28,10 @@ function fixture(t) {
       "FROM fixture\n",
     "backend/testdata/connector-conformance/protocols/start.sh":
       "#!/bin/sh\nexit 0\n",
+    "backend/testdata/connector-conformance/kubernetes/Dockerfile":
+      "FROM fixture\n",
+    "backend/testdata/connector-conformance/kubernetes/scope.yaml":
+      "apiVersion: v1\n",
     ".gitignore": "backend/internal/private.go\n.env\n",
     ".env": "operator-file-not-source",
   };
@@ -51,7 +55,7 @@ if (args[0] === "context") {
 const action = args.find(value => ["build", "up", "run", "down"].includes(value));
 const source = process.env.AIPERMISSION_CONFORMANCE_SOURCE;
 if (action === "build") {
-  for (const file of ["backend/go.mod", "backend/internal/public.go", "backend/cmd/main.go", "scripts/verification-policy.json", "backend/testdata/connector-conformance/protocols/Dockerfile", "backend/testdata/connector-conformance/protocols/start.sh"])
+  for (const file of ["backend/go.mod", "backend/internal/public.go", "backend/cmd/main.go", "scripts/verification-policy.json", "backend/testdata/connector-conformance/protocols/Dockerfile", "backend/testdata/connector-conformance/protocols/start.sh", "backend/testdata/connector-conformance/kubernetes/Dockerfile", "backend/testdata/connector-conformance/kubernetes/scope.yaml"])
     if (!fs.existsSync(path.join(source, file))) process.exit(17);
   for (const file of [".env", ".git", "backend/internal/private.go"])
     if (fs.existsSync(path.join(source, file))) process.exit(18);
