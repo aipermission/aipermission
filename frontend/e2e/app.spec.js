@@ -698,8 +698,8 @@ test("@high-risk cancels an active transfer from the transfer center", async ({ 
 });
 
 for (const width of [390, 1280]) {
-  test(`@high-risk reconciles SSH cleanup without remote execution at ${width}px`, async ({ page }, testInfo) => {
-    await verifySSHCleanupBrowser({ page, testInfo, width, unlock, expectNoModerateAccessibilityViolations });
+  test(`@high-risk reconciles SSH cleanup without remote execution at ${width}px`, async ({ page, apiIsolation }, testInfo) => {
+    await verifySSHCleanupBrowser({ page, apiIsolation, testInfo, width, unlock, expectNoModerateAccessibilityViolations });
   });
 }
 
