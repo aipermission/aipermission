@@ -101,7 +101,7 @@ body:
     attributes:
       label: Result status and request ID
       description: Copy only non-sensitive status metadata from History or the UI.
-      placeholder: failed_timeout / request 1234
+      placeholder: 'outcome_unknown / code: outcome_unknown / request 1234'
 
   - type: dropdown
     id: fresh_database

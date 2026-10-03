@@ -12,7 +12,7 @@ Detailed ADR files:
 - [ADR 0004: SQLCipher Choice](../adr/0004-sqlcipher-choice.md)
 - [ADR 0007: Transactional Audit Outbox](../adr/0007-transactional-audit-outbox.md)
 
-## ADR-001: Local-Only Gateway
+## ADR-0001: Local-Only Gateway
 
 Decision: AIPermission is a localhost-only developer gateway.
 
@@ -30,7 +30,23 @@ Consequence:
 - Host-header and origin checks are defense in depth, not a remote security boundary.
 - Documentation must continue to say "do not expose this service on a LAN or the internet."
 
-## ADR-002: SQLCipher Database With Vaulted Secrets
+## ADR-0002: No Cloud Mode
+
+Decision: the gateway has no hosted or cloud-managed execution mode.
+
+Remote connector targets and encrypted backup destinations do not relocate
+gateway execution or approval authority. See the detailed
+[No Cloud Mode](../adr/0002-no-cloud-mode.md) decision.
+
+## ADR-0003: Single-User Design
+
+Decision: one local developer owns the gateway, credentials and approvals.
+
+Projects and MCP tokens scope that developer's tools; they do not introduce
+multi-user roles or tenant boundaries. See the detailed
+[Single-User Design](../adr/0003-single-user-design.md) decision.
+
+## ADR-0004: SQLCipher Database With Vaulted Secrets
 
 Decision: The local database is SQLCipher-encrypted, and secret payloads are also encrypted through the gateway vault layer.
 
@@ -49,7 +65,7 @@ Consequence:
   artifact downloads follow the explicit class-specific exceptions and limits
   in the [credential boundary](../security/credential-boundary.md).
 
-## ADR-003: SSH Host Key Trust Is Local Machine State
+## Supporting Decision: SSH Host Key Trust Is Local Machine State
 
 Decision: SSH host key pins live in the local `known_hosts` file under the data path, not inside each named database.
 
@@ -64,7 +80,7 @@ Consequence:
 - Named databases are not separate SSH host-trust sandboxes.
 - Importing a database on another machine may require approving host fingerprints again.
 
-## ADR-004: MCP Tokens Are Scoped Runtime Bearer Credentials
+## Supporting Decision: MCP Tokens Are Scoped Runtime Bearer Credentials
 
 Decision: MCP clients authenticate with API tokens, and token target/profile/action permissions determine visible connector actions.
 
@@ -82,7 +98,7 @@ Consequence:
 - The default token value model is show-once.
 - Duplicate token matches across multiple unlocked databases are rejected instead of guessed.
 
-## ADR-005: MCP Execution Has A Global Runtime Switch
+## ADR-0005: MCP Execution Has A Global Runtime Switch
 
 Decision: Saved permissions do not automatically mean live execution is enabled. Each unlocked runtime has a global MCP Started/Stopped state.
 
@@ -96,7 +112,7 @@ Consequence:
 
 - New unlocks start with MCP execution stopped unless Security enables automatic start.
 
-## ADR-006: Pending Approvals Are Bound To Their Approval Context
+## ADR-0006: Pending Approvals Are Bound To Their Approval Context
 
 Decision: A pending MCP connector-action approval is valid only for the context
 captured when it was created.
@@ -118,10 +134,10 @@ Consequence:
 - The sidebar controls the runtime Started/Stopped state.
 - Stopped MCP execution blocks new command execution while preserving saved permissions.
 
-## ADR-007: Security-Sensitive Mutations Use A Transactional Audit Outbox
+## ADR-0007: Security-Sensitive Mutations Use A Transactional Audit Outbox
 
 Decision: security-sensitive local mutations and their redacted audit intent
-will commit in the same SQLCipher transaction. `audit_logs` remains an
+commit in the same SQLCipher transaction. `audit_logs` remains an
 idempotent read projection.
 
 Reason:

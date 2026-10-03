@@ -53,7 +53,7 @@ Keep root docs short and practical:
 ```text
 README.md
 docs/ROADMAP.md
-env.example
+.env.example
 docker-compose.yml
 ```
 

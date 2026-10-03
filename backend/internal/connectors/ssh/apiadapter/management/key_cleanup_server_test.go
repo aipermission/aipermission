@@ -21,20 +21,21 @@ import (
 )
 
 type cleanupSSHServer struct {
-	listener     net.Listener
-	homes        map[string]string
-	host         ssh.Signer
-	ctx          context.Context
-	cancel       context.CancelFunc
-	done         chan struct{}
-	authAttempts atomic.Int64
-	commands     atomic.Int64
-	loseReply    atomic.Bool
-	blockReply   atomic.Bool
-	executed     chan struct{}
-	executedOnce sync.Once
-	mu           sync.Mutex
-	active       net.Conn
+	listener            net.Listener
+	homes               map[string]string
+	host                ssh.Signer
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	done                chan struct{}
+	authAttempts        atomic.Int64
+	commands            atomic.Int64
+	loseReply           atomic.Bool
+	blockReply          atomic.Bool
+	absentBeforeCommand atomic.Bool
+	executed            chan struct{}
+	executedOnce        sync.Once
+	mu                  sync.Mutex
+	active              net.Conn
 }
 
 func startCleanupSSHServer(t *testing.T, fixture *cleanupFixture, users ...string) *cleanupSSHServer {
@@ -161,6 +162,11 @@ func (server *cleanupSSHServer) handle(connection net.Conn) {
 		}
 		_ = request.Reply(true, nil)
 		server.commands.Add(1)
+		if server.absentBeforeCommand.Load() {
+			if err := os.Remove(filepath.Join(server.homes[peer.User()], ".ssh", "authorized_keys")); err != nil {
+				return
+			}
+		}
 		ctx, cancel := context.WithTimeout(server.ctx, 5*time.Second)
 		command := exec.CommandContext(ctx, "sh", "-c", payload.Command)
 		command.Env = append(os.Environ(), "HOME="+server.homes[peer.User()])

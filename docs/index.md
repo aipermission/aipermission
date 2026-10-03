@@ -47,6 +47,7 @@ not published for those two decisions; numbering is intentionally preserved.
 - [Backup Restore](security/backup-restore.md)
 - [Storage Encryption](security/storage-encryption.md)
 - [Native Dependency Inventory](security/native-dependencies.md)
+- [Dependency License Inventory](security/dependency-licenses.md)
 
 ## Development
 

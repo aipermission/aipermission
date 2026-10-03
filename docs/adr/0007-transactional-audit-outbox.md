@@ -170,17 +170,17 @@ never retention candidates.
 
 ## Health And Operations
 
-Audit health will become durable. `/api/status` should eventually report:
+Audit health is durable. The `audit` object returned by `GET /api/status` reports:
 
-- pending event count;
-- age of the oldest pending event;
-- events with delivery attempts;
-- latest durable delivery error and time;
-- immediate process-local dispatcher diagnostics.
+- `pending_count`, `dead_letter_count`, and `oldest_pending_at`;
+- `retried_event_count` for events with delivery attempts;
+- `last_delivery_error` and `last_delivery_error_at`;
+- `last_delivery_success_at`;
+- immediate process-local `failure_count` and `last_failure_at` diagnostics.
 
-The current process-local failure count remains useful during migration, but it
-is not the final source of truth. A healthy status must not hide an undelivered
-backlog left by an earlier process.
+Process-local diagnostics supplement, but do not replace, persisted delivery
+evidence. An undelivered backlog or durable failure left by an earlier process
+must remain visible; `status: degraded` signals that projection needs attention.
 
 ## Implementation
 

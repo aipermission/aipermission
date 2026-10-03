@@ -414,7 +414,11 @@ remain readable for review. SSH targets also support `?remove_key=true`, which
 first connects with the target's gateway key, removes remote
 `~/.ssh/authorized_keys` entries containing that public key blob, then archives
 the local target. This handles changed comments or authorized_keys options. If
-remote cleanup fails or removes zero entries, the local target remains active.
+remote cleanup fails or cannot be confirmed, the local target remains active.
+Exact confirmed absence or a matching prior durable confirmation permits local
+archival even when this attempt removes no new entries. A successful response
+can therefore contain `remote_key_removed: false` and `remote_keys_removed: 0`;
+the removal count is not proof that archival failed.
 
 `POST /api/connector-targets/{id}/profiles` creates one credential profile:
 
@@ -446,6 +450,11 @@ The Postgres `managed_` metadata namespace is connector-owned: ordinary profile
 creation cannot assert managed ownership, and edits preserve recorded fields
 including their absence. A managed profile's username cannot be changed or
 normalized into another role identity through editing.
+
+```text
+GET /api/connector-targets/{id}/profiles/{profile_id}/backup
+POST /api/connector-targets/{id}/profiles/{profile_id}/restore
+```
 
 `GET /api/connector-targets/{id}/profiles/{profile_id}/backup` asks a connector
 with backup support to produce a downloadable backup artifact through the
@@ -1650,6 +1659,11 @@ AI clients can write clearer operator reasons. The metadata object never
 contains private keys, reusable API tokens, encrypted secrets, SSH key ids, or
 raw credential payloads.
 
+```text
+GET /api/settings/mcp-runtime
+PUT /api/settings/mcp-runtime
+```
+
 The web UI also exposes `GET/PUT /api/settings/mcp-runtime` for the local user.
 That route is protected by the UI session and CSRF checks, not by MCP token auth.
 It controls whether new MCP connector action execution is currently Started or
@@ -2022,6 +2036,7 @@ PUT /api/vault-default-bindings
 POST /api/vault-default-bindings/{id}/delete
 GET /api/vault-session-options
 GET /api/vault-action-approvals
+GET /api/vault-action-approvals/{id}
 POST /api/vault-action-approvals/{id}/run
 POST /api/vault-action-approvals/{id}/decline
 GET /api/mcp/vault-items

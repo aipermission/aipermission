@@ -66,6 +66,7 @@ func TestKeyCleanupConfirmedEvidenceSurvivesLocalFailureDuringAdapterReplay(t *t
 			if err != nil || response.Code != http.StatusOK || attempts != server.authAttempts.Load() || reads != fixture.runtime.keys.secretReads || server.commands.Load() != 1 {
 				t.Fatalf("retry borrowed revoked key: %d %s %v attempts %d->%d secrets %d->%d", response.Code, response.Body.String(), err, attempts, server.authAttempts.Load(), reads, fixture.runtime.keys.secretReads)
 			}
+			assertConfirmedZeroCleanup(t, fixture, response)
 		})
 	}
 }
