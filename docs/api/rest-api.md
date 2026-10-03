@@ -305,6 +305,10 @@ input is written exactly to the PTY after connect. The forced shell command
 starts that command instead of the default SSH shell. Leave both empty for
 normal Linux servers.
 
+Direct console-session request parameters cannot override the saved forced
+command. Only a connector-owned nested transport launch may select its own
+command; this delegation is not a client JSON field.
+
 Target-specific custom hints are not accepted by the connector target API in the
 current MVP. Connector help may still return gateway-generated operational
 hints, such as safe package verification or bounded log commands.
