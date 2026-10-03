@@ -30,6 +30,7 @@ export function ConnectorActionApprovalDialog({ approval, note, action, onNoteCh
       title={approval ? `${approval.connector_kind} action approval` : "Connector approval"}
       description={approval ? `Request #${approval.id} is waiting for your decision${requestAge ? ` · sent ${requestAge}` : ""}.` : ""}
       onClose={onClose}
+      closeDisabled={["running", "declining"].includes(action.state)}
       size="xl"
       className="max-h-[calc(100vh-96px)]"
       bodyClassName="min-h-0 overflow-hidden p-0"
@@ -150,6 +151,7 @@ function ApprovalDecisionFooter({ action, note, onNoteChange, onRun, onDecline, 
         Decline note
         <Textarea
           value={note}
+          disabled={action.state === "running" || action.state === "declining"}
           onChange={(event) => onNoteChange(event.target.value)}
           placeholder="Optional. Decline stores this note as guidance for the AI."
           rows={2}

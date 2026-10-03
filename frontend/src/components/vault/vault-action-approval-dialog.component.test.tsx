@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { VaultActionApprovalDialog } from "./vault-action-approval-dialog";
@@ -41,6 +41,15 @@ function renderDialog(
 }
 
 describe("VaultActionApprovalDialog", () => {
+  it.each(["running", "declining"])("blocks every dismissal path and note edits while %s", async (state) => {
+    const user = userEvent.setup();
+    const handlers = renderDialog({ action: { state, error: "" } });
+    expect(screen.getByRole("button", { name: "Close dialog" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Decision note" })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    fireEvent.pointerDown(screen.getByTestId("dialog-overlay"));
+    expect(handlers.onClose).not.toHaveBeenCalled();
+  });
   it("keeps generation decisions explicit without exposing a value", async () => {
     const user = userEvent.setup();
     const handlers = renderDialog();
