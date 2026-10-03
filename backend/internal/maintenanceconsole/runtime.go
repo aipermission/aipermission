@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
+
 	gatewayoperations "github.com/aipermission/aipermission/backend/internal/gatewayoperations"
 	"github.com/aipermission/aipermission/backend/internal/socketwrite"
 	"github.com/creack/pty"
@@ -440,10 +442,11 @@ func (s *Session) resize(cols int, rows int) {
 
 func (s *Session) readLoop() {
 	buffer := make([]byte, 4096)
+	var decoder terminaltext.UTF8Stream
 	for {
 		n, err := s.pty.Read(buffer)
-		if n > 0 {
-			data := string(buffer[:n])
+		data := decoder.Write(buffer[:n], err != nil)
+		if data != "" {
 			clients := s.appendTranscriptAndClients(data)
 			s.broadcastClients(clients, maintenanceConsoleServerMessage{
 				Type:   "output",

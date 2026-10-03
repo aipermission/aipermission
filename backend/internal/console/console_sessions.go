@@ -9,6 +9,7 @@ import (
 	"time"
 
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
+	"github.com/aipermission/aipermission/backend/internal/console/streamoutput"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
@@ -229,6 +230,7 @@ type managedConsoleSession struct {
 	stdoutExactRedactor     *sessionenv.Redactor
 	stderrExactRedactor     *sessionenv.Redactor
 	exactRedactionClosed    bool
+	outputStreams           streamoutput.Streams
 	manager                 *Manager
 
 	ctx          context.Context

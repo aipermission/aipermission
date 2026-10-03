@@ -195,17 +195,18 @@ func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
 		select {
 		case item, ok := <-output:
 			if !ok {
+				if err := s.flushOutputStreams(); err != nil {
+					s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
+					return
+				}
 				output = nil
 				continue
 			}
-			var outputErr error
-			switch item.Kind {
-			case RuntimeStderr:
-				outputErr = s.appendStreamOutput(item.Data, s.stderrExactRedactor)
-			default:
-				outputErr = s.appendStreamOutput(item.Data, s.stdoutExactRedactor)
+			redactor := s.stdoutExactRedactor
+			if item.Kind == RuntimeStderr {
+				redactor = s.stderrExactRedactor
 			}
-			if outputErr != nil {
+			if err := s.appendStreamOutput(item.Data, redactor, item.Kind); err != nil {
 				s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
 				return
 			}
@@ -487,24 +488,18 @@ func (s *managedConsoleSession) appendOutput(data string) {
 		redactor = s.exactRedactor
 	}
 	s.mu.Unlock()
-	s.appendStreamOutput(data, redactor)
+	s.appendStreamOutput(data, redactor, RuntimeStdout)
 }
 
-func (s *managedConsoleSession) appendStreamOutput(data string, redactor *sessionenv.Redactor) error {
-	if data == "" {
-		return nil
-	}
+func (s *managedConsoleSession) appendStreamOutput(data string, redactor *sessionenv.Redactor, kind RuntimeOutputKind) error {
 	s.mu.Lock()
 	redactionClosed := s.exactRedactionClosed
 	s.mu.Unlock()
 	if redactionClosed {
 		return nil
 	}
-	if redactor != nil {
-		data = string(redactor.Write([]byte(data)))
-	}
-	data = s.manager.redactText(data)
-	return s.appendSafeOutput(data)
+	data = s.outputStreams.Write(int(kind), data, redactor)
+	return s.appendSafeOutput(s.manager.redactText(data))
 }
 
 func (s *managedConsoleSession) appendSafeOutput(data string) error {
@@ -658,25 +653,30 @@ func (s *managedConsoleSession) redactForPersistence(value string) string {
 
 func (s *managedConsoleSession) closeExactRedactor() {
 	s.mu.Lock()
-	redactors := []*sessionenv.Redactor{s.stdoutExactRedactor, s.stderrExactRedactor, s.exactRedactor}
+	s.exactRedactionClosed = true
+	s.mu.Unlock()
+	if err := s.flushOutputStreams(); err != nil {
+		s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
+	}
+	s.mu.Lock()
+	redactor := s.exactRedactor
 	s.exactRedactor = nil
 	s.stdoutExactRedactor = nil
 	s.stderrExactRedactor = nil
-	s.exactRedactionClosed = true
 	s.mu.Unlock()
-	seen := map[*sessionenv.Redactor]bool{}
-	for index, redactor := range redactors {
-		if redactor == nil || seen[redactor] {
-			continue
-		}
-		seen[redactor] = true
-		output := redactor.Close()
-		if index < 2 && len(output) > 0 {
-			if err := s.appendSafeOutput(s.manager.redactText(string(output))); err != nil {
-				s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
-			}
+	_ = redactor.Close()
+}
+
+func (s *managedConsoleSession) flushOutputStreams() error {
+	s.mu.Lock()
+	redactors := [2]*sessionenv.Redactor{s.stdoutExactRedactor, s.stderrExactRedactor}
+	s.mu.Unlock()
+	for _, data := range s.outputStreams.Close(redactors) {
+		if err := s.appendSafeOutput(s.manager.redactText(data)); err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func (s *managedConsoleSession) flushTranscript() {

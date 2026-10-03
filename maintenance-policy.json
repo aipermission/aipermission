@@ -411,6 +411,7 @@
     "internal/connectortransport": 18,
     "internal/console": 80,
     "internal/console/persistence": 74,
+    "internal/console/streamoutput": 100,
     "internal/console/terminaltext": 46,
     "internal/databasecatalog": 75.5,
     "internal/databaseownership": 75,
