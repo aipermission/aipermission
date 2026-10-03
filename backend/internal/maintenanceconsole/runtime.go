@@ -493,7 +493,7 @@ func (s *Session) waitLoop() {
 func (s *Session) appendTranscriptAndClients(data string) map[*websocket.Conn]*sync.Mutex {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.transcript = tailStringByBytes(s.transcript+data, MaxTranscriptBytes)
+	s.transcript = terminaltext.TailStringByBytes(s.transcript+data, MaxTranscriptBytes)
 	return cloneMaintenanceClients(s.clients)
 }
 
@@ -613,11 +613,4 @@ func (s *Session) closeClients() {
 
 func maintenanceConsoleKeepAlive(ws *websocket.Conn, writeMu *sync.Mutex, stop <-chan struct{}) {
 	socketwrite.KeepAlive(ws, writeMu, maintenanceConsolePingInterval, stop)
-}
-
-func tailStringByBytes(value string, maxBytes int) string {
-	if maxBytes <= 0 || len(value) <= maxBytes {
-		return value
-	}
-	return value[len(value)-maxBytes:]
 }
