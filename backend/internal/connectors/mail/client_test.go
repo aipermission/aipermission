@@ -48,30 +48,12 @@ func TestTLSConfigRequiresVerifiedTLS12WithServerName(t *testing.T) {
 func TestSMTPSTARTTLSRefreshesCapabilitiesBeforeAuthentication(t *testing.T) {
 	certificate, roots := mailTestTLSCertificate(t)
 	transport := newMailProtocolTransport(func(conn net.Conn) error {
-		reader := bufio.NewReader(conn)
-		if _, err := io.WriteString(conn, "220 mail.test ESMTP ready\r\n"); err != nil {
+		tlsConn, err := negotiateSMTPTestSTARTTLS(conn, certificate)
+		if err != nil {
 			return err
 		}
+		reader := bufio.NewReader(tlsConn)
 		line, err := readProtocolLine(reader)
-		if err != nil || !strings.HasPrefix(line, "EHLO ") {
-			return fmt.Errorf("pre-TLS greeting = %q: %w", line, err)
-		}
-		if _, err := io.WriteString(conn, "250-mail.test\r\n250-STARTTLS\r\n250 AUTH PLAIN\r\n"); err != nil {
-			return err
-		}
-		line, err = readProtocolLine(reader)
-		if err != nil || line != "STARTTLS" {
-			return fmt.Errorf("STARTTLS command = %q: %w", line, err)
-		}
-		if _, err := io.WriteString(conn, "220 begin TLS\r\n"); err != nil {
-			return err
-		}
-		tlsConn := tls.Server(conn, &tls.Config{Certificates: []tls.Certificate{certificate}, MinVersion: tls.VersionTLS12})
-		if err := tlsConn.Handshake(); err != nil {
-			return err
-		}
-		reader = bufio.NewReader(tlsConn)
-		line, err = readProtocolLine(reader)
 		if err != nil || !strings.HasPrefix(line, "EHLO ") {
 			return fmt.Errorf("post-TLS greeting = %q: %w", line, err)
 		}
