@@ -6,7 +6,8 @@ import { buildMCPServerConfig, inspectProjectConfigProtection, sanitizeName } fr
 import { validateSkill } from "./install-skill.js";
 import { parseJSONCConfig } from "./jsonc-config.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
-import { assertPrivateFilePermissions, assertTrustedFilePath } from "./private-file.js";
+import { assertPrivateFilePermissions, assertTrustedFilePath, privateLockPath } from "./private-file.js";
+import { inspectPrivateLock } from "./private-lock-diagnostics.js";
 
 export async function runDoctor(argv = []) {
   const flags = parseCommandFlags("doctor", argv);
@@ -43,12 +44,33 @@ export async function inspectClientSetup({
   const configTarget = resolveMCPConfigTarget(client, mcpScope || scope, roots);
   const skillTarget = resolveSkillTarget(client, skillScope || scope, roots);
   const checks = [await inspectConfig(configTarget, serverName, { projectDir, platform, execFile }), await inspectSkill(skillTarget)];
+  for (const target of [configTarget, skillTarget]) {
+    const lock = await inspectSetupLock(target);
+    if (lock) checks.push(lock);
+  }
   return {
     ok: checks.every((entry) => entry.ok),
     client: configTarget.label,
     scope: configTarget.scope === skillTarget.scope ? configTarget.scope : `MCP ${configTarget.scope}, skill ${skillTarget.scope}`,
     checks,
   };
+}
+
+async function inspectSetupLock(target) {
+  try {
+    await assertTrustedFilePath(privateLockPath(target.path), { trustedRoot: target.trustedRoot });
+    const lock = await inspectPrivateLock(target.path);
+    if (!lock.present) return null;
+    const metadata = lock.readable ? JSON.stringify(lock) : "owner metadata unavailable";
+    return check(
+      false,
+      "Setup lock",
+      `present at ${privateLockPath(target.path)} (${metadata}). Never remove while setup is running; verify ownership before manual recovery.`,
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    return check(false, "Setup lock", "lock path could not be safely inspected; no file contents were included");
+  }
 }
 
 async function inspectConfig(target, name, options) {

@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { assertPrivateFileUnchanged } from "./private-file-snapshot.js";
+import { privateLockOwner } from "./private-lock-diagnostics.js";
 
 const execFileAsync = promisify(execFile);
 const staleTemporaryAgeMs = 24 * 60 * 60 * 1000;
@@ -90,7 +91,6 @@ export async function withPrivateFileLock(filePath, task, options = {}) {
   await validatePrivateDestination(destination, options);
 
   const ownerToken = randomBytes(16).toString("hex");
-  const ownerRecord = JSON.stringify({ pid: process.pid, token: ownerToken });
   let handle;
   for (let attempt = 0; attempt < (options.lockRetryLimit ?? lockRetryLimit); attempt += 1) {
     let createdLock = false;
@@ -98,7 +98,7 @@ export async function withPrivateFileLock(filePath, task, options = {}) {
       handle = await fs.open(lockPath, "wx", 0o600);
       createdLock = true;
       await enforcePrivateFilePermissions(lockPath, options);
-      await handle.writeFile(`${ownerRecord}\n`, { encoding: "utf8" });
+      await handle.writeFile(`${JSON.stringify(privateLockOwner(ownerToken))}\n`, { encoding: "utf8" });
       await handle.sync();
       break;
     } catch (error) {
