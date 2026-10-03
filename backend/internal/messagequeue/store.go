@@ -11,6 +11,9 @@ import (
 )
 
 const MaxMessageBytes = 8 << 10
+const MaxReadMessages = 100
+
+var ErrInvalidReadSelection = errors.New("message_ids must contain 1 to 100 distinct positive IDs and runtime_id must be positive")
 
 type Redactor func(context.Context, string) string
 
@@ -126,7 +129,7 @@ func (s *Store) List(ctx context.Context, filter Filter) ([]Record, error) {
 	rows, err := s.database.QueryContext(ctx, selectSQL()+`
 		WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY mq.created_at DESC, mq.id DESC
-		LIMIT 100`, args...)
+		LIMIT ?`, append(args, MaxReadMessages)...)
 	if err != nil {
 		return nil, err
 	}
@@ -143,15 +146,28 @@ func (s *Store) List(ctx context.Context, filter Filter) ([]Record, error) {
 	return items, rows.Err()
 }
 
-func (s *Store) MarkRuntimeRead(ctx context.Context, runtimeID int64) (int64, error) {
+func (s *Store) MarkRuntimeRead(ctx context.Context, runtimeID int64, messageIDs []int64) (int64, error) {
 	if err := s.ready(); err != nil {
 		return 0, err
 	}
+	if runtimeID < 1 || len(messageIDs) < 1 || len(messageIDs) > MaxReadMessages {
+		return 0, ErrInvalidReadSelection
+	}
+	seen := make(map[int64]bool, len(messageIDs))
+	args := []any{nowUTC(), runtimeID}
+	for _, id := range messageIDs {
+		if id < 1 || seen[id] {
+			return 0, ErrInvalidReadSelection
+		}
+		seen[id] = true
+		args = append(args, id)
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(messageIDs)), ",")
 	result, err := s.database.ExecContext(ctx, `
 		UPDATE message_queue
 		SET consumed_at = ?
-		WHERE direction = 'ai_to_user' AND consumed_at IS NULL AND runtime_id = ?`,
-		nowUTC(), runtimeID)
+		WHERE direction = 'ai_to_user' AND consumed_at IS NULL AND runtime_id = ?
+		AND id IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return 0, err
 	}

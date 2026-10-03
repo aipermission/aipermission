@@ -47,8 +47,8 @@ it("refreshes validated approvals after running an action and marks runtime mess
   });
   expect(apiGet).toHaveBeenCalledTimes(2);
 
-  await act(async () => result.current.markRuntimeMessagesRead("7"));
-  expect(apiPost).toHaveBeenCalledWith("/api/messages/read", { runtime_id: 7 });
+  await act(async () => result.current.markRuntimeMessagesRead("7", [message.id]));
+  expect(apiPost).toHaveBeenCalledWith("/api/messages/read", { runtime_id: 7, message_ids: [message.id] });
   expect(result.current.messages).toMatchObject({ state: "ready", data: [message] });
 });
 

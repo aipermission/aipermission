@@ -5754,8 +5754,39 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    message_ids: number[];
+                    /** Format: int64 */
+                    runtime_id: number;
+                };
+            };
+        };
         responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: int64 */
+                        count: number;
+                        /** @enum {string} */
+                        status: "read";
+                    };
+                };
+            };
+            /** @description Documented error response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {

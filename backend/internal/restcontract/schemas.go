@@ -219,6 +219,7 @@ func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
 
 func typedOperationContracts() map[Route]operationContract {
 	return map[Route]operationContract{
+		{Method: "POST", Path: "/api/messages/read"}:                                       messageReadContract(),
 		{Method: "GET", Path: "/api/targets"}:                                              okContract(itemsSchema(refSchema("TargetProfile"))),
 		{Method: "GET", Path: "/api/connector-targets"}:                                    okContract(itemsSchema(refSchema("ConnectorTarget"))),
 		{Method: "GET", Path: "/api/connector-targets/{id}"}:                               okContract(refSchema("ConnectorTarget")),

@@ -11,7 +11,7 @@ import { useTokenExpiryClock } from "../../lib/use-token-expiry-clock";
 type MessageState = { state: "idle" | "loading" | "ready" | "sending" | "error"; data: RuntimeMessage[]; error: string | null };
 type Props = {
   loadMessages: () => void | Promise<unknown>;
-  markRuntimeMessagesRead: (_runtimeID: number) => Promise<unknown>;
+  markRuntimeMessagesRead: (_runtimeID: number, _messageIDs: readonly number[]) => Promise<unknown>;
   selectedRuntimeTarget: { id: number; name?: string } | null;
   selectedSession: { id?: number };
   selectedSessionLive: boolean;
@@ -33,10 +33,12 @@ export function useConsoleMessages({
   const [state, setState] = useState(idleState);
   const [text, setText] = useState("");
   const draftRevision = useRef(0);
+  const displayedIDs = useRef<number[]>([]);
   const [selectedTokenID, setTokenID] = useState("");
   const handlers = useRef<{
     open?: (_tokenID?: string | number) => void;
     submit?: (_event: Pick<FormEvent<HTMLFormElement>, "preventDefault">) => Promise<void>;
+    close?: () => void;
   }>({});
   const now = useTokenExpiryClock(selectedTokenOptions);
   const activeTokenOptions = useMemo(() => selectedTokenOptions.filter((token) => isActiveToken(token, now)), [selectedTokenOptions, now]);
@@ -54,10 +56,12 @@ export function useConsoleMessages({
     setState(idleState);
     setText("");
     setTokenID("");
+    displayedIDs.current = [];
   }, [requests, runtimeID]);
 
   const load = useCallback(async () => {
     if (!runtimeID) return;
+    displayedIDs.current = [];
     const request = requests.begin("messages");
     setState((current) => ({ ...current, state: "loading", error: null }));
     try {
@@ -75,6 +79,8 @@ export function useConsoleMessages({
   const open = useCallback(
     function openMessages(preferredTokenID: string | number = "") {
       if (handlers.current.open !== openMessages) return;
+      displayedIDs.current = [];
+      requests.invalidate("mark-read");
       const currentNow = Date.now();
       const currentTokenOptions = activeTokenOptions.filter((token) => isActiveToken(token, currentNow));
       const candidates = [
@@ -88,22 +94,48 @@ export function useConsoleMessages({
       setOpen(true);
       void load();
     },
-    [activeTokenOptions, load, selectedUnreadMessages, tokenID],
+    [activeTokenOptions, load, requests, selectedUnreadMessages, tokenID],
   );
 
-  const close = useCallback(() => {
-    requests.invalidate("messages");
-    requests.invalidate("send");
-    setOpen(false);
-    if (!runtimeID || selectedUnreadMessages.length === 0) return;
-    const request = requests.begin("mark-read");
-    void markRuntimeMessagesRead(Number(runtimeID))
-      .catch((error) => {
-        if (request.isCurrent())
-          setState((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not mark messages read.") }));
-      })
-      .finally(request.complete);
-  }, [markRuntimeMessagesRead, requests, runtimeID, selectedUnreadMessages.length]);
+  const recordDisplayed = useCallback(
+    (messageIDs: readonly number[]) => {
+      if (!isOpen || state.state !== "ready") {
+        displayedIDs.current = [];
+        return;
+      }
+      const rendered = new Set(messageIDs);
+      displayedIDs.current = state.data
+        .filter(
+          (message) =>
+            rendered.has(message.id) &&
+            (!tokenID || String(message.token_id) === tokenID) &&
+            message.direction === "ai_to_user" &&
+            !message.consumed_at,
+        )
+        .map((message) => message.id);
+    },
+    [isOpen, state, tokenID],
+  );
+
+  const close = useCallback(
+    function closeMessages() {
+      if (handlers.current.close !== closeMessages) return;
+      const messageIDs = displayedIDs.current;
+      displayedIDs.current = [];
+      requests.invalidate("messages");
+      requests.invalidate("send");
+      setOpen(false);
+      if (!runtimeID || messageIDs.length === 0) return;
+      const request = requests.begin("mark-read");
+      void markRuntimeMessagesRead(Number(runtimeID), messageIDs)
+        .catch((error) => {
+          if (request.isCurrent())
+            setState((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not mark messages read.") }));
+        })
+        .finally(request.complete);
+    },
+    [markRuntimeMessagesRead, requests, runtimeID],
+  );
 
   const updateText = useCallback((value: string) => {
     draftRevision.current += 1;
@@ -152,11 +184,11 @@ export function useConsoleMessages({
 
   // Only handlers from the committed view may change selection or dispatch.
   useLayoutEffect(() => {
-    handlers.current = { open, submit };
+    handlers.current = { open, submit, close };
     return () => {
       handlers.current = {};
     };
-  }, [open, submit]);
+  }, [open, submit, close]);
 
-  return { close, isOpen, load, open, setText: updateText, setTokenID, state, submit, text, tokenID };
+  return { close, isOpen, load, open, recordDisplayed, setText: updateText, setTokenID, state, submit, text, tokenID };
 }

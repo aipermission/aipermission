@@ -136,10 +136,10 @@
       "lines": 100
     },
     "src/components/console/messages-dialog.tsx": {
-      "statements": 84.21,
-      "branches": 85.18,
-      "functions": 88.88,
-      "lines": 86.66
+      "statements": 95.45,
+      "branches": 96.55,
+      "functions": 100,
+      "lines": 100
     },
     "src/components/console/no-live-session.tsx": {
       "statements": 87.5,
@@ -190,8 +190,8 @@
       "lines": 100
     },
     "src/components/console/use-console-messages.ts": {
-      "statements": 98.92,
-      "branches": 95.12,
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },

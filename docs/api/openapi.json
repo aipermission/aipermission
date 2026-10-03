@@ -6551,7 +6551,79 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "message_ids": {
+                    "items": {
+                      "format": "int64",
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "maxItems": 100,
+                    "minItems": 1,
+                    "type": "array",
+                    "uniqueItems": true
+                  },
+                  "runtime_id": {
+                    "format": "int64",
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "runtime_id",
+                  "message_ids"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "count": {
+                      "format": "int64",
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "status": {
+                      "enum": [
+                        "read"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "count"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
           "default": {
             "content": {
               "application/json": {
@@ -6566,7 +6638,7 @@
         "tags": [
           "messages"
         ],
-        "x-aipermission-contract-level": "route-inventory"
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/projects": {

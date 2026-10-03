@@ -56,7 +56,11 @@ func TestMessageHTTPHandlersPreserveStrictContract(t *testing.T) {
 	if _, err := database.Exec(`UPDATE message_queue SET direction = 'ai_to_user'`); err != nil {
 		t.Fatalf("prepare unread reply: %v", err)
 	}
-	read := performMessageRequest(t, handlers.MarkRead, http.MethodPost, "/api/messages/read", map[string]any{"runtime_id": runtimeID})
+	var item messagequeue.Record
+	if err := json.Unmarshal(created.Body.Bytes(), &item); err != nil {
+		t.Fatal(err)
+	}
+	read := performMessageRequest(t, handlers.MarkRead, http.MethodPost, "/api/messages/read", map[string]any{"runtime_id": runtimeID, "message_ids": []int64{item.ID}})
 	if read.Code != http.StatusOK || !strings.Contains(read.Body.String(), `"status":"read"`) || !strings.Contains(read.Body.String(), `"count":1`) {
 		t.Fatalf("mark read response = %d %s", read.Code, read.Body.String())
 	}
@@ -136,7 +140,7 @@ func insertMessageTestRuntime(t *testing.T, database *sql.DB) int64 {
 	t.Helper()
 	result, err := database.Exec(`
 		INSERT INTO connector_targets (project_id, connector_kind, name, config_json, status, created_at, updated_at)
-		VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped'), 'test', 'worker', '{}', 'active', datetime('now'), datetime('now'))`)
+		VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped'), 'test', ?, '{}', 'active', datetime('now'), datetime('now'))`, fmt.Sprintf("worker-%d", time.Now().UnixNano()))
 	if err != nil {
 		t.Fatalf("insert target: %v", err)
 	}

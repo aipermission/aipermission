@@ -47,6 +47,7 @@ function dialogProps() {
     messageDialog: {
       close: vi.fn(),
       isOpen: true,
+      recordDisplayed: vi.fn(),
       load: vi.fn(),
       setText: vi.fn(),
       setTokenID: vi.fn(),

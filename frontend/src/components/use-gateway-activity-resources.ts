@@ -123,8 +123,8 @@ export function useGatewayActivityResources({ pollIsCurrent }: Props) {
   );
 
   const markRuntimeMessagesRead = useCallback(
-    async (runtimeID: string | number) => {
-      const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID) });
+    async (runtimeID: string | number, messageIDs: readonly number[]) => {
+      const result = await apiPost("/api/messages/read", { runtime_id: Number(runtimeID), message_ids: messageIDs });
       await loadMessages();
       return result;
     },

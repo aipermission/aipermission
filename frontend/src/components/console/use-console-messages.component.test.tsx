@@ -56,16 +56,19 @@ describe("useConsoleMessages", () => {
     expect(result.current.state.data).toEqual([message(2, "current")]);
   });
 
-  it("marks unread messages through the runtime-scoped gateway action when closed", () => {
+  it("marks displayed unread message IDs through the runtime-scoped gateway action when closed", async () => {
+    vi.mocked(apiGet).mockResolvedValue([message(1, "unread")]);
     const markRuntimeMessagesRead = vi.fn().mockResolvedValue({});
     const { result } = renderHook(() =>
       useConsoleMessages(baseProps({ markRuntimeMessagesRead, selectedUnreadMessages: [message(1, "unread")] })),
     );
 
     act(() => result.current.open());
+    await act(async () => result.current.load());
+    act(() => result.current.recordDisplayed([1]));
     act(() => result.current.close());
 
-    expect(markRuntimeMessagesRead).toHaveBeenCalledWith(3);
+    expect(markRuntimeMessagesRead).toHaveBeenCalledWith(3, [1]);
   });
 
   it("ignores a pending list response after the drawer closes", async () => {
@@ -229,20 +232,27 @@ describe("useConsoleMessages", () => {
     vi.mocked(apiGet).mockResolvedValue([unread]);
     const markRuntimeMessagesRead = vi.fn().mockRejectedValue(new Error("Read status unavailable"));
     const { result } = renderHook(() => useConsoleMessages(baseProps({ markRuntimeMessagesRead, selectedUnreadMessages: [unread] })));
+    act(() => result.current.open());
     await act(async () => result.current.load());
+    act(() => result.current.recordDisplayed([unread.id]));
     await act(async () => result.current.close());
     expect(result.current.isOpen).toBe(false);
     expect(result.current.state).toEqual({ state: "error", data: [unread], error: "Read status unavailable" });
   });
 
   it("ignores a mark-read failure belonging to a previously selected runtime", async () => {
+    vi.mocked(apiGet).mockResolvedValue([message(1, "unread")]);
     const pending = deferred();
     const props = baseProps({
       markRuntimeMessagesRead: vi.fn().mockReturnValue(pending.promise),
       selectedUnreadMessages: [message(1, "unread")],
     });
     const { result, rerender } = renderHook((value) => useConsoleMessages(value), { initialProps: props });
+    act(() => result.current.open());
+    await act(async () => result.current.load());
+    act(() => result.current.recordDisplayed([1]));
     act(() => result.current.close());
+    expect(props.markRuntimeMessagesRead).toHaveBeenCalledExactlyOnceWith(3, [1]);
     rerender({ ...props, selectedRuntimeTarget: { id: 4 } });
     await act(async () => {
       pending.reject(new Error("Old read status failed"));
