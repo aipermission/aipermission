@@ -229,17 +229,21 @@ func (component *PortsComponent) RuntimeActionPorts(workspace Workspace, kind st
 }
 
 func (gateway RuntimeActionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal connectorapi.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-	if gateway.workspace.Actions.Restart == nil {
+	return restartConsoleSession(ctx, gateway.workspace, gateway.kind, principal, runtimeID, runningError)
+}
+
+func restartConsoleSession(ctx context.Context, workspace Workspace, kind string, principal connectorapi.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
+	if workspace.Actions.Restart == nil {
 		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
 	}
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
+	if err := connectortransport.RequireRuntimeID(ctx, workspace.runtime, kind, runtimeID); err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
 	core, err := corePrincipal(principal)
 	if err != nil {
 		return connectorapi.ConsoleRestartResult{}, err
 	}
-	return gateway.workspace.Actions.Restart(ctx, core, runtimeID, runningError)
+	return workspace.Actions.Restart(ctx, core, runtimeID, runningError)
 }
 
 func (gateway RuntimeActionGateway) ConnectorCreateAndRunDownloadBatch(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
@@ -315,17 +319,7 @@ func (component *PortsComponent) TargetDeletionGatewayProvider(workspace Workspa
 }
 
 func (gateway TargetDeletionGateway) ConnectorRestartConsoleSession(ctx context.Context, principal connectorapi.Principal, runtimeID int64, runningError string) (connectorapi.ConsoleRestartResult, error) {
-	if gateway.workspace.Actions.Restart == nil {
-		return connectorapi.ConsoleRestartResult{}, ErrRuntimeUnavailable
-	}
-	if err := connectortransport.RequireRuntimeID(ctx, gateway.workspace.runtime, gateway.kind, runtimeID); err != nil {
-		return connectorapi.ConsoleRestartResult{}, err
-	}
-	core, err := corePrincipal(principal)
-	if err != nil {
-		return connectorapi.ConsoleRestartResult{}, err
-	}
-	return gateway.workspace.Actions.Restart(ctx, core, runtimeID, runningError)
+	return restartConsoleSession(ctx, gateway.workspace, gateway.kind, principal, runtimeID, runningError)
 }
 
 func (gateway TargetDeletionGateway) ConnectorDeleteTargetRecord(ctx context.Context, target connectorapi.Target, payload map[string]any) error {
