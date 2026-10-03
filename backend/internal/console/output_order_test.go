@@ -66,7 +66,7 @@ func testConsoleConcurrentOutputOrder(t *testing.T, laterPath string) {
 		if laterPath == "manual" {
 			session.appendSafeOutput(later)
 		} else {
-			session.appendDisplayOutput(later)
+			session.appendDisplayOutput(t.Context(), later)
 		}
 	}()
 	release()

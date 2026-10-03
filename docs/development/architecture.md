@@ -167,7 +167,12 @@ place.
   lives in `internal/console/terminaltext`; transport-neutral maintenance
   console contracts live at the console boundary. Console persistence uses a
   bounded session snapshot plus append-only transcript chunks so long-running
-  sessions do not rewrite one large transcript row on every flush.
+  sessions do not rewrite one large transcript row on every flush. Pending
+  redacted output, including in-flight persistence, is capped at 512 KiB per
+  session. Storage failure applies backpressure and one owned retry worker;
+  successful writes acknowledge only the exact committed prefix. Closed
+  sessions with failed finalization retain their capacity reservation until
+  transcript/status/ownership finalization succeeds.
 - `internal/maintenanceconsole`: the local maintenance-shell process
   supervisor, PTY lifecycle, websocket clients, and bounded transcript. The
   executable composition root injects it through the console-domain runtime

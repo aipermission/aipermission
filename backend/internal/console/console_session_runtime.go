@@ -106,6 +106,9 @@ func (s *managedConsoleSession) destroySensitiveRuntime() {
 	if s == nil {
 		return
 	}
+	if s.cancel != nil {
+		s.cancel()
+	}
 	// Admitted persistence work must retain the exact redactor until it drains.
 	s.drainOwnedWork()
 	s.closeManualOutputCapture(manualSessionClosed)
@@ -195,11 +198,16 @@ func (s *managedConsoleSession) consumeRuntime(runtime *RuntimeSession) {
 				output = nil
 				continue
 			}
+			var outputErr error
 			switch item.Kind {
 			case RuntimeStderr:
-				s.appendStreamOutput(item.Data, s.stderrExactRedactor)
+				outputErr = s.appendStreamOutput(item.Data, s.stderrExactRedactor)
 			default:
-				s.appendStreamOutput(item.Data, s.stdoutExactRedactor)
+				outputErr = s.appendStreamOutput(item.Data, s.stdoutExactRedactor)
+			}
+			if outputErr != nil {
+				s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
+				return
 			}
 		case err, ok := <-done:
 			if ok {
@@ -373,12 +381,6 @@ func (s *managedConsoleSession) drainOwnedWork() {
 		return
 	}
 	s.closeWorkAdmission()
-	s.mu.Lock()
-	if s.persistTimer != nil {
-		s.persistTimer.Stop()
-		s.persistTimer = nil
-	}
-	s.mu.Unlock()
 	s.workWG.Wait()
 }
 
@@ -488,28 +490,34 @@ func (s *managedConsoleSession) appendOutput(data string) {
 	s.appendStreamOutput(data, redactor)
 }
 
-func (s *managedConsoleSession) appendStreamOutput(data string, redactor *sessionenv.Redactor) {
+func (s *managedConsoleSession) appendStreamOutput(data string, redactor *sessionenv.Redactor) error {
 	if data == "" {
-		return
+		return nil
 	}
 	s.mu.Lock()
 	redactionClosed := s.exactRedactionClosed
 	s.mu.Unlock()
 	if redactionClosed {
-		return
+		return nil
 	}
 	if redactor != nil {
 		data = string(redactor.Write([]byte(data)))
 	}
 	data = s.manager.redactText(data)
-	s.appendSafeOutput(data)
+	return s.appendSafeOutput(data)
 }
 
-func (s *managedConsoleSession) appendSafeOutput(data string) {
+func (s *managedConsoleSession) appendSafeOutput(data string) error {
 	if data == "" {
-		return
+		return nil
 	}
-	s.outputMu.Lock()
+	ctx := s.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.outputMu.Lock(ctx); err != nil {
+		return err
+	}
 	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	automationActive := s.activeExec != nil
@@ -532,27 +540,21 @@ func (s *managedConsoleSession) appendSafeOutput(data string) {
 	}
 	if displayData != "" {
 		s.transcript = terminaltext.TailStringByBytes(s.transcript+displayData, maxConsoleTranscriptLength)
-		s.pendingOutput += displayData
-	}
-	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
-	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
-		s.persistTimer = time.AfterFunc(500*time.Millisecond, func() {
-			s.runOwnedWork(s.flushTranscript)
-		})
 	}
 	manualCompletion := s.manualOutputCompletionLocked()
 	s.clearManualPauseIfPromptReturnedLocked()
 	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
+	if err := s.enqueueTranscript(s.ctx, displayData); err != nil {
+		return err
+	}
 	if manualCompletion != nil {
 		s.runOwnedWork(func() { s.finishManualOutputCapture(manualCompletion) })
-	}
-	if flushSoon {
-		s.runOwnedWork(s.flushTranscript)
 	}
 	if displayData != "" {
 		s.broadcastTo(clients, ptyServerMessage{Type: "output", Status: "connected", Data: displayData, SessionID: s.id})
 	}
+	return nil
 }
 
 func (s *managedConsoleSession) rawStreamPositionLocked() int64 {
@@ -574,31 +576,57 @@ func rawTranscriptSegment(transcript string, baseOffset int64, startOffset int64
 	return transcript[int(startOffset-baseOffset):], false
 }
 
-func (s *managedConsoleSession) appendDisplayOutput(data string) {
+func (s *managedConsoleSession) appendDisplayOutput(ctx context.Context, data string) error {
 	if data == "" {
-		return
+		return nil
 	}
 	data = s.redactForPersistence(data)
-	s.outputMu.Lock()
+	if err := s.outputMu.Lock(ctx); err != nil {
+		return err
+	}
 	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	if strings.HasPrefix(data, "[AI command]") && s.transcript != "" && !strings.HasSuffix(s.transcript, "\n") && !strings.HasSuffix(s.transcript, "\r") {
 		data = "\r\n" + data
 	}
 	s.transcript = terminaltext.TailStringByBytes(s.transcript+data, maxConsoleTranscriptLength)
-	s.pendingOutput += data
-	flushSoon := len(s.pendingOutput) >= maxConsolePendingFlushSize
-	if s.manager != nil && s.manager.db != nil && s.persistTimer == nil {
-		s.persistTimer = time.AfterFunc(500*time.Millisecond, func() {
-			s.runOwnedWork(s.flushTranscript)
-		})
-	}
 	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
-	if flushSoon {
-		s.runOwnedWork(s.flushTranscript)
+	if err := s.enqueueTranscript(ctx, data); err != nil {
+		return err
 	}
 	s.broadcastTo(clients, ptyServerMessage{Type: "output", Status: "connected", Data: data, SessionID: s.id})
+	return nil
+}
+
+func (s *managedConsoleSession) enqueueTranscript(ctx context.Context, data string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err := s.outputBuffer.Append(ctx, data, s.scheduleTranscriptFlush)
+	if err != nil {
+		logConsolePersistError("transcript_backpressure", s.id, err)
+		return err
+	}
+	s.scheduleTranscriptFlush()
+	return nil
+}
+
+func (s *managedConsoleSession) scheduleTranscriptFlush() {
+	if s.manager == nil || s.manager.db == nil || !s.outputBuffer.StartWorker() {
+		return
+	}
+	if !s.runOwnedWork(func() {
+		s.outputBuffer.RunWorker(s.ctx, 500*time.Millisecond, func() error {
+			err := s.flushTranscriptContext(context.Background())
+			if err != nil {
+				logConsolePersistError("flush_transcript", s.id, err)
+			}
+			return err
+		})
+	}) {
+		s.outputBuffer.FinishWorker(true)
+	}
 }
 
 func (s *managedConsoleSession) redactForPersistence(value string) string {
@@ -644,7 +672,9 @@ func (s *managedConsoleSession) closeExactRedactor() {
 		seen[redactor] = true
 		output := redactor.Close()
 		if index < 2 && len(output) > 0 {
-			s.appendSafeOutput(s.manager.redactText(string(output)))
+			if err := s.appendSafeOutput(s.manager.redactText(string(output))); err != nil {
+				s.finish("error", "console transcript persistence interrupted; output observation is incomplete")
+			}
 		}
 	}
 }
@@ -659,33 +689,18 @@ func (s *managedConsoleSession) flushTranscriptContext(ctx context.Context) erro
 	if s.manager == nil || s.manager.db == nil {
 		return errors.New("console persistence is unavailable")
 	}
-	s.persistMu.Lock()
-	defer s.persistMu.Unlock()
-	now := timeformat.Now()
-	s.mu.Lock()
-	if s.persistTimer != nil {
-		s.persistTimer.Stop()
-		s.persistTimer = nil
-	}
-	snapshot := terminaltext.TailStringByBytes(s.transcript, maxConsoleSnapshotLength)
-	pending := s.pendingOutput
-	s.pendingOutput = ""
-	s.mu.Unlock()
-	snapshot = s.manager.redactText(snapshot)
-	pending = s.manager.redactText(pending)
-	persist := s.manager.persistChunks
-	if persist == nil {
-		persist = consolepersistence.PersistTranscript
-	}
-	if err := persist(ctx, s.manager.db, s.id, snapshot, pending, now); err != nil {
-		if pending != "" {
-			s.mu.Lock()
-			s.pendingOutput = pending + s.pendingOutput
-			s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return s.outputBuffer.Drain(ctx, func(pending string) error {
+		s.mu.Lock()
+		snapshot := terminaltext.TailStringByBytes(s.transcript, maxConsoleSnapshotLength)
+		s.mu.Unlock()
+		persist := s.manager.persistChunks
+		if persist == nil {
+			persist = consolepersistence.PersistTranscript
 		}
-		return err
-	}
-	return nil
+		return persist(ctx, s.manager.db, s.id, s.manager.redactText(snapshot), s.manager.redactText(pending), timeformat.Now())
+	})
 }
 
 func (s *managedConsoleSession) finalize(ctx context.Context) error {

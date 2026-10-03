@@ -114,7 +114,9 @@ func (s *managedConsoleSession) execCommand(
 		s.clearActiveCommandWithInputAdmission(marker)
 		return ExecResult{}, writeErr
 	}
-	s.appendDisplayOutput(terminaltext.FormatAutomationCommand(command))
+	if err := s.appendDisplayOutput(ctx, terminaltext.FormatAutomationCommand(command)); err != nil {
+		return s.unknownCommandObservation(active, err)
+	}
 
 	output, exitCode, err := s.waitForCommandResult(ctx, startOffset, marker)
 	if err != nil {

@@ -1518,6 +1518,21 @@ The backend owns the SSH shell. Browser and MCP clients attach to the same `sess
 
 Console websockets are locally hardened with bounded message size, client count, read deadlines, ping/pong keepalive, and lightweight input/resize frequency limits. These are abuse guardrails for the local gateway; they are not a remote multi-user quota system.
 
+Pending redacted transcript output is bounded to 512 KiB per session, including
+an in-flight database write. A storage failure retains accepted bytes and
+retries with one session-owned worker; a full buffer pauses output consumption
+instead of growing memory or silently discarding the pending transcript. Each
+write attempt has a two-second deadline. A canceled output observer can stop
+waiting even when another producer is paused on persistence. Interrupted
+observation does not prove a dispatched command stopped.
+
+Failed finalization is reported by close/shutdown and keeps the session's slot
+reserved against the 32-session limit until retry succeeds. Repair the storage
+failure and retry closing the existing session; do not repeatedly create new
+sessions to bypass a failed durable close. This bounded in-memory retry state is
+not crash-proof storage: terminating the process before a successful write can
+lose still-pending output.
+
 Automated execution checks request cancellation at command admission and again
 before writing the command payload. A request canceled while waiting for an
 execution/input lock does not send a new command. Cancellation after the
