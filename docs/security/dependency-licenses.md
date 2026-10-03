@@ -115,6 +115,10 @@ The 0.2.65 security refresh raises the backend PCRE2 runtime minimum to
 patched image must pass the same vulnerability scan as every release image;
 the package-version guard is not a substitute for scanning the final image.
 
+The local 0.2.67 metadata refresh changes only four package-source hashes and
+the two application-root version records. Dependency identities and declared
+licenses are unchanged, as are Go/native evidence and acknowledged gaps.
+
 The initial offline capture has 602 npm records (including three roots),
 88 Go module/version records, and local named-file evidence for all 37 current
 Go requirements. The 38 absent versions are historical checksum-only entries.
