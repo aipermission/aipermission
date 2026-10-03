@@ -50,6 +50,10 @@ func targetConfigFrom(target connectors.TargetView) (targetConfig, error) {
 	if err != nil {
 		return targetConfig{}, fmt.Errorf("%w: smtp_port must be an integer", ErrInvalidConfig)
 	}
+	domains, err := policyStrings(target.Config, "allowed_recipient_domains", nil)
+	if err != nil {
+		return targetConfig{}, err
+	}
 	config := targetConfig{
 		ConnectionMode:          stringValue(target.Config, "connection_mode"),
 		TransportTargetRef:      strings.TrimSpace(stringValue(target.Config, "transport_target_ref")),
@@ -59,7 +63,7 @@ func targetConfigFrom(target connectors.TargetView) (targetConfig, error) {
 		SMTPHost:                strings.TrimSpace(stringValue(target.Config, "smtp_host")),
 		SMTPPort:                smtpPort,
 		SMTPTLSMode:             stringValue(target.Config, "smtp_tls_mode"),
-		AllowedRecipientDomains: stringSlice(target.Config["allowed_recipient_domains"]),
+		AllowedRecipientDomains: domains,
 	}
 	if config.ConnectionMode == "" {
 		config.ConnectionMode = "direct"
@@ -110,17 +114,29 @@ func (Connector) ValidateTargetConfig(config map[string]any) error {
 
 func profileConfigFrom(profile connectors.CredentialProfileView) (profileConfig, error) {
 	config := profileConfig{
-		MailboxAddress:              strings.TrimSpace(stringValue(profile.Public, "mailbox_address")),
-		DisplayName:                 strings.TrimSpace(stringValue(profile.Public, "display_name")),
-		ReplyTo:                     strings.TrimSpace(stringValue(profile.Public, "reply_to")),
-		IMAPEnabled:                 boolValue(profile.Public, "imap_enabled", true),
-		SMTPAuthMode:                stringValue(profile.Public, "smtp_auth_mode"),
-		AllowedReadFolders:          folderSlice(profile.Public["allowed_read_folders"], []string{defaultFolder}),
-		AllowedMutationSources:      folderSlice(profile.Public["allowed_mutation_source_folders"], []string{defaultFolder}),
-		AllowedMutationDestinations: folderSlice(profile.Public["allowed_mutation_destination_folders"], nil),
-		SentFolder:                  strings.TrimSpace(stringValue(profile.Public, "sent_folder")),
-		ArchiveFolder:               strings.TrimSpace(stringValue(profile.Public, "archive_folder")),
-		TrashFolder:                 strings.TrimSpace(stringValue(profile.Public, "trash_folder")),
+		MailboxAddress: strings.TrimSpace(stringValue(profile.Public, "mailbox_address")),
+		DisplayName:    strings.TrimSpace(stringValue(profile.Public, "display_name")),
+		ReplyTo:        strings.TrimSpace(stringValue(profile.Public, "reply_to")),
+		IMAPEnabled:    boolValue(profile.Public, "imap_enabled", true),
+		SMTPAuthMode:   stringValue(profile.Public, "smtp_auth_mode"),
+		SentFolder:     strings.TrimSpace(stringValue(profile.Public, "sent_folder")),
+		ArchiveFolder:  strings.TrimSpace(stringValue(profile.Public, "archive_folder")),
+		TrashFolder:    strings.TrimSpace(stringValue(profile.Public, "trash_folder")),
+	}
+	for field, destination := range map[string]*[]string{
+		"allowed_read_folders":                 &config.AllowedReadFolders,
+		"allowed_mutation_source_folders":      &config.AllowedMutationSources,
+		"allowed_mutation_destination_folders": &config.AllowedMutationDestinations,
+	} {
+		var fallback []string
+		if field != "allowed_mutation_destination_folders" {
+			fallback = []string{defaultFolder}
+		}
+		items, err := policyStrings(profile.Public, field, fallback)
+		if err != nil {
+			return profileConfig{}, err
+		}
+		*destination = items
 	}
 	if config.SMTPAuthMode == "" {
 		config.SMTPAuthMode = "disabled"
@@ -361,39 +377,53 @@ func boolValue(values map[string]any, key string, fallback bool) bool {
 	return value
 }
 
-func stringSlice(value any) []string {
+func stringSlice(value any) ([]string, error) {
 	var raw []string
 	switch typed := value.(type) {
+	case nil:
+		return nil, nil
 	case []string:
 		raw = typed
 	case []any:
 		for _, item := range typed {
-			raw = append(raw, fmt.Sprint(item))
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("must contain only strings")
+			}
+			raw = append(raw, text)
 		}
 	case string:
 		for _, item := range strings.FieldsFunc(typed, func(r rune) bool { return r == ',' || r == '\n' }) {
 			raw = append(raw, item)
 		}
+	default:
+		return nil, fmt.Errorf("must be a string list")
 	}
 	result := make([]string, 0, len(raw))
 	seen := map[string]bool{}
 	for _, item := range raw {
 		item = strings.TrimSpace(item)
-		if item == "" || seen[item] {
+		if item == "" {
+			return nil, fmt.Errorf("must not contain blank entries")
+		}
+		if seen[item] {
 			continue
 		}
 		seen[item] = true
 		result = append(result, item)
 	}
-	return result
+	return result, nil
 }
 
-func folderSlice(value any, fallback []string) []string {
-	items := stringSlice(value)
-	if len(items) == 0 && value == nil {
-		return append([]string(nil), fallback...)
+func policyStrings(values map[string]any, field string, fallback []string) ([]string, error) {
+	if values[field] == nil {
+		return append([]string(nil), fallback...), nil
 	}
-	return items
+	items, err := stringSlice(values[field])
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s %v", ErrInvalidConfig, field, err)
+	}
+	return items, nil
 }
 
 func folderAllowed(folder string, allowed []string) bool {

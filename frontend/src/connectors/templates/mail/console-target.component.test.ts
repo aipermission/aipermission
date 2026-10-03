@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { gatewayTargetFixture } from "../../../test/connector-inventory-fixtures";
-import { mailConsoleTarget } from "./console-target";
+import { mailConsoleTarget, mailPolicyList } from "./console-target";
 
 it("preserves Mail protocol capabilities, folder policy and endpoint metadata", () => {
   const target = gatewayTargetFixture({
@@ -62,4 +62,12 @@ it.each([
   "trash_folder",
 ])("rejects malformed public profile %s", (field) => {
   expect(() => mailConsoleTarget(gatewayTargetFixture({ public: { [field]: {} } }))).toThrow(`Invalid Mail console target ${field}.`);
+});
+
+it.each([undefined, null, "", ",\n", [], "INBOX,\nSent", ["INBOX", "Sent"]])("preserves supported policy list %j", (value) => {
+  expect(mailPolicyList(value, "allowed_read_folders")).toEqual(value === null ? undefined : value);
+});
+
+it.each([true, 1, ["INBOX", null], ["INBOX", 3], " ", ["INBOX", " "]])("rejects malformed policy list %j", (value) => {
+  expect(() => mailPolicyList(value, "allowed_read_folders")).toThrow("Invalid Mail console target allowed_read_folders.");
 });

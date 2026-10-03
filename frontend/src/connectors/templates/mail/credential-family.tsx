@@ -1,9 +1,9 @@
 import { defineCredentialFamily } from "../_shared/credential-family-registration";
 import { credentialDisplayRow } from "../_shared/credential-display-row";
-import { optionalConsolePort, optionalConsoleText, optionalConsoleTextList } from "../_shared/console-target-config";
+import { optionalConsolePort, optionalConsoleText } from "../_shared/console-target-config";
 import type { InventoryTarget } from "../../../lib/gateway-contracts/connector-inventory-contract";
 import { MailCredentialFormTemplate } from "./credential-form";
-import { mailPublicProfile } from "./console-target";
+import { mailPolicyList, mailPublicProfile } from "./console-target";
 import * as model from "./model";
 
 type Target = ReturnType<typeof mailCredentialTargets>[number];
@@ -50,7 +50,7 @@ export function mailCredentialTargets(targets: readonly InventoryTarget[]) {
           smtp_tls_mode: optionalConsoleText(config.smtp_tls_mode, "Mail", "smtp_tls_mode"),
           connection_mode: optionalConsoleText(config.connection_mode, "Mail", "connection_mode"),
           transport_target_ref: optionalConsoleText(config.transport_target_ref, "Mail", "transport_target_ref"),
-          allowed_recipient_domains: optionalConsoleTextList(config.allowed_recipient_domains, "Mail", "allowed_recipient_domains"),
+          allowed_recipient_domains: mailPolicyList(config.allowed_recipient_domains, "allowed_recipient_domains"),
         },
         profiles: (target.profiles || []).map((profile) => ({
           ...profile,

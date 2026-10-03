@@ -8,6 +8,7 @@ import { ConnectorTemplateNotFound } from "../templates/registry";
 import { connectorTargetGroups } from "./connector-target-groups";
 import { connectorTestKey } from "./use-connector-connection-tests";
 import { targetProfileSelectionKey } from "./use-connector-inventory";
+import { InventoryRowBoundary } from "./inventory-row-boundary";
 import type { ReactNode } from "react";
 import type { InventoryProfile, InventoryTarget } from "../../lib/gateway-contracts/connector-inventory-contract";
 import type { ConnectorTestState as ConnectionTestState } from "./use-connector-connection-tests";
@@ -116,12 +117,17 @@ function ProjectTargetRows({
       </tr>
       {!collapsed
         ? targets.map((target) => (
-            <ConnectorTargetRow
+            <InventoryRowBoundary
               key={`${target.connector_kind}:${target.id}`}
-              target={target}
-              selectedProfileID={rowProps.profileSelections[targetProfileSelectionKey(target)] || ""}
-              {...rowProps}
-            />
+              label={`Connector unavailable: ${target.name}`}
+              inputs={[target, rowProps.credentials]}
+            >
+              <ConnectorTargetRow
+                target={target}
+                selectedProfileID={rowProps.profileSelections[targetProfileSelectionKey(target)] || ""}
+                {...rowProps}
+              />
+            </InventoryRowBoundary>
           ))
         : null}
     </>

@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import type { InventoryTarget } from "../../lib/gateway-contracts/connector-inventory-contract";
 import type { CredentialResource } from "../../lib/gateway-contracts/core-resource-contracts";
-import { CredentialFamilyBoundary } from "./credential-family-boundary";
+import { InventoryRowBoundary } from "./inventory-row-boundary";
 
 function FailedFamily(): ReactNode {
   throw new Error("Fixture private detail must not be shown");
@@ -24,9 +24,9 @@ it("isolates failed native credential renderers and retries only with refreshed 
     return (
       <table>
         <tbody>
-          <CredentialFamilyBoundary kind="example" targets={targetRows} credentials={resources}>
+          <InventoryRowBoundary label="Connector credentials unavailable: example" inputs={[targetRows, resources]}>
             {child}
-          </CredentialFamilyBoundary>
+          </InventoryRowBoundary>
           <tr>
             <td>Other family</td>
           </tr>

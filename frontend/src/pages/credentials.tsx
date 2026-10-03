@@ -5,7 +5,7 @@ import { supportedConnectorKinds } from "../connectors/templates/catalog";
 import { credentialFamilies } from "../connectors/templates/credential-registry";
 import { useCredentialInventory } from "../connectors/editor/use-credential-inventory";
 import { useCredentialFamilyHost } from "../connectors/editor/use-credential-family-host";
-import { CredentialFamilyBoundary } from "../connectors/editor/credential-family-boundary";
+import { InventoryRowBoundary } from "../connectors/editor/inventory-row-boundary";
 import { AddCredentialMenu } from "../connectors/editor/credential-menu";
 
 export { AddCredentialMenu } from "../connectors/editor/credential-menu";
@@ -59,7 +59,11 @@ export function CredentialsPage() {
             {availableKinds.map((kind) => {
               const family = credentialFamilies[kind];
               return (
-                <CredentialFamilyBoundary key={kind} kind={kind} targets={connectorTargets.data} credentials={credentials.data}>
+                <InventoryRowBoundary
+                  key={kind}
+                  label={`Connector credentials unavailable: ${kind}`}
+                  inputs={[connectorTargets.data, credentials.data]}
+                >
                   <family.Rows
                     targets={connectorTargets.data}
                     credentials={credentials.data}
@@ -70,7 +74,7 @@ export function CredentialsPage() {
                     onRowsChange={host.onRowsChange}
                     refresh={refreshCredentials}
                   />
-                </CredentialFamilyBoundary>
+                </InventoryRowBoundary>
               );
             })}
           </tbody>

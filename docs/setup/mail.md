@@ -99,6 +99,16 @@ Folder policy is enforced during both preparation and execution. Read access
 does not imply mutation access, and a permitted source folder does not imply
 that every destination is allowed.
 
+Recipient-domain and folder policies accept string arrays or comma/newline
+separated strings. Entries must be nonblank strings; objects, booleans, numbers,
+and mixed arrays are rejected before persistence and revalidated at runtime.
+An absent or null folder policy defaults to `INBOX` for reads and mutation
+sources, and no destinations. An explicit empty read list is invalid when IMAP
+is enabled. An absent, null, or explicit empty recipient-domain list means no
+domain restriction; it is distinct from a malformed policy, which never grants
+unrestricted sending. Malformed stored policy is shown as an unavailable
+inventory row rather than silently replaced with an empty list.
+
 `check_mailbox` defaults to `unread_only: true`; callers may explicitly set it
 to false. Search cursors are opaque, bounded pagination state tied to the
 folder, UIDVALIDITY, and normalized search. They are caller-controlled local
