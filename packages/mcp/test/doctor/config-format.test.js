@@ -19,6 +19,19 @@ async function setupDoctor(t, client = "vscode", token = "SECRET") {
   return { options, config, written };
 }
 
+for (const marker of ["?", "#", "?#", "/#"]) {
+  test(`doctor rejects a gateway origin containing the bare ${marker} marker`, async (t) => {
+    const { options, config, written } = await setupDoctor(t);
+    config.env.AIPERMISSION_API_URL += marker;
+    const source = JSON.stringify({ servers: { aipermission: { ...config, type: "stdio" } } });
+    await fs.writeFile(written.path, source, { mode: 0o600 });
+    const result = await inspectClientSetup(options);
+    assert.equal(result.ok, false);
+    assert.match(result.checks[0].message, /origin only/);
+    assert.equal(await fs.readFile(written.path, "utf8"), source);
+  });
+}
+
 test("doctor reads VS Code JSONC comments and trailing commas without changing the file", async (t) => {
   const { options, config, written } = await setupDoctor(t, "vscode", "JSONC_CANARY_SECRET");
   const source = `{// preserved comment\n"servers":{"aipermission":${JSON.stringify({ ...config, type: "stdio" })},},}\n`;

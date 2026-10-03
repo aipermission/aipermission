@@ -23,7 +23,8 @@ export function normalizeLocalAPIURL(value = DEFAULT_API_URL) {
   if (!allowedLocalHosts.has(hostname)) {
     throw new Error("AIPERMISSION_API_URL must point to localhost, 127.0.0.1, or [::1].");
   }
-  if ((parsed.pathname && parsed.pathname !== "/") || parsed.search || parsed.hash) {
+  // WHATWG URL search/hash getters omit bare '?' and '#' delimiters.
+  if ((parsed.pathname && parsed.pathname !== "/") || raw.includes("?") || raw.includes("#")) {
     throw new Error("AIPERMISSION_API_URL must be the gateway origin only, for example http://localhost:3210.");
   }
   return parsed.toString().replace(/\/$/, "");
