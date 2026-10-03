@@ -50,20 +50,26 @@ test("rejects removing a base-branch Playwright gate in the same change", () => 
   assert.throws(() => assertPlaywrightManifestRatchet(base, { highRisk: ["approval"], smoke: ["settings"] }), /highRisk: unlock/);
 });
 
-test("local browser tests use an isolated port without reusing another app", async () => {
-  const previous = process.env.AIPERMISSION_PLAYWRIGHT_PORT;
-  process.env.AIPERMISSION_PLAYWRIGHT_PORT = "4273";
-  try {
-    const { default: config } = await import("../playwright.config.js?isolated-port-test");
-    assert.equal(config.use.baseURL, "http://127.0.0.1:4273");
-    assert.equal(config.webServer.url, config.use.baseURL);
-    assert.equal(config.webServer.reuseExistingServer, false);
-    assert.match(config.webServer.command, /--strictPort --port 4273/);
-  } finally {
-    if (previous === undefined) delete process.env.AIPERMISSION_PLAYWRIGHT_PORT;
-    else process.env.AIPERMISSION_PLAYWRIGHT_PORT = previous;
-  }
-});
+for (const [filename, port] of [
+  ["playwright.config.js", "4273"],
+  ["playwright.real.config.js", "4174"],
+]) {
+  test(`${filename} uses an isolated strict port without reusing another app`, async () => {
+    const previous = process.env.AIPERMISSION_PLAYWRIGHT_PORT;
+    process.env.AIPERMISSION_PLAYWRIGHT_PORT = "4273";
+    try {
+      const { default: config } = await import(`../${filename}?isolated-port-test`);
+      const webServer = Array.isArray(config.webServer) ? config.webServer.at(-1) : config.webServer;
+      assert.equal(config.use.baseURL, `http://127.0.0.1:${port}`);
+      assert.equal(webServer.url, config.use.baseURL);
+      assert.equal(webServer.reuseExistingServer, false);
+      assert.ok(webServer.command.includes(`--strictPort --port ${port}`));
+    } finally {
+      if (previous === undefined) delete process.env.AIPERMISSION_PLAYWRIGHT_PORT;
+      else process.env.AIPERMISSION_PLAYWRIGHT_PORT = previous;
+    }
+  });
+}
 
 function listing(titles) {
   return {
