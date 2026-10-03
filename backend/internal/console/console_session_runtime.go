@@ -33,8 +33,7 @@ func (s *managedConsoleSession) run() {
 	}()
 
 	if s.manager.openRuntime == nil {
-		s.markStarted(fmt.Errorf("console transport is not configured"))
-		s.fail("console transport is not configured")
+		s.failStart(fmt.Errorf("console transport is not configured"))
 		return
 	}
 	runtime, err := s.manager.openRuntime(s.ctx, RuntimeOpenRequest{
@@ -46,21 +45,17 @@ func (s *managedConsoleSession) run() {
 		HasEnvironment: s.environment != nil || s.prepareEnvironment != nil,
 	})
 	if err != nil {
-		s.markStarted(err)
-		s.fail(err.Error())
+		s.failStart(err)
 		return
 	}
 	if runtime == nil {
-		err := fmt.Errorf("console transport returned no session")
-		s.markStarted(err)
-		s.fail(err.Error())
+		s.failStart(fmt.Errorf("console transport returned no session"))
 		return
 	}
 	stdin := runtime.Stdin
 	if stdin == nil {
 		_ = runtime.close()
-		s.markStarted(fmt.Errorf("console transport did not provide stdin"))
-		s.fail("console transport did not provide stdin")
+		s.failStart(fmt.Errorf("console transport did not provide stdin"))
 		return
 	}
 	if !s.publishRuntime(runtime) {
@@ -71,20 +66,17 @@ func (s *managedConsoleSession) run() {
 
 	if s.environment != nil || s.prepareEnvironment != nil {
 		if err := s.applyEnvironment(runtime); err != nil {
-			s.markStarted(err)
-			s.fail(err.Error())
+			s.failStart(err)
 			return
 		}
 	}
 
 	if runtime.Output == nil {
-		s.markStarted(fmt.Errorf("console transport did not provide output"))
-		s.fail("console transport did not provide output")
+		s.failStart(fmt.Errorf("console transport did not provide output"))
 		return
 	}
 	if runtime.Done == nil {
-		s.markStarted(fmt.Errorf("console transport did not provide completion signal"))
-		s.fail("console transport did not provide completion signal")
+		s.failStart(fmt.Errorf("console transport did not provide completion signal"))
 		return
 	}
 
@@ -100,6 +92,11 @@ func (s *managedConsoleSession) run() {
 	}
 
 	s.consumeRuntime(runtime)
+}
+
+func (s *managedConsoleSession) failStart(err error) {
+	s.markStarted(err)
+	s.fail(err.Error())
 }
 
 func (s *managedConsoleSession) destroySensitiveRuntime() {
