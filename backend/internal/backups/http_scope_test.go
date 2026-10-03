@@ -47,7 +47,7 @@ func TestProviderOperationsRejectIncompleteCompositionScope(t *testing.T) {
 	if _, err := EnableProvider(context.Background(), HTTPScope{}, 1); !strings.Contains(err.Error(), "scope is incomplete") {
 		t.Fatalf("enable error = %v", err)
 	}
-	if _, err := PrepareProviderRestore(context.Background(), HTTPScope{}, 1, 1); !strings.Contains(err.Error(), "scope is incomplete") {
+	if _, err := SelectProviderRestore(context.Background(), HTTPScope{}, 1, 1); !strings.Contains(err.Error(), "scope is incomplete") {
 		t.Fatalf("restore error = %v", err)
 	}
 }

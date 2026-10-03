@@ -317,6 +317,7 @@ func TestBackupOperationRoutesManageLifecycleAfterOperationAdmission(t *testing.
 	for _, path := range []string{
 		"/api/backup/download",
 		"/api/backup/import",
+		"/api/backup/remote/restore",
 		"/api/backup/providers/3/upload",
 		"/api/backup/providers/3/records/9/download",
 		"/api/backup/providers/3/records/9/restore",

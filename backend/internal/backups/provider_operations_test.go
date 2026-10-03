@@ -782,7 +782,14 @@ func TestPreparedProviderRestoreOwnsBaselineAndTemporaryFileCleanup(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := PrepareProviderRestore(context.Background(), providerTestScope(database, databasePath), provider.ID, record.ID)
+	selection, err := SelectProviderRestore(context.Background(), providerTestScope(database, databasePath), provider.ID, record.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := selection.Download(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

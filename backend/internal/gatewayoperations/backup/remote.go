@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/backups/snapshotfile"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -25,14 +26,15 @@ func (component *Component) restoreTransientRemoteBackup(w http.ResponseWriter, 
 		return
 	}
 	defer clearStrings(&request.Token, &request.DatabasePassword)
-	if strings.TrimSpace(request.DatabasePassword) == "" {
-		httptransport.WriteError(w, http.StatusBadRequest, "database password is required")
+	if !validateRestoreDestination(w, request.DatabaseName, request.DatabasePassword) {
 		return
 	}
-	if strings.TrimSpace(request.DatabaseName) == "" {
-		httptransport.WriteError(w, http.StatusBadRequest, "database name is required")
+	lease, revalidate, ok := component.admitImport(w, r)
+	if !ok {
 		return
 	}
+	defer lease.Release()
+	lease.ReleaseLifecycle()
 	prepared, err := backups.PrepareTransientRestore(r.Context(), component.dependencies.DataPath, backups.TransientRestoreSelection{
 		BaseURL: request.BaseURL, Token: request.Token, StreamID: request.StreamID, BackupID: request.BackupID,
 	})
@@ -41,9 +43,9 @@ func (component *Component) restoreTransientRemoteBackup(w http.ResponseWriter, 
 		return
 	}
 	defer prepared.Remove()
-	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, backups.CopyBackupFile(prepared.Path), func(database *sql.DB) error {
+	component.installImportedDatabase(w, r, request.DatabaseName, request.DatabasePassword, snapshotfile.Copy(prepared.Path), func(database *sql.DB) error {
 		return prepared.RecordBaseline(r.Context(), database)
-	}, nil)
+	}, component.importCommit(r.Context(), lease, revalidate))
 }
 
 func parsePositivePathID(w http.ResponseWriter, r *http.Request, key, label string) (int64, bool) {

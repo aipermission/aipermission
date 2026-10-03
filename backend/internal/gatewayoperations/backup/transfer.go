@@ -57,6 +57,7 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer lease.Release()
+	lease.ReleaseLifecycle()
 	r, finishBody := guardImportBody(w, r, importBodyIdleTimeout)
 	defer finishBody()
 	r.Body = http.MaxBytesReader(w, r.Body, backups.MaxDatabaseTransferBytes+maxDatabaseMultipartOverhead)
@@ -102,17 +103,7 @@ func (component *Component) importDatabase(w http.ResponseWriter, r *http.Reques
 			return err
 		}
 		return output.Close()
-	}, nil, func() error {
-		release, err := component.dependencies.Lifecycle.AcquireMutationContext(r.Context())
-		if err != nil {
-			return err
-		}
-		lease.releaseLifecycle = release
-		if !revalidate() {
-			return errImportAuthorization
-		}
-		return nil
-	})
+	}, nil, component.importCommit(r.Context(), lease, revalidate))
 }
 
 func (component *Component) installImportedDatabase(w http.ResponseWriter, r *http.Request, databaseName, password string, writeTemp func(string) error, mutate func(*sql.DB) error, beforeCommit func() error) {

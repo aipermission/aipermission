@@ -330,11 +330,13 @@ func (h *HTTPHandlers) DownloadProviderRecord(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	tmpPath, err := downloadServiceRecordToTemp(r.Context(), runtime, provider, record, client)
+	selection := ProviderRestoreSelection{provider: provider, record: record, client: client, databasePath: runtime.DatabasePath}
+	prepared, err := selection.Download(r.Context())
 	if err != nil {
-		handleBackupServiceError(w, err)
+		handleBackupProviderError(w, err)
 		return
 	}
+	tmpPath := prepared.Path
 	defer os.Remove(tmpPath)
 	runtime.Observe(r.Context(), "backup.provider.record.downloaded", map[string]any{
 		"provider_id": provider.ID, "record_id": record.ID, "filename": record.Filename,
