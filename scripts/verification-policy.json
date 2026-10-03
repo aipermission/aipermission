@@ -469,6 +469,7 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestDockerDaemonRealService",
     "TestKubernetesAPIRealService",
     "TestOpenSSHRealService",
     "TestMailRealService",

@@ -1,0 +1,67 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+umask 077
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /dev/pts /sys/fs/cgroup /run /var/lib/docker /fixture/docker-config
+chmod 755 /fixture/docker-config
+mount -t devpts devpts /dev/pts
+mount -t cgroup2 none /sys/fs/cgroup
+ip link set lo up
+test "$(ls /sys/class/net)" = lo
+daemon=
+sshd=
+cleanup() {
+  code=$?
+  trap - EXIT INT TERM
+  if [ "$code" != 0 ]; then
+    echo AIPERMISSION_DOCKER_VM_FAILED
+    tail -n 40 /run/dockerd.log /run/sshd.log 2>/dev/null || true
+  fi
+  test -z "$sshd" || kill "$sshd" 2>/dev/null || true
+  test -z "$daemon" || kill "$daemon" 2>/dev/null || true
+  poweroff -f
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+ssh-keygen -q -t ed25519 -N '' -f /run/ssh_host
+ssh-keygen -q -t ed25519 -N '' -f /run/ssh_client
+mkdir -p /home/aipermission/.ssh
+cp /run/ssh_client.pub /home/aipermission/.ssh/authorized_keys
+chmod 700 /home/aipermission/.ssh
+chmod 600 /home/aipermission/.ssh/authorized_keys
+chown -R aipermission:aipermission /home/aipermission/.ssh
+printf 'aipermission:%s\n' "$(openssl rand -hex 24)" | chpasswd
+DOCKER_RAMDISK=1 dockerd --host unix:///run/docker.sock --group docker --storage-driver vfs \
+  --iptables=false --ip6tables=false --bridge=none --ip-forward=false \
+  > /run/dockerd.log 2>&1 &
+daemon=$!
+ready=0
+for attempt in $(seq 1 60); do
+  kill -0 "$daemon"
+  if /fixture/docker-contained info >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+test "$ready" = 1
+/fixture/docker-contained import /fixture/seed.tar fixture-owned:qualification >/dev/null
+for name in fixture-allowed fixture-denied; do
+  /fixture/docker-contained run -d --pull=never --network none --name "$name" \
+    -e FIXTURE_SECRET=fixture-env-private fixture-owned:qualification \
+    /bin/sh -c 'printf "fixture-ready\n"; exec sleep 600' >/dev/null
+done
+mkdir -p /run/sshd
+/usr/sbin/sshd -D -f /fixture/sshd.conf > /run/sshd.log 2>&1 &
+sshd=$!
+ready=0
+for attempt in $(seq 1 30); do
+  kill -0 "$sshd"
+  if nc -z 127.0.0.1 22; then ready=1; break; fi
+  sleep 1
+done
+test "$ready" = 1
+touch /run/aipermission-docker-fixture
+AIPERMISSION_DOCKER_GUEST=1 GOMAXPROCS=2 /fixture/guest.test -test.v -test.run '^TestDockerGuestQualification$' -test.timeout=180s
+echo AIPERMISSION_DOCKER_VM_PASS

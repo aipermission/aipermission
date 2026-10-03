@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+unset DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_TLS_VERIFY DOCKER_CERT_PATH DOCKER_API_VERSION
+exec /usr/local/bin/docker --config /fixture/docker-config --host unix:///run/docker.sock "$@"
