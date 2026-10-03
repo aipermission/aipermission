@@ -5,8 +5,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
 	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 	"github.com/jackc/pgx/v5"
 )
@@ -44,9 +44,7 @@ func Begin(ctx context.Context, connection transactionStarter) (pgx.Tx, error) {
 		return nil, errors.New("managed Postgres catalog transaction is unavailable")
 	}
 	if _, err := tx.Exec(ctx, catalogLock); err != nil {
-		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		rollbackErr := tx.Rollback(rollbackCtx)
+		rollbackErr := cleanup.Run(ctx, tx.Rollback)
 		return nil, errors.Join(fmt.Errorf("managed Postgres catalog fence unavailable; verify catalog privileges and concurrent activity: %w", err), rollbackErr)
 	}
 	return tx, nil

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
 	"github.com/jackc/pgx/v5"
 )
@@ -434,13 +435,13 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	defer conn.Close(context.Background())
+	defer cleanup.Run(ctx, conn.Close)
 
 	tx, err := conn.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return connectors.ActionResult{}, fmt.Errorf("start read-only transaction: %w", err)
 	}
-	defer tx.Rollback(context.Background())
+	defer cleanup.Run(ctx, tx.Rollback)
 
 	var output queryOutput
 	switch action.ActionName {
@@ -493,7 +494,7 @@ func (Connector) TestConnection(ctx context.Context, runtime connectors.RuntimeC
 	if err != nil {
 		return connectors.TestResult{Status: classifyTestError(err), Message: err.Error()}, nil
 	}
-	defer conn.Close(context.Background())
+	defer cleanup.Run(ctx, conn.Close)
 	var one int
 	if err := conn.QueryRow(ctx, "select 1").Scan(&one); err != nil {
 		return connectors.TestResult{Status: classifyTestError(err), Message: err.Error()}, nil
