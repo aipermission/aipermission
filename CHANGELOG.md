@@ -9,6 +9,55 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.66] - 2026-10-05
+
+### Fixed
+
+- Permission saves preserve edits made after submission; Console project visibility
+  separates reads from owned writes and reconciles authoritative visibility and
+  revisions after a same-scope parent refresh.
+- Connector and Vault approval decisions retain their own completion, reconciliation and
+  session refresh; connector deletion remains owned through the resulting resource
+  refresh.
+- Message acknowledgement requires the exact successfully rendered unread window,
+  retaining token filters and leaving hidden or unloaded messages untouched; invalid
+  selections fail before mutation and replays report no newly read messages.
+- S3 object and version listings request URL encoding and decode resource identities
+  exactly once without decoding opaque pagination tokens; incomplete replies with
+  missing or repeated progress are rejected.
+- Live console and maintenance output preserve split UTF-8 characters with bounded
+  per-stream state, byte-level redaction and explicit EOF finalization.
+- RabbitMQ search applies the existing server-side filter beyond the initially loaded
+  queue window, labels partial results and rejects stale query or virtual-host
+  completions.
+
+### Security
+
+- MCP setup detects external edits before replacing client configuration and Git
+  protection files, preserving formatting, permissions and useful conflict feedback.
+- MCP setup, doctor and runtime share rejection of empty query or fragment markers in
+  local gateway origins; valid local request paths remain exact.
+
+### Maintenance
+
+- On-demand Vault approval and canonical changelog presentation reduce the eager
+  frontend bundle without raising its budget; emitted-module ownership and browser
+  regressions preserve complete release history.
+- Frontend Docker build inputs exclude local secrets and test artifacts while retaining
+  the required production graph guards; typed message contracts and generated API
+  documentation remain aligned.
+- Regression tests exercise request ownership, delayed parent refresh, exact
+  acknowledgement windows, UTF-8 and secret boundaries, S3 protocol identities and a
+  disposable RabbitMQ search beyond 250 queues.
+
+### Notes
+
+- AIPermission remains local-only, single-user, and developer-focused.
+- External configuration edit detection is optimistic, not atomic compare-and-swap
+  against noncooperating writers; RabbitMQ listings remain bounded and expose partial
+  results.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.65] - 2026-10-05
 
 ### Security
