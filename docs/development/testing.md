@@ -170,6 +170,10 @@ and kind-scoped runtime resolution before adapter dispatch. Command deadline
 tests also cover integer overflow and uncertain-result single dispatch. Direct
 TCP has a real loopback byte-exchange fixture; fake transport adapters do not
 replace credential decryption or remote-service conformance tests.
+Infrastructure composition also opens native disposable workspaces to check
+handle/component isolation, captured action authority, closed-handle rejection,
+and settings rollback on required audit failure. These scoped controls ratchet
+their owner baseline without claiming complete entrypoint or service coverage.
 The frontend changed-owner inventory also has no zero-valued owner floors;
 its full per-owner measurement remains part of the final candidate gate.
 The policy protects transport, gateway-owner, audit, connector, session, token,
