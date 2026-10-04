@@ -209,7 +209,7 @@ func TestBoundaryHTTPPreservesSessionAndAttemptPolicy(t *testing.T) {
 		if state == "authenticated" {
 			want = "unlocked"
 		}
-		if response.Code != http.StatusOK || status.State != want || status.DatabaseID != "active" || strings.Contains(response.Body.String(), dependencies.DataPath) {
+		if response.Code != http.StatusOK || status.State != want || status.UISessionAuthenticated != (state == "authenticated") || status.DatabaseID != "active" || strings.Contains(response.Body.String(), dependencies.DataPath) {
 			t.Fatalf("status policy = %d/%s", response.Code, status.State)
 		}
 	}

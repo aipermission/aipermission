@@ -18,7 +18,8 @@ func (h *Handlers) Status(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	response := publicStatus(status)
-	if response.State == "unlocked" && (h.dependencies.HasSession == nil || !h.dependencies.HasSession(r)) {
+	response.UISessionAuthenticated = response.State == "unlocked" && h.dependencies.HasSession != nil && h.dependencies.HasSession(r)
+	if response.State == "unlocked" && !response.UISessionAuthenticated {
 		response.State = "session_required"
 	}
 	httptransport.WriteJSON(w, http.StatusOK, response)
