@@ -164,6 +164,12 @@ identity, rotating runtime identity, workspace-bound capability projections,
 and worker recovery before storage release. Its HTTP unlock/lock fixture uses
 that same runtime factory; it does not replace authenticated browser acceptance
 or connector-service conformance tests.
+Generic connector transport tests use disposable SQLCipher targets and profiles
+to prove snapshot drift rejection, project isolation, delivery admission release,
+and kind-scoped runtime resolution before adapter dispatch. Command deadline
+tests also cover integer overflow and uncertain-result single dispatch. Direct
+TCP has a real loopback byte-exchange fixture; fake transport adapters do not
+replace credential decryption or remote-service conformance tests.
 The frontend changed-owner inventory also has no zero-valued owner floors;
 its full per-owner measurement remains part of the final candidate gate.
 The policy protects transport, gateway-owner, audit, connector, session, token,
