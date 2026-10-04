@@ -260,6 +260,13 @@ adapters such as `mcp_auth.go`, `command_request_composition.go`, and the
 workflow-specific connector adapter files. Bind complete owner handler sets at
 the composition root instead of adding domain behavior directly to `*Server`.
 
+Transport adapters must preserve capability availability as well as values.
+Keep an absent required callback `nil`; wrapping it in a non-nil closure bypasses
+the owning handler's dependency check and can panic later. Scope admission,
+request identity, context, errors, replay flags and unknown outcomes must survive
+adaptation unchanged. Test both missing-capability rejection before any workflow
+callback and a fully configured positive path through the actual handler factory.
+
 Credential edits share the transaction-owned `updatePreparedCredentialProfile`
 operation. It encrypts replacement material, checks the expected secret revision,
 updates the profile, and reconciles runtime surfaces in the caller's transaction.

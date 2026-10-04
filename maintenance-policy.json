@@ -437,7 +437,7 @@
     "internal/expirypolicy": 98,
     "internal/filetransfer": 66,
     "internal/gatewayaccess": 60,
-    "internal/gatewayaccess/httpowner": 21,
+    "internal/gatewayaccess/httpowner": 75,
     "internal/gatewayconnectoractions": 26,
     "internal/gatewayconnectorapi": 55,
     "internal/gatewayconnectorapi/credentialresource": 98,
