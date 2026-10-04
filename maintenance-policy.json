@@ -412,6 +412,7 @@
     "internal/connectors/ssh/apiadapter/runtimeactions": 28,
     "internal/connectors/ssh/apiadapter/transport": 39,
     "internal/connectors/ssh/execution": 58.5,
+    "internal/connectors/ssh/execution/remotemetadata": 95,
     "internal/connectors/ssh/keycleanup": 90,
     "internal/connectors/ssh/sessionenvprotocol": 84,
     "internal/connectors/ssh/sshconfig": 78,
@@ -517,6 +518,7 @@
       "backend/internal/connectors/mail": 3200,
       "backend/internal/console": 3300,
       "backend/internal/console/manualinput": 450,
+      "backend/internal/connectors/ssh/execution/remotemetadata": 250,
       "backend/internal/connectors/s3": 3250
     }
   },

@@ -12,18 +12,16 @@ import (
 	"path"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution/remotemetadata"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
 const remoteUploadCleanupTimeout = 10 * time.Second
-const maxRemoteMetadataOutputBytes = 4 << 10
 
 type TransferProgress = connectors.TransferProgress
 type TransferOptions = connectors.TransferOptions
@@ -292,17 +290,11 @@ type remoteUploadClient interface {
 
 type remoteUploadCommitter interface {
 	Lstat(string) (os.FileInfo, error)
-	CompleteMetadata(context.Context, string) (remoteFileMetadata, error)
+	CompleteMetadata(context.Context, string) (remotemetadata.Metadata, error)
 	Chmod(string, os.FileMode) error
 	Link(string, string) error
 	PosixRename(string, string) error
 	Remove(string) error
-}
-
-type remoteFileMetadata struct {
-	Mode os.FileMode
-	UID  uint32
-	GID  uint32
 }
 
 type authenticatedUploadCommitter struct {
@@ -310,141 +302,20 @@ type authenticatedUploadCommitter struct {
 	ssh *ssh.Client
 }
 
-func (client *authenticatedUploadCommitter) CompleteMetadata(ctx context.Context, remotePath string) (remoteFileMetadata, error) {
+func (client *authenticatedUploadCommitter) CompleteMetadata(ctx context.Context, remotePath string) (remotemetadata.Metadata, error) {
 	if client == nil || client.ssh == nil {
-		return remoteFileMetadata{}, fmt.Errorf("complete remote metadata is unavailable")
+		return remotemetadata.Metadata{}, fmt.Errorf("complete remote metadata is unavailable")
 	}
 	session, err := client.ssh.NewSession()
 	if err != nil {
-		return remoteFileMetadata{}, fmt.Errorf("open remote metadata session: %w", err)
+		return remotemetadata.Metadata{}, fmt.Errorf("open remote metadata session: %w", err)
 	}
-	return readRemoteFileMetadata(ctx, sshMetadataSession{Session: session}, remoteMetadataCommand(remotePath))
-}
-
-type remoteMetadataSession interface {
-	SetStdout(io.Writer)
-	Run(string) error
-	Close() error
+	return remotemetadata.Read(ctx, sshMetadataSession{Session: session}, remotePath)
 }
 
 type sshMetadataSession struct{ *ssh.Session }
 
 func (session sshMetadataSession) SetStdout(output io.Writer) { session.Stdout = output }
-
-func readRemoteFileMetadata(ctx context.Context, session remoteMetadataSession, command string) (remoteFileMetadata, error) {
-	defer session.Close()
-	output := newRemoteMetadataOutput(maxRemoteMetadataOutputBytes, session.Close)
-	session.SetStdout(output)
-	done := make(chan error, 1)
-	go func() { done <- session.Run(command) }()
-
-	var runErr error
-	select {
-	case runErr = <-done:
-	case <-ctx.Done():
-		_ = session.Close()
-		<-done
-		return remoteFileMetadata{}, ctx.Err()
-	}
-	if output.Exceeded() {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: response exceeds %d bytes", maxRemoteMetadataOutputBytes)
-	}
-	if runErr != nil {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: %w", runErr)
-	}
-	if err := ctx.Err(); err != nil {
-		return remoteFileMetadata{}, err
-	}
-	return parseRemoteFileMetadata(output.String())
-}
-
-type remoteMetadataOutput struct {
-	mu         sync.Mutex
-	data       []byte
-	limit      int
-	exceeded   bool
-	onExceeded func() error
-	closeOnce  sync.Once
-}
-
-func newRemoteMetadataOutput(limit int, onExceeded func() error) *remoteMetadataOutput {
-	return &remoteMetadataOutput{limit: limit, onExceeded: onExceeded}
-}
-
-func (output *remoteMetadataOutput) Write(value []byte) (int, error) {
-	output.mu.Lock()
-	remaining := output.limit - len(output.data)
-	if remaining > len(value) {
-		remaining = len(value)
-	}
-	if remaining > 0 {
-		output.data = append(output.data, value[:remaining]...)
-	}
-	exceeded := len(value) > remaining
-	output.exceeded = output.exceeded || exceeded
-	output.mu.Unlock()
-	if exceeded {
-		output.closeOnce.Do(func() { _ = output.onExceeded() })
-	}
-	return len(value), nil
-}
-
-func (output *remoteMetadataOutput) Exceeded() bool {
-	output.mu.Lock()
-	defer output.mu.Unlock()
-	return output.exceeded
-}
-
-func (output *remoteMetadataOutput) String() string {
-	output.mu.Lock()
-	defer output.mu.Unlock()
-	return string(output.data)
-}
-
-func parseRemoteFileMetadata(output string) (remoteFileMetadata, error) {
-	fields := strings.Fields(output)
-	if len(fields) != 4 {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: unexpected stat response")
-	}
-	modeBase := 0
-	switch fields[0] {
-	case "gnu":
-		modeBase = 16
-	case "bsd":
-		modeBase = 8
-	default:
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata: unknown stat response")
-	}
-	rawMode, err := strconv.ParseUint(fields[1], modeBase, 32)
-	if err != nil {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata mode: %w", err)
-	}
-	uid, err := strconv.ParseUint(fields[2], 10, 32)
-	if err != nil {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata owner: %w", err)
-	}
-	gid, err := strconv.ParseUint(fields[3], 10, 32)
-	if err != nil {
-		return remoteFileMetadata{}, fmt.Errorf("read complete remote metadata group: %w", err)
-	}
-	mode := (&sftp.FileStat{Mode: uint32(rawMode)}).FileMode()
-	return remoteFileMetadata{Mode: mode, UID: uint32(uid), GID: uint32(gid)}, nil
-}
-
-func remoteMetadataCommand(remotePath string) string {
-	if strings.HasPrefix(remotePath, "-") {
-		remotePath = "./" + remotePath
-	}
-	quotedPath := quoteRemoteShellArg(remotePath)
-	return "if aip_stat=$(LC_ALL=C stat -c '%f %u %g' " + quotedPath + " 2>/dev/null); then " +
-		"printf 'gnu %s\\n' \"$aip_stat\"; " +
-		"elif aip_stat=$(LC_ALL=C stat -f '%p %u %g' " + quotedPath + " 2>/dev/null); then " +
-		"printf 'bsd %s\\n' \"$aip_stat\"; else exit 1; fi"
-}
-
-func quoteRemoteShellArg(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
-}
 
 func createRemoteUploadTemp(ctx context.Context, client remoteUploadClient, remotePath string, options TransferOptions) (string, *sftp.File, bool, error) {
 	for attempt := 0; attempt < 10; attempt++ {
@@ -577,7 +448,7 @@ func preservedPermissionMode(mode os.FileMode) os.FileMode {
 	return mode.Perm() | mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky)
 }
 
-func requireMatchingRemoteOwnership(existing remoteFileMetadata, staged remoteFileMetadata) error {
+func requireMatchingRemoteOwnership(existing remotemetadata.Metadata, staged remotemetadata.Metadata) error {
 	if existing.UID != staged.UID || existing.GID != staged.GID {
 		return fmt.Errorf("preserve remote destination ownership: staging owner differs from destination")
 	}
