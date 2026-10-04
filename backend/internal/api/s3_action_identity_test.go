@@ -5,13 +5,14 @@ import (
 	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 )
 
 func TestS3LocalActionAPIExactIdentity(t *testing.T) {
-	for _, key := range []string{"invoice ", "/invoice", "a//b", "a/../b", "caf\u00e9", "cafe\u0301", " ", "folder/", "control\tkey"} {
+	for _, key := range []string{"invoice ", "/invoice", "a//b", "a/../b", "caf\u00e9", "cafe\u0301", " ", "folder/", "control\tkey", "invoice\ufffd", "invoice\U0001f600"} {
 		t.Run(key, func(t *testing.T) {
 			var mu sync.Mutex
 			objects := map[string]bool{key: true, "invoice": true}
@@ -19,9 +20,9 @@ func TestS3LocalActionAPIExactIdentity(t *testing.T) {
 			objectStore := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				mu.Lock()
 				defer mu.Unlock()
-				actual := strings.TrimPrefix(r.URL.Path, "/identity-bucket/")
+				actual, bucketMatches := strings.CutPrefix(r.URL.Path, "/identity-bucket/")
 				calls = append(calls, r.Method+" "+actual)
-				if !objects[actual] {
+				if !bucketMatches || !objects[actual] {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
@@ -34,7 +35,11 @@ func TestS3LocalActionAPIExactIdentity(t *testing.T) {
 			fixture := newAPITestFixture(t)
 			target := createS3IdentityRuntime(t, fixture.server, objectStore.URL)
 			for _, action := range []string{"get_object_metadata", "download_object", "delete_object"} {
-				response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-actions/local-run", "", localConnectorActionRequest{TargetRef: target.Ref, ActionName: action, Input: map[string]any{"key": key}, IdempotencyKey: "identity-" + action})
+				input := map[string]any{"key": key}
+				if key == "invoice\U0001f600" {
+					input["key"] = json.RawMessage(`"invoice\ud83d\ude00"`)
+				}
+				response := performJSON(fixture.server.Handler(), http.MethodPost, "/api/connector-actions/local-run", "", localConnectorActionRequest{TargetRef: target.Ref, ActionName: action, Input: input, IdempotencyKey: "identity-" + action})
 				var result struct {
 					Status string `json:"status"`
 				}
@@ -47,10 +52,9 @@ func TestS3LocalActionAPIExactIdentity(t *testing.T) {
 			if objects[key] || !objects["invoice"] {
 				t.Fatalf("wrong object deleted: %v", objects)
 			}
-			for i, method := range []string{"HEAD", "GET", "DELETE"} {
-				if calls[i] != method+" "+key {
-					t.Fatalf("wire identity = %q", calls[i])
-				}
+			want := []string{"HEAD " + key, "GET " + key, "DELETE " + key}
+			if !slices.Equal(calls, want) {
+				t.Fatalf("wire identities = %q, want %q", calls, want)
 			}
 		})
 	}
