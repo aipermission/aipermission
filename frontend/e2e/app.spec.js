@@ -5,6 +5,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mjs";
 import { observeSQLBrowserRuntime, verifySQLBrowserRuntime } from "./sql-editor-browser.mjs";
 import { scopedUICookieName } from "../src/lib/ui-cookie";
+import release from "../src/lib/release.generated.json" with { type: "json" };
 import { databaseName, reconciliationsStore } from "../src/lib/local-action-retry/constants";
 import { verifySSHCleanupBrowser } from "./ssh-cleanup-browser.mjs";
 
@@ -182,6 +183,25 @@ test("@high-risk unlocks the local UI session and renders the dashboard", async 
   await expect(page.getByRole("complementary").getByText("Stopped", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Start MCP" }).click();
   await expect(page.getByRole("button", { name: "Stop MCP" })).toBeVisible();
+});
+
+test("loads canonical release notes only when the changelog opens", async ({ page }) => {
+  const noteRequests = [];
+  page.on("request", (request) => {
+    if (/\/assets\/changelog-entries-[^/]+\.js$/.test(new URL(request.url()).pathname)) noteRequests.push(request.url());
+  });
+  await unlock(page);
+  await page.waitForLoadState("networkidle");
+  expect(noteRequests).toHaveLength(0);
+  await page.getByRole("button", { name: /Changelog/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Changelog" });
+  for (const entry of release.entries) await expect(dialog.getByRole("heading", { name: entry.version, exact: true })).toBeVisible();
+  expect(noteRequests).toHaveLength(1);
+  await dialog.getByRole("button", { name: "Close dialog" }).click();
+  await expect(dialog).not.toBeVisible();
+  await page.getByRole("button", { name: /Changelog/ }).click();
+  await expect(dialog.getByRole("heading", { name: release.version, exact: true })).toBeVisible();
+  expect(noteRequests).toHaveLength(1);
 });
 
 test("renders security settings and updates MCP metadata exposure", async ({ page, apiIsolation }) => {

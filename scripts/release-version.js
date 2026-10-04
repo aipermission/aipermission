@@ -253,7 +253,11 @@ function checkVersion() {
   }
 
   const frontendRelease = readJSON("frontend/src/lib/release.generated.json");
-  values.push(["frontend appVersion", frontendRelease.version]);
+  values.push([
+    "frontend appVersion",
+    readJSON("frontend/src/lib/version.generated.json").version,
+  ]);
+  values.push(["frontend changelog version", frontendRelease.version]);
   values.push([
     "frontend latest changelog entry",
     frontendRelease.entries?.[0]?.version,

@@ -1,4 +1,3 @@
-import release from "./release.generated.json" with { type: "json" };
+import versionMetadata from "./version.generated.json" with { type: "json" };
 
-export const appVersion = release.version;
-export const changelogEntries = release.entries;
+export const appVersion = versionMetadata.version;

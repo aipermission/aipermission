@@ -7,6 +7,10 @@ const root = path.resolve(__dirname, "..");
 const sourcePath = path.join(root, "release-notes.json");
 const changelogPath = path.join(root, "CHANGELOG.md");
 const frontendPath = path.join(root, "frontend/src/lib/release.generated.json");
+const frontendVersionPath = path.join(
+  root,
+  "frontend/src/lib/version.generated.json",
+);
 const manifestPath = path.join(root, "release-manifest.json");
 const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -185,6 +189,10 @@ function renderFrontend(source, currentVersion) {
   return `${JSON.stringify({ version: currentVersion, entries }, null, 2)}\n`;
 }
 
+function renderFrontendVersion(currentVersion) {
+  return `${JSON.stringify({ version: currentVersion }, null, 2)}\n`;
+}
+
 function generatedArtifacts() {
   const source = readJSON(sourcePath);
   const currentVersion = readJSON(manifestPath).version;
@@ -192,6 +200,7 @@ function generatedArtifacts() {
   return [
     [changelogPath, renderChangelog(source)],
     [frontendPath, renderFrontend(source, currentVersion)],
+    [frontendVersionPath, renderFrontendVersion(currentVersion)],
   ];
 }
 
@@ -223,7 +232,9 @@ if (require.main === module) {
       throw new Error("usage: release-notes.js [--check]");
     } else {
       writeArtifacts();
-      console.log("Generated CHANGELOG.md and the frontend release artifact.");
+      console.log(
+        "Generated CHANGELOG.md and the frontend release/version artifacts.",
+      );
     }
   } catch (error) {
     console.error(`Release notes generation failed: ${error.message}`);
@@ -234,6 +245,7 @@ if (require.main === module) {
 module.exports = {
   renderChangelog,
   renderFrontend,
+  renderFrontendVersion,
   compareSemver,
   validateSource,
   wrapBullet,

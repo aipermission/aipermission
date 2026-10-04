@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
@@ -14,21 +15,32 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+const { parse } = createRequire(
+  new URL("../../frontend/package.json", import.meta.url),
+)("espree");
+
 test("Docker frontend context carries only build inputs, never local secrets or test artifacts", () => {
-  const temp = mkdtempSync(
-    path.join(os.tmpdir(), "aipermission-build-context-"),
-  );
-  const context = path.join(temp, "context");
-  const output = path.join(temp, "output");
   const source = fileURLToPath(new URL("../../frontend", import.meta.url));
+  const configImports = parse(
+    readFileSync(path.join(source, "vite.config.js"), "utf8"),
+    {
+      ecmaVersion: "latest",
+      sourceType: "module",
+    },
+  )
+    .body.filter(
+      (entry) =>
+        entry.type === "ImportDeclaration" &&
+        entry.source.value.startsWith("./"),
+    )
+    .map((entry) => path.posix.normalize(entry.source.value));
   const required = [
     "package.json",
     "package-lock.json",
     "index.html",
     "vite.config.js",
     "nginx.conf",
-    "scripts/production-source-boundary.mjs",
-    "scripts/monaco-sanitizer.mjs",
+    ...configImports,
     "src/main.jsx",
     "public/robots.txt",
   ];
@@ -48,6 +60,11 @@ test("Docker frontend context carries only build inputs, never local secrets or 
     "npm-debug.log",
     "local-database.aipdb",
   ];
+  const temp = mkdtempSync(
+    path.join(os.tmpdir(), "aipermission-build-context-"),
+  );
+  const context = path.join(temp, "context");
+  const output = path.join(temp, "output");
   try {
     mkdirSync(context);
     cpSync(
