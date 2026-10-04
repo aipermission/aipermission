@@ -217,13 +217,7 @@ type Response struct {
 }
 
 func wrapResponse(response actions.Response) Response {
-	return Response{
-		Status: response.Status, RequestID: response.RequestID, TargetRef: response.TargetRef,
-		TargetName: response.TargetName, ConnectorKind: response.ConnectorKind, ProfileLabel: response.ProfileLabel,
-		ActionName: response.ActionName, Input: response.Input, Output: response.Output, DisplayText: response.DisplayText,
-		Error: response.Error, RetryPolicy: response.RetryPolicy, RetryAfterSeconds: response.RetryAfterSeconds,
-		AssistantHint: response.AssistantHint, OutputWithheld: response.OutputWithheld, Replayed: response.Replayed,
-	}
+	return Response(response)
 }
 
 func wrapCallResult(result actions.CallResult) CallResult {
