@@ -15,6 +15,7 @@ It is a navigator, not another implementation of security rules.
 | Vault grants, requests and exact-session authorization    | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
 | Durable request/operation state                           | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
 | Released baseline definitions and transactional upgrades  | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
+| Backup-service reflected credential rejection             | `backend/internal/backups/serviceboundary`                                         | [Credential Boundary](../security/credential-boundary.md) |
 | MCP setup, private config writers and response validation | `packages/mcp/src`                                                                 | [MCP Client Setup](../setup/mcp-client-setup.md)          |
 | Test discovery, immutable baselines and release gates     | `scripts`, `maintenance-policy.json`, frontend/MCP policies                        | [Testing](testing.md)                                     |
 
@@ -30,6 +31,14 @@ baseline definitions. The DB owner still controls upgrade ordering, preflight
 checks, transactions, projection synchronization and restart recovery. The
 native baseline contract tests pin both SQL order and the resulting SQLite
 schema; run the complete DB suite when changing either owner.
+
+Backup-service metadata and binary downloads share the mandatory
+`internal/backups/serviceboundary` owner. It rejects reflected credential
+representations and holds stream suffixes until cross-chunk validation is
+possible. A stream failure is terminal; never flush or retry held data after
+credential rejection or a destination error. Zero-value boundaries fail closed.
+Remote protocol calls, checksums, temporary-file cleanup, installation and
+audited provider mutations remain in their respective service/workflow owners.
 
 Human credential testing, backup and provisioning are composed by
 `backend/internal/connectormanagement`. Reuse its credential operation runtime
