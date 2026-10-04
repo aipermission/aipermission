@@ -454,7 +454,7 @@ func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sour
 	request.ContentLength = fileInfo.Size()
 	response, err := c.client.Do(request)
 	if err != nil {
-		return ServiceBackup{}, false, fmt.Errorf("backup service upload failed: %w", err)
+		return ServiceBackup{}, false, fmt.Errorf("backup service upload failed: %w", c.boundary.SafeError(err))
 	}
 	defer response.Body.Close()
 	replayed := response.StatusCode == http.StatusOK
@@ -510,7 +510,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 	}
 	response, err := c.client.Do(request)
 	if err != nil {
-		return ServiceBackup{}, fmt.Errorf("backup service download failed: %w", err)
+		return ServiceBackup{}, fmt.Errorf("backup service download failed: %w", c.boundary.SafeError(err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
@@ -551,7 +551,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 		if errors.Is(err, serviceboundary.ErrReflectedCredential) {
 			return ServiceBackup{}, serviceboundary.ErrReflectedCredential
 		}
-		return ServiceBackup{}, fmt.Errorf("download encrypted backup: %w", err)
+		return ServiceBackup{}, fmt.Errorf("download encrypted backup: %w", c.boundary.SafeError(err))
 	}
 	if err := scanner.Flush(); err != nil {
 		return ServiceBackup{}, fmt.Errorf("flush scanned backup download: %w", err)
@@ -598,7 +598,7 @@ func (c *ServiceClient) doJSON(ctx context.Context, method, endpoint string, pay
 	}
 	response, err := c.client.Do(request)
 	if err != nil {
-		return fmt.Errorf("backup service request failed: %w", err)
+		return fmt.Errorf("backup service request failed: %w", c.boundary.SafeError(err))
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode > 299 {
@@ -668,12 +668,17 @@ func validServiceErrorCode(value string) bool {
 func decodeBoundedJSON(reader io.Reader, target any) error {
 	data, err := io.ReadAll(io.LimitReader(reader, maxServiceJSONBytes+1))
 	if err != nil {
-		return err
+		return serviceboundary.ReadError(err)
 	}
 	if len(data) > maxServiceJSONBytes {
 		return errors.New("backup service JSON response is too large")
 	}
-	return json.Unmarshal(data, target)
+	// Typed decoder diagnostics can include untrusted values such as a reflected
+	// token in an overflowing numeric field. Never carry them into the journal.
+	if err := json.Unmarshal(data, target); err != nil {
+		return errors.New("backup service returned invalid JSON metadata")
+	}
+	return nil
 }
 
 func validServiceIdentifier(value string) bool {
