@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
@@ -67,7 +68,7 @@ func TestManualCommandInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	err := session.insertManualCommand(manualCommandRecord{
-		Command: "hostname", TrackingReason: "manual_output_not_tracked", TrackOutput: true,
+		Record: manualinput.Record{Command: "hostname", TrackingReason: "manual_output_not_tracked", TrackOutput: true},
 	})
 	if err == nil {
 		t.Fatal("expected history projection failure")
@@ -78,7 +79,7 @@ func TestManualCommandInsertRollsBackWhenHistoryProjectionFails(t *testing.T) {
 func TestManualCommandUpdateRollsBackWhenHistoryProjectionFails(t *testing.T) {
 	database, _, session := newManualHistoryTestSession(t)
 	if err := session.insertManualCommand(manualCommandRecord{
-		Command: "sleep 1", TrackingReason: "manual_output_not_tracked", TrackOutput: true,
+		Record: manualinput.Record{Command: "sleep 1", TrackingReason: "manual_output_not_tracked", TrackOutput: true},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -986,10 +987,6 @@ func TestManagedConsoleSessionDoesNotAdvanceManualParserWhenInputWriteFails(t *t
 	if err := session.submitManualInput("echo stale"); err == nil {
 		t.Fatal("expected input while connecting to fail")
 	}
-	if session.manualInput.line != "" {
-		t.Fatalf("failed input advanced parser state: %q", session.manualInput.line)
-	}
-
 	session.status = "connected"
 	if err := session.submitManualInput("\n"); err != nil {
 		t.Fatalf("submit connected newline: %v", err)

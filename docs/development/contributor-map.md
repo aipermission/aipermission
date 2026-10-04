@@ -5,19 +5,20 @@ It is a navigator, not another implementation of security rules.
 
 ## Ownership
 
-| Change                                                    | Start Here                                                                         | Contract                                                  |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| Connector schemas, preparation and external execution     | `backend/internal/connectors/<kind>`                                               | [Add a Connector](add-a-connector.md)                     |
-| Connector UI and local request ownership                  | `frontend/src/connectors/templates/<kind>` and `_shared`                           | [Development Architecture](architecture.md)               |
-| Permission, approval and public result projection         | `backend/internal/gatewayaccess`, `gatewayconnectoractions`, `gatewayconnectorapi` | [Permission Flow](../architecture/mcp-permission-flow.md) |
-| Workspace unlock, retirement and bounded shutdown         | `backend/internal/workspacelifecycle`, `workspaceruntime`                          | [Local Gateway](../architecture/local-gateway.md)         |
-| Credential resolution, cleanup and redaction              | `backend/internal/connectorcredentials`, `connectorcapabilities`                   | [Credential Boundary](../security/credential-boundary.md) |
-| Vault grants, requests and exact-session authorization    | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
-| Durable request/operation state                           | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
-| Released baseline definitions and transactional upgrades  | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
-| Backup-service reflected credential rejection             | `backend/internal/backups/serviceboundary`                                         | [Credential Boundary](../security/credential-boundary.md) |
-| MCP setup, private config writers and response validation | `packages/mcp/src`                                                                 | [MCP Client Setup](../setup/mcp-client-setup.md)          |
-| Test discovery, immutable baselines and release gates     | `scripts`, `maintenance-policy.json`, frontend/MCP policies                        | [Testing](testing.md)                                     |
+| Change                                                          | Start Here                                                                         | Contract                                                  |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Connector schemas, preparation and external execution           | `backend/internal/connectors/<kind>`                                               | [Add a Connector](add-a-connector.md)                     |
+| Connector UI and local request ownership                        | `frontend/src/connectors/templates/<kind>` and `_shared`                           | [Development Architecture](architecture.md)               |
+| Permission, approval and public result projection               | `backend/internal/gatewayaccess`, `gatewayconnectoractions`, `gatewayconnectorapi` | [Permission Flow](../architecture/mcp-permission-flow.md) |
+| Workspace unlock, retirement and bounded shutdown               | `backend/internal/workspacelifecycle`, `workspaceruntime`                          | [Local Gateway](../architecture/local-gateway.md)         |
+| Credential resolution, cleanup and redaction                    | `backend/internal/connectorcredentials`, `connectorcapabilities`                   | [Credential Boundary](../security/credential-boundary.md) |
+| Vault grants, requests and exact-session authorization          | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
+| Durable request/operation state                                 | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
+| Released baseline definitions and transactional upgrades        | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
+| Backup-service reflected credential rejection                   | `backend/internal/backups/serviceboundary`                                         | [Credential Boundary](../security/credential-boundary.md) |
+| Submitted terminal text and best-effort tracking classification | `backend/internal/console/manualinput` (text), `console` (session/history)         | [Development Architecture](architecture.md)               |
+| MCP setup, private config writers and response validation       | `packages/mcp/src`                                                                 | [MCP Client Setup](../setup/mcp-client-setup.md)          |
+| Test discovery, immutable baselines and release gates           | `scripts`, `maintenance-policy.json`, frontend/MCP policies                        | [Testing](testing.md)                                     |
 
 Connector-specific transports and templates do not own a second approval,
 audit, history or credential pipeline. Browser completions must still belong
@@ -39,6 +40,15 @@ possible. A stream failure is terminal; never flush or retry held data after
 credential rejection or a destination error. Zero-value boundaries fail closed.
 Remote protocol calls, checksums, temporary-file cleanup, installation and
 audited provider mutations remain in their respective service/workflow owners.
+
+`internal/console/manualinput` owns bounded command previews, escape/input
+capture and best-effort interactive classification. A capture is session-local;
+its caller must serialize input and must not advance it after a failed terminal
+write. Text classification is not shell parsing, an authorization decision or
+proof of execution. Console owns execution exclusion, prompt/stream positions,
+session closure, mandatory redaction and transactional history projection.
+Run both `go test ./internal/console/manualinput` and the complete console suite
+when changing this boundary; do not duplicate classification in connectors.
 
 Human credential testing, backup and provisioning are composed by
 `backend/internal/connectormanagement`. Reuse its credential operation runtime

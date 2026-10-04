@@ -10,16 +10,7 @@ func (s *managedConsoleSession) clearManualPauseIfPromptReturnedLocked() {
 	segment, _ := s.rawSegmentLocked(startOffset)
 	if segment != "" && terminaltext.ManualTranscriptEndsWithPrompt(segment, s.manualPause.Prompt) {
 		s.manualPause = nil
-		s.manualInput.reset()
-	}
-}
-
-func manualReasonPausesCapture(reason string) bool {
-	switch reason {
-	case "interactive_editor", "interactive_repl", "interactive_tui", "nested_shell", "long_running_stream", "may_prompt":
-		return true
-	default:
-		return false
+		s.manualInput.Reset()
 	}
 }
 

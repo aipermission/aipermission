@@ -420,6 +420,7 @@
     "internal/connectortargets/httpapi": 100,
     "internal/connectortransport": 18,
     "internal/console": 80,
+    "internal/console/manualinput": 95,
     "internal/console/persistence": 74,
     "internal/console/streamoutput": 100,
     "internal/console/terminaltext": 46,
@@ -515,6 +516,7 @@
       "backend/internal/backups/serviceboundary": 250,
       "backend/internal/connectors/mail": 3200,
       "backend/internal/console": 3300,
+      "backend/internal/console/manualinput": 450,
       "backend/internal/connectors/s3": 3250
     }
   },

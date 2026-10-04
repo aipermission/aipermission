@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/history"
@@ -49,8 +50,8 @@ func (s *managedConsoleSession) appendManualActiveCommandsLocked(commands []manu
 	if combined == "" {
 		return nil
 	}
-	if len(combined) > maxManualCommandPreviewBytes {
-		combined = manualCommandPreview(combined, true)
+	if len(combined) > manualinput.PreviewLimit {
+		combined = manualinput.Preview(combined, true)
 		trackOutput = false
 		reason = "command_preview_truncated"
 	}
@@ -69,7 +70,7 @@ func (s *managedConsoleSession) appendManualActiveCommandsLocked(commands []manu
 }
 
 func (s *managedConsoleSession) pauseManualCaptureAfterCommand(command manualCommandRecord) {
-	if !manualReasonPausesCapture(command.TrackingReason) {
+	if !manualinput.PausesCapture(command.TrackingReason) {
 		return
 	}
 	s.mu.Lock()
@@ -78,7 +79,7 @@ func (s *managedConsoleSession) pauseManualCaptureAfterCommand(command manualCom
 		Reason:      command.TrackingReason,
 		StartOffset: command.StartOffset,
 	}
-	s.manualInput.reset()
+	s.manualInput.Reset()
 	s.mu.Unlock()
 }
 

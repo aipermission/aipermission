@@ -1,11 +1,14 @@
-package console
+package manualinput
 
 import (
 	"strings"
 	"unicode/utf8"
 )
 
-type manualInputCapture struct {
+// Capture observes submitted terminal input. Its caller owns synchronization and
+// decides whether resulting records may be persisted or used to track output.
+// The zero value is ready to consume input.
+type Capture struct {
 	line              string
 	initialized       bool
 	trusted           bool
@@ -18,13 +21,13 @@ type manualInputCapture struct {
 	historyRecall     bool
 }
 
-func (c *manualInputCapture) consume(data string) []manualCommandRecord {
+func (c *Capture) Consume(data string) []Record {
 	data = stripBracketedPasteMarkers(data)
 	if !c.initialized {
 		c.initialized = true
 		c.trusted = true
 	}
-	records := []manualCommandRecord{}
+	records := []Record{}
 	for _, r := range data {
 		if c.consumeEscape(r) {
 			continue
@@ -45,7 +48,7 @@ func (c *manualInputCapture) consume(data string) []manualCommandRecord {
 			}
 			records = append(records, c.finishLine()...)
 		case '\x03', '\x04':
-			c.reset()
+			c.Reset()
 		case '\b', '\x7f':
 			c.line = trimLastRune(c.line)
 			c.lastWasCR = false
@@ -64,7 +67,7 @@ func (c *manualInputCapture) consume(data string) []manualCommandRecord {
 	return records
 }
 
-func (c *manualInputCapture) consumeEscape(r rune) bool {
+func (c *Capture) consumeEscape(r rune) bool {
 	if !c.escapePending {
 		return false
 	}
@@ -94,14 +97,14 @@ func (c *manualInputCapture) consumeEscape(r rune) bool {
 	return true
 }
 
-func (c *manualInputCapture) appendRune(r rune) {
-	if len(c.line) >= maxManualCommandBufferBytes {
+func (c *Capture) appendRune(r rune) {
+	if len(c.line) >= BufferLimit {
 		c.truncated = true
 		return
 	}
 	c.line += string(r)
-	if len(c.line) > maxManualCommandBufferBytes {
-		c.line = c.line[:maxManualCommandBufferBytes]
+	if len(c.line) > BufferLimit {
+		c.line = c.line[:BufferLimit]
 		for len(c.line) > 0 && !utf8.ValidString(c.line) {
 			c.line = c.line[:len(c.line)-1]
 		}
@@ -109,7 +112,7 @@ func (c *manualInputCapture) appendRune(r rune) {
 	}
 }
 
-func (c *manualInputCapture) finishLine() []manualCommandRecord {
+func (c *Capture) finishLine() []Record {
 	line := c.line
 	trusted := c.trusted
 	truncated := c.truncated
@@ -133,7 +136,7 @@ func (c *manualInputCapture) finishLine() []manualCommandRecord {
 	command := strings.TrimSpace(line)
 	if command == "" {
 		if historyRecall {
-			return []manualCommandRecord{{
+			return []Record{{
 				Command:                  "command recalled with arrow key",
 				TrackingReason:           "history_recall_untracked",
 				TrackOutput:              true,
@@ -143,8 +146,8 @@ func (c *manualInputCapture) finishLine() []manualCommandRecord {
 		return nil
 	}
 	if !trusted {
-		return []manualCommandRecord{{
-			Command:        manualCommandPreview(command, len(command) > maxManualCommandPreviewBytes),
+		return []Record{{
+			Command:        Preview(command, len(command) > PreviewLimit),
 			TrackingReason: "untrusted_command_text",
 		}}
 	}
@@ -153,7 +156,7 @@ func (c *manualInputCapture) finishLine() []manualCommandRecord {
 	if terminator := heredocTerminator(command); terminator != "" {
 		c.heredocTerminator = terminator
 	}
-	return []manualCommandRecord{record}
+	return []Record{record}
 }
 
 func stripBracketedPasteMarkers(data string) string {
@@ -165,7 +168,7 @@ func stripBracketedPasteMarkers(data string) string {
 	return data
 }
 
-func (c *manualInputCapture) reset() {
+func (c *Capture) Reset() {
 	c.line = ""
 	c.initialized = true
 	c.trusted = true
