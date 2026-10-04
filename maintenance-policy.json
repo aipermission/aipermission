@@ -442,7 +442,7 @@
     "internal/gatewayconnectorapi": 55,
     "internal/gatewayconnectorapi/credentialresource": 98,
     "internal/gatewayconnectormanagement": 30,
-    "internal/gatewayinfrastructure": 17,
+    "internal/gatewayinfrastructure": 27,
     "internal/gatewayinfrastructure/connectorports": 48,
     "internal/gatewayoperations": 57,
     "internal/gatewayoperations/backup": 49,
