@@ -272,16 +272,6 @@ func (component *Component) MCPCall(runtime Workspace) func(context.Context, Cal
 	}
 }
 
-func TerminalPersistenceRequestID(err error) (int64, bool) {
-	var persistence *actions.TerminalPersistenceError
-	if !errors.As(err, &persistence) {
-		return 0, false
-	}
-	return persistence.RequestID, true
-}
-
-func TerminalPersistenceErrorText() string { return actions.TerminalPersistenceErrorText }
-
 func (component *Component) Finish(ctx context.Context, runtime Workspace, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	workflow, err := component.workflow(runtime)
 	if err != nil {

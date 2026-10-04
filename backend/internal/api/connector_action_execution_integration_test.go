@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -676,25 +677,33 @@ func TestRunLocalConnectorActionPreservesIdempotencyAfterTerminalPersistenceFail
 		ActionName: "echo", Input: map[string]any{"value": "once"}, Reason: "persistence retry smoke",
 		IdempotencyKey: "local-persistence-request-1",
 	}
-	_, err = testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
-	var persistenceErr *actions.TerminalPersistenceError
-	if !errors.As(err, &persistenceErr) || persistenceErr.RequestID < 1 {
-		t.Fatalf("expected typed terminal persistence error, got %v", err)
+	server := testServerForRuntime(t, runtime)
+	server.workspaceOwner.ActivateWorkspace(runtime)
+	body, err := json.Marshal(gatewayactions.LocalRequest{TargetRef: call.TargetRef, ActionName: call.ActionName,
+		Input: call.Input, Reason: call.Reason, IdempotencyKey: call.IdempotencyKey})
+	if err != nil {
+		t.Fatal(err)
 	}
 	response := httptest.NewRecorder()
-	if !writeConnectorActionTerminalPersistenceError(response, err) || response.Code != http.StatusServiceUnavailable {
+	request := httptest.NewRequest(http.MethodPost, "/api/connector-actions/local-run", strings.NewReader(string(body))).WithContext(t.Context())
+	request.Header.Set("Content-Type", "application/json")
+	server.localConnectorActionHTTP().Run(response, request)
+	var persistence struct {
+		RequestID int64 `json:"request_id"`
+	}
+	if response.Code != http.StatusServiceUnavailable || json.Unmarshal(response.Body.Bytes(), &persistence) != nil || persistence.RequestID < 1 {
 		t.Fatalf("unexpected persistence response: status=%d body=%s", response.Code, response.Body.String())
 	}
-	if !strings.Contains(response.Body.String(), `"status":"outcome_unknown"`) || !strings.Contains(response.Body.String(), fmt.Sprintf(`"request_id":%d`, persistenceErr.RequestID)) {
+	if !strings.Contains(response.Body.String(), `"status":"outcome_unknown"`) {
 		t.Fatalf("persistence response lacks request identity: %s", response.Body.String())
 	}
 
-	replayed, err := testServerForRuntime(t, runtime).runLocalConnectorAction(t.Context(), runtime, call)
+	replayed, err := server.runLocalConnectorAction(t.Context(), runtime, call)
 	if err != nil {
 		t.Fatalf("replay uncertain request: %v", err)
 	}
-	if executions != 1 || !replayed.Replayed || replayed.Request.ID != persistenceErr.RequestID {
-		t.Fatalf("executions=%d replayed=%v request=%d want=%d", executions, replayed.Replayed, replayed.Request.ID, persistenceErr.RequestID)
+	if executions != 1 || !replayed.Replayed || replayed.Request.ID != persistence.RequestID {
+		t.Fatalf("executions=%d replayed=%v request=%d want=%d", executions, replayed.Replayed, replayed.Request.ID, persistence.RequestID)
 	}
 }
 

@@ -82,11 +82,7 @@ func (handlers LocalHTTPHandlers) Run(w http.ResponseWriter, r *http.Request) {
 	}
 	var persistence *actions.TerminalPersistenceError
 	if errors.As(err, &persistence) {
-		handlers.dependencies.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status": connectors.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown", "request_id": persistence.RequestID,
-			"error":          actions.TerminalPersistenceErrorText,
-			"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
-		})
+		handlers.dependencies.WriteJSON(w, http.StatusServiceUnavailable, persistence.Response())
 		return
 	}
 	if errors.Is(err, connectortargets.ErrActionRequestIdempotency) {

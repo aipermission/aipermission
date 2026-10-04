@@ -14,8 +14,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
-const noAutomaticRetryHint = "Do not retry automatically. Inspect the recorded request and external target state first."
-
 const (
 	approvalContextChangedCode = "approval_context_changed"
 	approvalNotPendingCode     = "approval_not_pending"
@@ -323,12 +321,6 @@ func writeKnownError(w http.ResponseWriter, err error) bool {
 	if !errors.As(err, &persistenceErr) {
 		return false
 	}
-	httptransport.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{
-		"status":         connectors.ResultOutcomeUnknown,
-		"code":           "connector_action_persistence_unknown",
-		"request_id":     persistenceErr.RequestID,
-		"error":          actions.TerminalPersistenceErrorText,
-		"assistant_hint": noAutomaticRetryHint,
-	})
+	httptransport.WriteJSON(w, http.StatusServiceUnavailable, persistenceErr.Response())
 	return true
 }
