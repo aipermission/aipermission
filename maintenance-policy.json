@@ -434,7 +434,7 @@
     "internal/filetransfer": 66,
     "internal/gatewayaccess": 60,
     "internal/gatewayaccess/httpowner": 21,
-    "internal/gatewayconnectoractions": 6,
+    "internal/gatewayconnectoractions": 26,
     "internal/gatewayconnectorapi": 55,
     "internal/gatewayconnectorapi/credentialresource": 98,
     "internal/gatewayconnectormanagement": 30,
