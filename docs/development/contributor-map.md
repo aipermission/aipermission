@@ -3,6 +3,11 @@
 Use this page to find the owning boundary, then read its canonical contract.
 It is a navigator, not another implementation of security rules.
 
+For owners approaching a source/test limit, use the
+[ownership and capacity map](ownership-capacity.md) before adding behavior or
+extracting another helper. It separates data, policy, I/O and projection and
+records why a smaller parent alone is not proof of reduced maintenance cost.
+
 ## Ownership
 
 | Change                                                          | Start Here                                                                         | Contract                                                  |
