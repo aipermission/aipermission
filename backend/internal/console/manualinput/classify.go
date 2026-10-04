@@ -1,54 +1,27 @@
-package console
+package manualinput
 
 import (
 	"strings"
 	"unicode/utf8"
 )
 
-type manualCommandRecord struct {
+const (
+	BufferLimit  = 8192
+	PreviewLimit = 2000
+)
+
+// Record is a best-effort input observation, not proof of execution or safety.
+// Session positions and authorization belong to the caller, not the parser.
+type Record struct {
 	Command                  string
 	TrackingReason           string
 	TrackOutput              bool
-	StartOffset              int64
-	ResumePrompt             string
 	CompletionTrackingReason string
 }
 
-func collapseManualCommandRecords(commands []manualCommandRecord) []manualCommandRecord {
-	if len(commands) <= 1 {
-		return commands
-	}
-	trackOutput := true
-	startOffset := commands[0].StartOffset
-	parts := make([]string, 0, len(commands))
-	for _, command := range commands {
-		parts = append(parts, command.Command)
-		if !command.TrackOutput {
-			trackOutput = false
-		}
-	}
-	joined := strings.Join(parts, "\n")
+func classifyManualCommand(command string, truncated bool) Record {
 	reason := "manual_output_not_tracked"
-	if !trackOutput {
-		reason = "compound_command"
-	}
-	if len(joined) > maxManualCommandPreviewBytes {
-		reason = "command_preview_truncated"
-		trackOutput = false
-	}
-	return []manualCommandRecord{{
-		Command:                  manualCommandPreview(joined, reason == "command_preview_truncated"),
-		TrackingReason:           reason,
-		TrackOutput:              trackOutput,
-		StartOffset:              startOffset,
-		ResumePrompt:             commands[0].ResumePrompt,
-		CompletionTrackingReason: commands[0].CompletionTrackingReason,
-	}}
-}
-
-func classifyManualCommand(command string, truncated bool) manualCommandRecord {
-	reason := "manual_output_not_tracked"
-	if truncated || len(command) > maxManualCommandPreviewBytes {
+	if truncated || len(command) > PreviewLimit {
 		reason = "command_preview_truncated"
 	}
 	if heredocTerminator(command) != "" {
@@ -57,8 +30,8 @@ func classifyManualCommand(command string, truncated bool) manualCommandRecord {
 	if reason == "manual_output_not_tracked" {
 		reason = classifyManualCommandReason(command)
 	}
-	return manualCommandRecord{
-		Command:        manualCommandPreview(command, reason == "command_preview_truncated" || reason == "multiline_or_heredoc"),
+	return Record{
+		Command:        Preview(command, reason == "command_preview_truncated" || reason == "multiline_or_heredoc"),
 		TrackingReason: reason,
 		TrackOutput:    reason == "manual_output_not_tracked",
 	}
@@ -119,9 +92,9 @@ func commandContainsInteractiveFlag(fields []string) bool {
 	return false
 }
 
-func manualCommandPreview(command string, incomplete bool) string {
+func Preview(command string, incomplete bool) string {
 	command = strings.TrimSpace(command)
-	limit := maxManualCommandPreviewBytes
+	limit := PreviewLimit
 	if incomplete && limit > 4 {
 		limit -= 4
 	}
@@ -167,4 +140,13 @@ func trimLastRune(value string) string {
 		return ""
 	}
 	return value[:len(value)-size]
+}
+
+func PausesCapture(reason string) bool {
+	switch reason {
+	case "interactive_editor", "interactive_repl", "interactive_tui", "nested_shell", "long_running_stream", "may_prompt":
+		return true
+	default:
+		return false
+	}
 }

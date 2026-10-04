@@ -3,12 +3,11 @@ package console
 import (
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 )
 
 const (
-	maxManualCommandBufferBytes  = 8192
-	maxManualCommandPreviewBytes = 2000
 	maxManualCapturedOutputBytes = 1 << 20
 	manualCommandReason          = "manual console command not tracked"
 	manualTrackedCommandReason   = "manual console command"
@@ -17,6 +16,12 @@ const (
 	manualSessionClosed          = "session_closed"
 	manualActiveExecPaused       = "active_exec_paused"
 )
+
+type manualCommandRecord struct {
+	manualinput.Record
+	StartOffset  int64
+	ResumePrompt string
+}
 
 type manualInputPreparation struct {
 	commands     []manualCommandRecord
@@ -41,7 +46,7 @@ func (s *managedConsoleSession) prepareManualInput(data string) []manualCommandR
 
 func (s *managedConsoleSession) prepareManualInputLocked(data string, boundary *manualInputBoundary) manualInputPreparation {
 	if s.activeExec != nil {
-		s.manualInput.reset()
+		s.manualInput.Reset()
 		return manualInputPreparation{}
 	}
 
@@ -50,7 +55,7 @@ func (s *managedConsoleSession) prepareManualInputLocked(data string, boundary *
 	var activeUpdate *manualActiveCommandUpdate
 	s.clearManualPauseIfPromptReturnedLocked()
 	if s.manualPause != nil {
-		s.manualInput.reset()
+		s.manualInput.Reset()
 		return manualInputPreparation{}
 	}
 	if strings.ContainsAny(data, "\r\n") && s.manualActive != nil {
@@ -63,20 +68,23 @@ func (s *managedConsoleSession) prepareManualInputLocked(data string, boundary *
 			startOffset = boundary.startOffset
 			resumePrompt = boundary.resumePrompt
 		}
-		for _, command := range s.manualInput.consume(data) {
+		observations := []manualinput.Record{}
+		for _, command := range s.manualInput.Consume(data) {
 			if command.Command != "" {
-				command.StartOffset = startOffset
-				command.ResumePrompt = resumePrompt
-				commands = append(commands, command)
+				observations = append(observations, command)
 			}
 		}
-		commands = collapseManualCommandRecords(commands)
+		for _, observation := range manualinput.Collapse(observations) {
+			commands = append(commands, manualCommandRecord{
+				Record: observation, StartOffset: startOffset, ResumePrompt: resumePrompt,
+			})
+		}
 		if completion == nil && s.manualActive != nil && len(commands) > 0 {
 			if manualActiveIsHistoryRecall(s.manualActive) {
 				active := *s.manualActive
 				completion = s.downgradeManualOutputCaptureLocked("history_recall_untracked", false)
 				s.pauseManualCaptureAfterActiveLocked(active)
-				s.manualInput.reset()
+				s.manualInput.Reset()
 			} else {
 				activeUpdate = s.appendManualActiveCommandsLocked(commands)
 			}

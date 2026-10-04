@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/streamoutput"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -263,7 +264,7 @@ type managedConsoleSession struct {
 	runtime         *RuntimeSession
 	clients         map[*websocket.Conn]*sync.Mutex
 	activeExec      *consoleSessionActiveExec
-	manualInput     manualInputCapture
+	manualInput     manualinput.Capture
 	manualActive    *consoleSessionManualCapture
 	manualPause     *consoleSessionManualPause
 	filterUntil     time.Time
