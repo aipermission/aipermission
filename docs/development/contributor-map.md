@@ -16,6 +16,7 @@ It is a navigator, not another implementation of security rules.
 | Credential form schema, secret merge and prepared input         | `backend/internal/connectormanagement/profileinput`                                | [Credential Boundary](../security/credential-boundary.md) |
 | Vault grants, requests and exact-session authorization          | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
 | Durable request/operation state                                 | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
+| Token action row/byte/running usage and terminal reservations     | `backend/internal/connectortargets/actioncapacity`                                  | [REST API](../api/rest-api.md)                            |
 | Released baseline definitions and transactional upgrades        | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
 | Backup-service reflected credential rejection                   | `backend/internal/backups/serviceboundary`                                         | [Credential Boundary](../security/credential-boundary.md) |
 | Backup upload identity and durable operation transitions        | `backend/internal/backups/uploadoperation`                                         | [REST API](../api/rest-api.md)                            |
@@ -27,6 +28,17 @@ Connector-specific transports and templates do not own a second approval,
 audit, history or credential pipeline. Browser completions must still belong
 to the current draft, dialog, session and request generation; matching an ID
 alone is not enough after switching away and back.
+
+`connectortargets/actioncapacity` owns the token action usage query and capacity
+limits. Call it with the admission transaction's executor: counts include the
+uncommitted incoming request, and each incoming/running/pending row reserves
+terminal output space once. Byte accounting uses stored UTF-8 bytes, not text
+character counts. Production admission uses `WithinDefault`; configurable
+`Within` only measures against supplied limits and does not authorize an action.
+The caller still owns token validation, permission checks, request publication,
+history projection and commit/rollback. This owner cannot open transactions,
+dispatch connectors or decide that a mutation succeeded. Run its native tests
+and the complete target/action suites when changing the query or its caller.
 
 Released baseline SQL belongs to `internal/db/baselineschema`; it returns
 caller-owned ordered statement slices, never a shared mutable plan. Add schema

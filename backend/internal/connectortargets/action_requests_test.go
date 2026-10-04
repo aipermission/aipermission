@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets/actioncapacity"
 )
 
 func TestStoreActionRequestLifecycle(t *testing.T) {
@@ -119,7 +120,7 @@ func TestActionRequestUsageForTokenIsScoped(t *testing.T) {
 			t.Fatalf("insert action request: %v", err)
 		}
 	}
-	usage, err := store.ActionRequestUsageForToken(ctx, firstToken)
+	usage, err := actioncapacity.Measure(ctx, database, firstToken, 0)
 	if err != nil {
 		t.Fatalf("read usage: %v", err)
 	}
@@ -149,20 +150,20 @@ func TestActionRequestCapacityCountsProjectedBytesAndRunningRequests(t *testing.
 	first := insert(connectors.ResultRunning, "first")
 	insert(connectors.ResultRunning, "second")
 
-	within, err := actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
-		rows: 2, bytes: maxTokenActionRequestBytes, running: 2,
+	within, err := actioncapacity.Within(ctx, database, tokenID, first.ID, actioncapacity.Limits{
+		Rows: 2, Bytes: actioncapacity.MaxBytes, Running: 2,
 	})
 	if err != nil || !within {
 		t.Fatalf("capacity at exact row/running boundary = %v, err=%v", within, err)
 	}
-	within, err = actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
-		rows: 2, bytes: actionTerminalReservationBytes - 1, running: 2,
+	within, err = actioncapacity.Within(ctx, database, tokenID, first.ID, actioncapacity.Limits{
+		Rows: 2, Bytes: actioncapacity.TerminalReservationBytes - 1, Running: 2,
 	})
 	if err != nil || within {
 		t.Fatalf("projected terminal bytes accepted = %v, err=%v", within, err)
 	}
-	within, err = actionRequestWithinCapacity(ctx, database, tokenID, first.ID, actionRequestCapacity{
-		rows: 2, bytes: maxTokenActionRequestBytes, running: 1,
+	within, err = actioncapacity.Within(ctx, database, tokenID, first.ID, actioncapacity.Limits{
+		Rows: 2, Bytes: actioncapacity.MaxBytes, Running: 1,
 	})
 	if err != nil || within {
 		t.Fatalf("excess running requests accepted = %v, err=%v", within, err)
@@ -176,7 +177,7 @@ func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T
 	tokenID := insertConnectorTestToken(t, database)
 	target, profile := createPostgresTargetProfile(t, ctx, store)
 
-	for index := int64(0); index < maxTokenRunningActionRequests; index++ {
+	for index := int64(0); index < actioncapacity.MaxRunning; index++ {
 		_, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
 			ActionName: "query_readonly", Input: map[string]any{"index": index}, Status: connectors.ResultRunning,
@@ -188,7 +189,7 @@ func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T
 	}
 	_, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 		TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
-		ActionName: "query_readonly", Input: map[string]any{"index": maxTokenRunningActionRequests}, Status: connectors.ResultRunning,
+		ActionName: "query_readonly", Input: map[string]any{"index": actioncapacity.MaxRunning}, Status: connectors.ResultRunning,
 		EnforceTokenCapacity: true,
 	})
 	if !errors.Is(err, ErrActionRequestCapacity) {
@@ -198,7 +199,7 @@ func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ?`, tokenID).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != maxTokenRunningActionRequests {
+	if count != actioncapacity.MaxRunning {
 		t.Fatalf("persisted request count = %d", count)
 	}
 }
@@ -209,7 +210,7 @@ func TestApprovalCannotExceedRunningActionCapacity(t *testing.T) {
 	ctx := t.Context()
 	tokenID := insertConnectorTestToken(t, database)
 	target, profile := createPostgresTargetProfile(t, ctx, store)
-	for index := int64(0); index < maxTokenRunningActionRequests; index++ {
+	for index := int64(0); index < actioncapacity.MaxRunning; index++ {
 		if _, err := store.InsertActionRequest(ctx, InsertActionRequestInput{
 			TokenID: &tokenID, TargetID: target.ID, ProfileID: profile.ID, ConnectorKind: "postgres",
 			ActionName: "query_readonly", Input: map[string]any{"index": index}, Status: connectors.ResultRunning,

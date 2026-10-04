@@ -25,6 +25,7 @@ func TestConnectorGroundworkImportBoundaries(t *testing.T) {
 		modulePath + "/internal/connectors",
 		modulePath + "/internal/actions",
 		modulePath + "/internal/connectortargets",
+		modulePath + "/internal/connectortargets/actioncapacity",
 	}
 	forbidden := append([]string{
 		modulePath + "/internal/api",
