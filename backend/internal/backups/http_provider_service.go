@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -297,6 +298,11 @@ func handleBackupProviderError(w http.ResponseWriter, err error) {
 		httptransport.WriteError(w, http.StatusNotFound, "backup record not found")
 	default:
 		var validation ValidationError
+		var journalValidation uploadoperation.ValidationError
+		if errors.As(err, &journalValidation) {
+			httptransport.WriteError(w, http.StatusBadRequest, journalValidation.Error())
+			return
+		}
 		if errors.As(err, &validation) {
 			httptransport.WriteError(w, http.StatusBadRequest, validation.Error())
 			return

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
@@ -257,7 +258,7 @@ func (h *HTTPHandlers) UpdateProvider(w http.ResponseWriter, r *http.Request) {
 		func(tx *sql.Tx) error {
 			txStore := NewTxStore(tx)
 			if stringFromMap(existing.Public, "base_url") != stringFromMap(public, "base_url") || encrypted != nil {
-				if err := txStore.ExpireUnresolvedUploadOperations(r.Context(), id, "upload outcome expired because the backup service identity changed"); err != nil {
+				if err := uploadoperation.NewStore(tx).ExpireUnresolved(r.Context(), id, "upload outcome expired because the backup service identity changed"); err != nil {
 					return err
 				}
 			}

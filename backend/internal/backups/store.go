@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
 )
@@ -598,13 +599,7 @@ func markProviderRecordDeleted(ctx context.Context, executor sqldb.Executor, pro
 		WHERE provider_id = ? AND provider_file_id = ? AND deleted_at IS NULL`, now, now, providerID, providerFileID); err != nil {
 		return fmt.Errorf("update backup record tombstone: %w", err)
 	}
-	if _, err := executor.ExecContext(ctx, `
-		UPDATE backup_upload_operations
-		SET status = 'expired', last_error = 'remote upload result expired', updated_at = ?, completed_at = COALESCE(completed_at, ?)
-		WHERE provider_id = ? AND provider_file_id = ? AND status = 'completed'`, now, now, providerID, providerFileID); err != nil {
-		return fmt.Errorf("expire backup upload operation: %w", err)
-	}
-	return nil
+	return uploadoperation.NewStore(executor).ExpireResult(ctx, providerID, providerFileID, now)
 }
 
 func SupportedProviderType(providerType string) bool {

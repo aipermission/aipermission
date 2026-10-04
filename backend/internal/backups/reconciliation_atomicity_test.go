@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/backups"
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	"github.com/aipermission/aipermission/backend/internal/testkit/rowfault"
 )
 
@@ -34,7 +35,7 @@ func TestBackupReconciliationRollsBackTombstonesAndUploadExpiryTogether(t *testi
 		t.Run(operation, func(t *testing.T) {
 			database := openStoreDatabase(t)
 			store := backups.NewStore(database)
-			provider := seedReconciliationAtomicityFixture(t, store)
+			provider := seedReconciliationAtomicityFixture(t, store, uploadoperation.NewStore(database))
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			if _, err := database.Exec(`
@@ -70,7 +71,7 @@ func TestBackupReconciliationRollsBackTombstonesAndUploadExpiryTogether(t *testi
 	}
 }
 
-func seedReconciliationAtomicityFixture(t *testing.T, store *backups.Store) backups.Provider {
+func seedReconciliationAtomicityFixture(t *testing.T, store *backups.Store, journal *uploadoperation.Store) backups.Provider {
 	t.Helper()
 	provider, err := store.CreateProvider(t.Context(), backups.CreateProviderRequest{
 		ProviderType: backups.ServiceProviderType, Name: "Fixture backups", Encrypted: "fixture-encrypted-token",
@@ -86,13 +87,13 @@ func seedReconciliationAtomicityFixture(t *testing.T, store *backups.Store) back
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := store.ClaimUploadOperation(t.Context(), backups.ClaimUploadOperationRequest{
+		if _, _, err := journal.Claim(t.Context(), uploadoperation.ClaimRequest{
 			IdempotencyKey: id, ProviderID: provider.ID, DatabaseID: "fixture-db",
 			WorkspaceInstanceID: "fixture-instance", StreamID: "fixture-stream", SourceInstallationID: "fixture-installation",
 		}); err != nil {
 			t.Fatal(err)
 		}
-		if err := store.CompleteUploadOperation(t.Context(), id, id); err != nil {
+		if err := journal.Complete(t.Context(), id, id); err != nil {
 			t.Fatal(err)
 		}
 	}

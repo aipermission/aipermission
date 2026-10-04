@@ -17,6 +17,7 @@ It is a navigator, not another implementation of security rules.
 | Durable request/operation state                                 | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
 | Released baseline definitions and transactional upgrades        | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
 | Backup-service reflected credential rejection                   | `backend/internal/backups/serviceboundary`                                         | [Credential Boundary](../security/credential-boundary.md) |
+| Backup upload identity and durable operation transitions        | `backend/internal/backups/uploadoperation`                                         | [REST API](../api/rest-api.md)                            |
 | Submitted terminal text and best-effort tracking classification | `backend/internal/console/manualinput` (text), `console` (session/history)         | [Development Architecture](architecture.md)               |
 | MCP setup, private config writers and response validation       | `packages/mcp/src`                                                                 | [MCP Client Setup](../setup/mcp-client-setup.md)          |
 | Test discovery, immutable baselines and release gates           | `scripts`, `maintenance-policy.json`, frontend/MCP policies                        | [Testing](testing.md)                                     |
@@ -41,6 +42,17 @@ possible. A stream failure is terminal; never flush or retry held data after
 credential rejection or a destination error. Zero-value boundaries fail closed.
 Remote protocol calls, checksums, temporary-file cleanup, installation and
 audited provider mutations remain in their respective service/workflow owners.
+
+`internal/backups/uploadoperation` owns the upload journal model, identity
+validation and SQL transitions, including expiry when a remote record disappears.
+Use its store directly with the caller's database or transaction. It does not
+open transactions, perform remote uploads, append audit events, or interpret
+HTTP requests. A renamed database can replay the same workspace-bound claim;
+an imported workspace copy cannot. Terminal completion cannot be replaced by
+a different remote result. Record tombstones, baseline updates, upload completion
+and required audit must remain in the caller's existing transaction, never in
+an independent journal transaction. Run the journal and complete backup suites
+when changing either side of this boundary.
 
 `internal/console/manualinput` owns bounded command previews, escape/input
 capture and best-effort interactive classification. A capture is session-local;
