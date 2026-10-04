@@ -79,6 +79,14 @@
     ["c", ["a"]]
   ],
   "trees": {
+    "profile-persistence": {
+      "files": {
+        "connectors/profile-lifecycle/persistence.js": "import \"../../lib/api.js\"; import \"../templates/fixture/model.js\";",
+        "connectors/profile-lifecycle/atomic-save.js": "import \"../../lib/api.js\";",
+        "lib/api.js": "export const api = true;",
+        "connectors/templates/fixture/model.js": "import \"../../profile-lifecycle/atomic-save.js\";"
+      }
+    },
     "identity": {
       "options": { "importBudget": 2 },
       "directories": ["connectors/templates"],

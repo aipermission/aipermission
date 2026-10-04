@@ -8,7 +8,7 @@ import {
 } from "../_shared/target-profile-lifecycle";
 import type { RedisConfig, RedisModelForm, RedisPresentationTarget, RedisProfile, RedisTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
-import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
+import type { LifecycleProfileOperation } from "../../profile-lifecycle/types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };

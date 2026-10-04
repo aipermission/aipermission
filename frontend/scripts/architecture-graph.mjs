@@ -344,6 +344,7 @@ function moduleLayer(sourceRoot, file, connectorKinds) {
   const first = path.split("/")[0];
   if (genericRoots.includes(first)) return first;
   if (path.startsWith("connectors/editor/")) return "connector-editor";
+  if (path.startsWith("connectors/profile-lifecycle/")) return "connector-shared";
   if (path.startsWith("connectors/templates/_shared/")) return "connector-shared";
   for (const kind of connectorKinds) {
     if (path.startsWith(`connectors/templates/${kind}/`)) return `connector-template:${kind}`;

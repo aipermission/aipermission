@@ -332,6 +332,11 @@ this tree; JavaScript tooling outside `src` is not shipped application code.
 - `src/connectors/templates`: connector UI templates. Each connector kind owns
   its form, credential form, row actions, console surface, toolbar actions, and
   display model.
+- `src/connectors/profile-lifecycle`: shared target/profile persistence and
+  atomic saves. Both standard and database model constructors reuse these
+  mutation functions; native serializers keep their distinct target/credential
+  types and secret-omission behavior. Persistence does not infer connector kind,
+  retry uncertain mutations, or register custom models as standard lifecycles.
 
 Keep token connector-action permission logic in shared hooks such as
 `useConnectorPermissions` instead of duplicating it between Console and Tokens

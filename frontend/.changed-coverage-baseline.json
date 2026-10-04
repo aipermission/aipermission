@@ -173,13 +173,13 @@
     },
     "src/components/console/use-connector-approval-dialog.ts": {
       "statements": 98.05,
-      "branches": 89.38,
+      "branches": 90.26,
       "functions": 100,
       "lines": 99.2
     },
     "src/components/console/use-connector-token-permission-state.ts": {
-      "statements": 97.25,
-      "branches": 84.03,
+      "statements": 97.93,
+      "branches": 85.24,
       "functions": 100,
       "lines": 100
     },
@@ -473,7 +473,7 @@
     },
     "src/components/tokens/connector-permission-dialog.tsx": {
       "statements": 94.57,
-      "branches": 77.39,
+      "branches": 80.86,
       "functions": 97.36,
       "lines": 98.09
     },
@@ -616,10 +616,10 @@
       "lines": 100
     },
     "src/components/use-database-lifecycle.ts": {
-      "statements": 92.59,
+      "statements": 96.36,
       "branches": 100,
       "functions": 100,
-      "lines": 90.47
+      "lines": 95.34
     },
     "src/components/use-gateway-activity-resources.ts": {
       "statements": 93.22,
@@ -825,6 +825,18 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/profile-lifecycle/atomic-save.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/profile-lifecycle/persistence.ts": {
+      "statements": 100,
+      "branches": 96.96,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/_shared/action-result.ts": {
       "statements": 100,
       "branches": 97.87,
@@ -910,10 +922,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/database-connector-model.ts": {
-      "statements": 92.85,
+      "statements": 93.93,
       "branches": 78.21,
       "functions": 97.36,
-      "lines": 97.18
+      "lines": 98.21
     },
     "src/connectors/templates/_shared/database-console-model.ts": {
       "statements": 100,
@@ -1079,7 +1091,7 @@
     },
     "src/connectors/templates/_shared/target-profile-lifecycle.ts": {
       "statements": 100,
-      "branches": 93.54,
+      "branches": 95.12,
       "functions": 100,
       "lines": 100
     },
@@ -1876,8 +1888,8 @@
       "lines": 100
     },
     "src/connectors/templates/rabbitmq/model.ts": {
-      "statements": 90,
-      "branches": 76.54,
+      "statements": 92,
+      "branches": 87.65,
       "functions": 80.95,
       "lines": 91.11
     },
@@ -1996,8 +2008,8 @@
       "lines": 100
     },
     "src/connectors/templates/redis/model.ts": {
-      "statements": 94.91,
-      "branches": 79.78,
+      "statements": 96.61,
+      "branches": 87.23,
       "functions": 96.42,
       "lines": 98.07
     },
@@ -2320,10 +2332,10 @@
       "lines": 100
     },
     "src/connectors/templates/ssh/model.ts": {
-      "statements": 65.56,
-      "branches": 54.34,
+      "statements": 66.56,
+      "branches": 55.34,
       "functions": 82,
-      "lines": 68.25
+      "lines": 69.25
     },
     "src/connectors/templates/ssh/operation-contracts.ts": {
       "statements": 100,
@@ -2349,12 +2361,6 @@
       "functions": 100,
       "lines": 100
     },
-    "src/connectors/templates/target-profile-save.ts": {
-      "statements": 100,
-      "branches": 100,
-      "functions": 100,
-      "lines": 100
-    },
     "src/connectors/templates/template-registration.ts": {
       "statements": 100,
       "branches": 100,
@@ -2374,10 +2380,10 @@
       "lines": 100
     },
     "src/lib/api.ts": {
-      "statements": 96.55,
+      "statements": 96.56,
       "branches": 90,
       "functions": 100,
-      "lines": 97.9
+      "lines": 97.91
     },
     "src/lib/async-resource.ts": {
       "statements": 100,

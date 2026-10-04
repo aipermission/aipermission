@@ -1,5 +1,5 @@
 import type { NetworkConnectionForm, UsernameCredentialForm } from "../_shared/connector-form-types";
-import type { UsernamePasswordProfile } from "../_shared/target-profile-lifecycle-types";
+import type { UsernamePasswordProfile } from "../../profile-lifecycle/types";
 
 export type RedisConnectionForm = NetworkConnectionForm &
   Omit<UsernameCredentialForm, "target_id"> & {

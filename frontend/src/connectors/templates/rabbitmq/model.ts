@@ -8,7 +8,7 @@ import {
 } from "../_shared/target-profile-lifecycle";
 import type { RabbitMQModelForm, RabbitMQPresentationTarget, RabbitMQProfile, RabbitMQTarget } from "./form-types";
 import type { UsernameCredentialForm } from "../_shared/connector-form-types";
-import type { LifecycleProfileOperation } from "../_shared/target-profile-lifecycle-types";
+import type { LifecycleProfileOperation } from "../../profile-lifecycle/types";
 import { createStructuredConsoleModel } from "../_shared/structured-console-model";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 

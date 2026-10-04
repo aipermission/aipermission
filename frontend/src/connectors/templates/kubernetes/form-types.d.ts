@@ -1,7 +1,7 @@
 import type { ComponentProps } from "react";
 import type { CredentialProfileForm } from "../_shared/connector-form-types";
 import type { TransportConnectorIdentityFields } from "../_shared/network-transport-fields";
-import type { LifecycleTarget } from "../_shared/target-profile-lifecycle-types";
+import type { LifecycleTarget } from "../../profile-lifecycle/types";
 import type { ConnectorRuntimeIdentity } from "../_shared/runtime-model-types";
 
 export type KubernetesScopeForm = { scope_mode: string; namespaces: string };
