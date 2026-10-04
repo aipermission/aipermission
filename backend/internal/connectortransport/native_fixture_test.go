@@ -3,10 +3,12 @@ package connectortransport
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/actions"
 	"github.com/aipermission/aipermission/backend/internal/connectorruntime"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -91,6 +93,28 @@ func (fixture *nativeTransportFixture) requireQuiescent(t *testing.T) {
 		t.Fatalf("transport leaked delivery admission: %v", err)
 	}
 	release()
+}
+
+func (fixture *nativeTransportFixture) requireDeliveryHeld(t *testing.T) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	release, err := fixture.delivery.AcquireExclusive(ctx)
+	if release != nil {
+		release()
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("adapter dispatch escaped delivery admission: %v", err)
+	}
+}
+
+func (fixture *nativeTransportFixture) approved(t *testing.T, purpose string) Approved {
+	t.Helper()
+	target, profile, err := fixture.store.ResolveConnectorActionTarget(t.Context(), fixture.carrier)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewApproved([]actions.ResolvedDependency{{Purpose: purpose, Target: target, Profile: profile}})
 }
 
 type commandAdapterFunc func(context.Context, connectorapi.PeerIdentityGateway, connectorapi.LiveConsoleRuntime, string, string) (connectors.CommandRunResult, error)
