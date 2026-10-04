@@ -1,12 +1,10 @@
 package backups
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -29,18 +27,6 @@ func TestValidateServiceTokenRejectsAmbiguousAndControlCharacters(t *testing.T) 
 		if err := ValidateServiceToken(token); err == nil {
 			t.Fatalf("accepted unsafe service token %q", token)
 		}
-	}
-}
-
-func TestCredentialScanningWriterFindsTokenAcrossWriteBoundaries(t *testing.T) {
-	var destination bytes.Buffer
-	writer := newCredentialScanningWriter(&destination, serviceTokenVariants(serviceTestToken))
-	split := len(serviceTestToken) / 2
-	if _, err := writer.Write([]byte("prefix-" + serviceTestToken[:split])); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writer.Write([]byte(serviceTestToken[split:] + "-suffix")); !errors.Is(err, errReflectedBackupCredential) {
-		t.Fatalf("split reflected token error = %v", err)
 	}
 }
 
@@ -195,25 +181,6 @@ func TestValidateServiceBackupRequiresSafeAIPDBFilename(t *testing.T) {
 		if err := validateServiceBackup(invalid, "stream-a", 10); err == nil {
 			t.Fatalf("unsafe filename accepted: %q", filename)
 		}
-	}
-}
-
-func TestCredentialScanningWriterWithholdsCrossChunkCredentialPrefix(t *testing.T) {
-	token := "0123456789abcdefghijklmnopqrstuvwxyz"
-	var destination bytes.Buffer
-	writer := newCredentialScanningWriter(&destination, []string{token})
-	first := []byte("safe-prefix-" + token[:20])
-	if written, err := writer.Write(first); err != nil || written != len(first) {
-		t.Fatalf("write token prefix: written=%d err=%v", written, err)
-	}
-	if strings.Contains(destination.String(), token[:20]) {
-		t.Fatal("possible credential prefix reached the destination before validation")
-	}
-	if _, err := writer.Write([]byte(token[20:] + "-suffix")); !errors.Is(err, errReflectedBackupCredential) {
-		t.Fatalf("cross-chunk credential = %v, want reflected credential rejection", err)
-	}
-	if strings.Contains(destination.String(), token) {
-		t.Fatal("reflected credential reached the destination")
 	}
 }
 

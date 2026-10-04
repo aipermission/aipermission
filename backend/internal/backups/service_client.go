@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,12 +16,12 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/aipermission/aipermission/backend/internal/backups/downloadbody"
+	"github.com/aipermission/aipermission/backend/internal/backups/serviceboundary"
 	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 )
 
@@ -46,9 +45,10 @@ var requiredServiceCapabilities = []string{
 }
 
 type ServiceClient struct {
-	baseURL string
-	token   string
-	client  *http.Client
+	baseURL  string
+	token    string
+	client   *http.Client
+	boundary *serviceboundary.Boundary
 }
 
 type ServiceInfo struct {
@@ -148,9 +148,14 @@ func NewServiceClient(rawBaseURL, token string) (*ServiceClient, error) {
 		return nil, err
 	}
 	token = strings.TrimSpace(token)
+	boundary, err := serviceboundary.New(token)
+	if err != nil {
+		return nil, err
+	}
 	return &ServiceClient{
-		baseURL: baseURL,
-		token:   token,
+		baseURL:  baseURL,
+		token:    token,
+		boundary: boundary,
 		client: &http.Client{
 			Transport: backupServiceTransport(),
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
@@ -460,7 +465,7 @@ func (c *ServiceClient) Upload(ctx context.Context, streamID, databaseName, sour
 	if err := decodeBoundedJSON(response.Body, &backup); err != nil {
 		return ServiceBackup{}, false, fmt.Errorf("parse backup service upload response: %w", err)
 	}
-	if err := c.rejectReflectedToken(backup); err != nil {
+	if err := c.boundary.CheckMetadata(backup); err != nil {
 		return ServiceBackup{}, false, err
 	}
 	expectedSize := fileInfo.Size()
@@ -515,7 +520,7 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 		return ServiceBackup{}, ValidationError("remote backup exceeds the local import limit")
 	}
 	responseBackupID := strings.TrimSpace(response.Header.Get("X-AIPermission-Backup-ID"))
-	if err := c.rejectReflectedToken(map[string]string{
+	if err := c.boundary.CheckMetadata(map[string]string{
 		"backup_id":           responseBackupID,
 		"sha256":              response.Header.Get("X-AIPermission-SHA256"),
 		"content_disposition": response.Header.Get("Content-Disposition"),
@@ -537,11 +542,14 @@ func (c *ServiceClient) Download(ctx context.Context, streamID, backupID, target
 		}
 	}()
 	digest := sha256.New()
-	scanner := newCredentialScanningWriter(io.MultiWriter(output, digest), serviceTokenVariants(c.token))
+	scanner, err := c.boundary.NewScanningWriter(io.MultiWriter(output, digest))
+	if err != nil {
+		return ServiceBackup{}, err
+	}
 	written, err := io.Copy(scanner, io.LimitReader(guard.Reader(response.Body), maxBytes+1))
 	if err != nil {
-		if errors.Is(err, errReflectedBackupCredential) {
-			return ServiceBackup{}, errReflectedBackupCredential
+		if errors.Is(err, serviceboundary.ErrReflectedCredential) {
+			return ServiceBackup{}, serviceboundary.ErrReflectedCredential
 		}
 		return ServiceBackup{}, fmt.Errorf("download encrypted backup: %w", err)
 	}
@@ -599,7 +607,7 @@ func (c *ServiceClient) doJSON(ctx context.Context, method, endpoint string, pay
 	if err := decodeBoundedJSON(response.Body, target); err != nil {
 		return fmt.Errorf("parse backup service response: %w", err)
 	}
-	return c.rejectReflectedToken(target)
+	return c.boundary.CheckMetadata(target)
 }
 
 func (c *ServiceClient) request(ctx context.Context, method, endpoint string, body io.Reader, protocol bool) (*http.Request, error) {
@@ -632,7 +640,7 @@ func (c *ServiceClient) decodeServiceError(response *http.Response) error {
 		} `json:"error"`
 	}
 	_ = decodeBoundedJSON(response.Body, &payload)
-	if err := c.rejectReflectedToken(payload); err != nil {
+	if err := c.boundary.CheckMetadata(payload); err != nil {
 		return err
 	}
 	code := strings.TrimSpace(payload.Error.Code)
@@ -640,121 +648,6 @@ func (c *ServiceClient) decodeServiceError(response *http.Response) error {
 		code = ""
 	}
 	return ServiceError{StatusCode: response.StatusCode, Code: code}
-}
-
-func (c *ServiceClient) rejectReflectedToken(value any) error {
-	var encoded bytes.Buffer
-	encoder := json.NewEncoder(&encoded)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
-		return errors.New("backup service returned invalid metadata")
-	}
-	for _, variant := range serviceTokenVariants(c.token) {
-		if variant != "" && bytes.Contains(encoded.Bytes(), []byte(variant)) {
-			return errReflectedBackupCredential
-		}
-	}
-	return nil
-}
-
-func serviceTokenVariants(token string) []string {
-	token = strings.TrimSpace(token)
-	quoted := strconv.Quote(token)
-	if len(quoted) >= 2 {
-		quoted = quoted[1 : len(quoted)-1]
-	}
-	bearer := "Bearer " + token
-	jsonQuoted, _ := json.Marshal(token)
-	jsonBearer, _ := json.Marshal(bearer)
-	return []string{
-		token,
-		quoted,
-		strings.Trim(string(jsonQuoted), `"`),
-		url.QueryEscape(token),
-		url.PathEscape(token),
-		base64.StdEncoding.EncodeToString([]byte(token)),
-		base64.RawStdEncoding.EncodeToString([]byte(token)),
-		base64.URLEncoding.EncodeToString([]byte(token)),
-		base64.RawURLEncoding.EncodeToString([]byte(token)),
-		bearer,
-		strings.Trim(string(jsonBearer), `"`),
-		url.QueryEscape(bearer),
-		url.PathEscape(bearer),
-		base64.StdEncoding.EncodeToString([]byte(bearer)),
-		base64.RawStdEncoding.EncodeToString([]byte(bearer)),
-		base64.URLEncoding.EncodeToString([]byte(bearer)),
-		base64.RawURLEncoding.EncodeToString([]byte(bearer)),
-	}
-}
-
-var errReflectedBackupCredential = errors.New("backup service response violated the credential boundary")
-
-type credentialScanningWriter struct {
-	destination io.Writer
-	patterns    [][]byte
-	tail        []byte
-	maxPattern  int
-}
-
-func newCredentialScanningWriter(destination io.Writer, variants []string) *credentialScanningWriter {
-	writer := &credentialScanningWriter{destination: destination}
-	seen := map[string]bool{}
-	for _, variant := range variants {
-		if variant == "" || seen[variant] {
-			continue
-		}
-		seen[variant] = true
-		writer.patterns = append(writer.patterns, []byte(variant))
-		if len(variant) > writer.maxPattern {
-			writer.maxPattern = len(variant)
-		}
-	}
-	return writer
-}
-
-func (w *credentialScanningWriter) Write(p []byte) (int, error) {
-	window := make([]byte, 0, len(w.tail)+len(p))
-	window = append(window, w.tail...)
-	window = append(window, p...)
-	for _, pattern := range w.patterns {
-		if bytes.Contains(window, pattern) {
-			return 0, errReflectedBackupCredential
-		}
-	}
-	keep := w.maxPattern - 1
-	if keep < 0 {
-		keep = 0
-	}
-	if keep > len(window) {
-		keep = len(window)
-	}
-	safe := window[:len(window)-keep]
-	if len(safe) > 0 {
-		written, err := w.destination.Write(safe)
-		if err != nil {
-			return 0, err
-		}
-		if written != len(safe) {
-			return 0, io.ErrShortWrite
-		}
-	}
-	w.tail = append(w.tail[:0], window[len(window)-keep:]...)
-	return len(p), nil
-}
-
-func (w *credentialScanningWriter) Flush() error {
-	if len(w.tail) == 0 {
-		return nil
-	}
-	written, err := w.destination.Write(w.tail)
-	if err != nil {
-		return err
-	}
-	if written != len(w.tail) {
-		return io.ErrShortWrite
-	}
-	w.tail = nil
-	return nil
 }
 
 func validServiceErrorCode(value string) bool {
