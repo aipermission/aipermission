@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -22,7 +23,7 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 	scope := CombinedMutationScope{
 		Database: fixture.database,
 		Registry: fixture.registry,
-		Preparation: CredentialPreparationPorts{
+		Preparation: profileinput.Ports{
 			Decrypt: func(context.Context, int64, string) (map[string]any, error) { return map[string]any{}, nil },
 			Encrypt: func(context.Context, int64, map[string]any) (string, error) { return "combined-ciphertext", nil },
 		},
@@ -74,7 +75,7 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 
 	create := performProfileMutationJSON(t, mux, http.MethodPost, "/connector-targets/with-profile", CreateTargetWithProfileRequest{
 		Target:  CreateTargetRequest{ProjectID: fixture.target.ProjectID, ConnectorKind: managementTestConnectorKind, Name: "Combined", Config: map[string]any{"endpoint": "combined"}},
-		Profile: CredentialProfileInput{Kind: "operator", Label: "combined", Public: map[string]any{"managed_marker": "keep"}, Secret: map[string]any{}},
+		Profile: profileinput.Input{Kind: "operator", Label: "combined", Public: map[string]any{"managed_marker": "keep"}, Secret: map[string]any{}},
 	})
 	var created TargetResponse
 	decodeManagementResponse(t, create, &created)
@@ -87,7 +88,7 @@ func TestCombinedMutationHandlersOwnAtomicCreateAndUpdate(t *testing.T) {
 		"/connector-targets/"+strconv.FormatInt(created.ID, 10)+"/with-profile/"+strconv.FormatInt(profileID, 10),
 		UpdateTargetWithProfileRequest{
 			Target:  UpdateTargetRequest{Name: "Combined renamed", Config: map[string]any{"endpoint": "combined-updated"}},
-			Profile: CredentialProfileInput{Kind: "operator", Label: "combined-renamed"},
+			Profile: profileinput.Input{Kind: "operator", Label: "combined-renamed"},
 		},
 	)
 	var updated TargetResponse

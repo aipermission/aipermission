@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -15,7 +16,7 @@ import (
 type CombinedMutationScope struct {
 	Database              *sql.DB
 	Registry              connectors.Catalog
-	Preparation           CredentialPreparationPorts
+	Preparation           profileinput.Ports
 	ValidateTransport     func(context.Context, int64, map[string]any) error
 	AcquireExclusive      func(context.Context) (func(), error)
 	Admission             *connectors.DeliveryAdmissionIdentity
@@ -64,7 +65,7 @@ func (h *CombinedMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Requ
 		writeTargetError(w, err)
 		return
 	}
-	prepared, err := PrepareCredentialProfile(r.Context(), connector, request.Profile, true, nil, "", scope.Preparation)
+	prepared, err := profileinput.Prepare(r.Context(), connector, request.Profile, true, nil, "", scope.Preparation)
 	if err != nil {
 		writeCredentialPreparationError(w, err)
 		return
@@ -164,7 +165,7 @@ func (h *CombinedMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	existingProfileView := connectortargets.CredentialProfileView(existingProfile)
-	prepared, err := PrepareCredentialProfile(
+	prepared, err := profileinput.Prepare(
 		r.Context(), connector, request.Profile, request.Profile.Secret != nil,
 		&existingProfileView, existingProfile.EncryptedSecretJSON, scope.Preparation,
 	)

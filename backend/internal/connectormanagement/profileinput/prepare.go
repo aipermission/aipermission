@@ -1,4 +1,5 @@
-package connectormanagement
+// Package profileinput prepares connector-owned credential forms without storage or lifecycle policy.
+package profileinput
 
 import (
 	"context"
@@ -9,20 +10,20 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
-var ErrCredentialSecretDecode = errors.New("credential secret could not be decoded")
+var ErrSecretDecode = errors.New("credential secret could not be decoded")
 
-type CredentialInputError struct{ Err error }
+type InputError struct{ Err error }
 
-func (err CredentialInputError) Error() string {
+func (err InputError) Error() string {
 	if err.Err == nil {
 		return "invalid credential profile"
 	}
 	return err.Err.Error()
 }
 
-func (err CredentialInputError) Unwrap() error { return err.Err }
+func (err InputError) Unwrap() error { return err.Err }
 
-type CredentialProfileInput struct {
+type Input struct {
 	Kind      string         `json:"kind"`
 	Label     string         `json:"label"`
 	Public    map[string]any `json:"public,omitempty"`
@@ -30,7 +31,7 @@ type CredentialProfileInput struct {
 	RiskLabel string         `json:"risk_label,omitempty"`
 }
 
-type PreparedCredentialProfile struct {
+type Prepared struct {
 	Kind          string
 	Label         string
 	Public        map[string]any
@@ -39,46 +40,46 @@ type PreparedCredentialProfile struct {
 	RiskLabel     string
 }
 
-type CredentialPreparationPorts struct {
+type Ports struct {
 	Canonicalize func(context.Context, string, string, map[string]any) (map[string]any, error)
 	Decrypt      func(context.Context, int64, string) (map[string]any, error)
 	Encrypt      func(context.Context, int64, map[string]any) (string, error)
 }
 
-func PrepareCredentialProfile(
+func Prepare(
 	ctx context.Context,
 	connector connectors.Connector,
-	request CredentialProfileInput,
+	request Input,
 	secretRequired bool,
 	previous *connectors.CredentialProfileView,
 	previousEncryptedSecret string,
-	ports CredentialPreparationPorts,
-) (PreparedCredentialProfile, error) {
+	ports Ports,
+) (Prepared, error) {
 	kind := strings.TrimSpace(request.Kind)
-	schema, ok := CredentialSchemaForKind(connector, kind)
+	schema, ok := SchemaForKind(connector, kind)
 	if !ok {
-		return PreparedCredentialProfile{}, CredentialInputError{Err: errors.New("unsupported credential kind")}
+		return Prepared{}, InputError{Err: errors.New("unsupported credential kind")}
 	}
 	secret, err := mergeCredentialSecrets(ctx, previous, previousEncryptedSecret, request.Secret, ports.Decrypt)
 	if err != nil {
-		return PreparedCredentialProfile{}, err
+		return Prepared{}, err
 	}
 	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, request.Public, secret, secretRequired); err != nil {
-		return PreparedCredentialProfile{}, CredentialInputError{Err: err}
+		return Prepared{}, InputError{Err: err}
 	}
 	public, err := canonicalCredentialPublic(ctx, connector.Kind(), kind, request.Public, ports.Canonicalize)
 	if err != nil {
-		return PreparedCredentialProfile{}, err
+		return Prepared{}, err
 	}
 	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, secret, secretRequired); err != nil {
-		return PreparedCredentialProfile{}, CredentialInputError{Err: err}
+		return Prepared{}, InputError{Err: err}
 	}
 	if validator, ok := connector.(connectors.CredentialProfileValidator); ok {
 		if err := validator.ValidateCredentialProfile(kind, public, secret, previous); err != nil {
-			return PreparedCredentialProfile{}, CredentialInputError{Err: err}
+			return Prepared{}, InputError{Err: err}
 		}
 	}
-	prepared := PreparedCredentialProfile{
+	prepared := Prepared{
 		Kind: kind, Label: request.Label, Public: public, RiskLabel: request.RiskLabel,
 	}
 	if secretRequired {
@@ -94,7 +95,7 @@ func PrepareCredentialProfile(
 	return prepared, nil
 }
 
-func EncryptPreparedCredentialSecret(ctx context.Context, profileID int64, prepared PreparedCredentialProfile, ports CredentialPreparationPorts) (*string, error) {
+func EncryptSecret(ctx context.Context, profileID int64, prepared Prepared, ports Ports) (*string, error) {
 	if !prepared.SecretChanged {
 		return nil, nil
 	}
@@ -108,7 +109,7 @@ func EncryptPreparedCredentialSecret(ctx context.Context, profileID int64, prepa
 	return &encrypted, nil
 }
 
-func CredentialSchemaForKind(connector connectors.Connector, kind string) (connectors.CredentialSchema, bool) {
+func SchemaForKind(connector connectors.Connector, kind string) (connectors.CredentialSchema, bool) {
 	if connector == nil || !connectors.ValidIdentifier(kind) {
 		return connectors.CredentialSchema{}, false
 	}
@@ -133,11 +134,11 @@ func mergeCredentialSecrets(
 	merged := map[string]any{}
 	if previousEncrypted != "" {
 		if previous == nil || previous.ID < 1 || decrypt == nil {
-			return nil, fmt.Errorf("%w: previous credential profile identity is unavailable", ErrCredentialSecretDecode)
+			return nil, fmt.Errorf("%w: previous credential profile identity is unavailable", ErrSecretDecode)
 		}
 		decoded, err := decrypt(ctx, previous.ID, previousEncrypted)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrCredentialSecretDecode, err)
+			return nil, fmt.Errorf("%w: %v", ErrSecretDecode, err)
 		}
 		for key, value := range decoded {
 			merged[key] = value

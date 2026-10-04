@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	management "github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -35,7 +36,7 @@ func TestManagedMetadataHTTPCreateCannotAssertConnectorOwnership(t *testing.T) {
 		"managed_preset": "read_only", "managed_scope": map[string]any{"preset": "read_only"},
 	} {
 		t.Run(field, func(t *testing.T) {
-			request := management.CredentialProfileInput{
+			request := profileinput.Input{
 				Kind: "username_password", Label: "forged",
 				Public: map[string]any{"username": "reader", field: value},
 				Secret: map[string]any{"password": "metadata-test-only"},
@@ -66,7 +67,7 @@ func TestManagedMetadataHTTPCreateCannotAssertConnectorOwnership(t *testing.T) {
 	if profiles != 0 || targets != 1 {
 		t.Fatalf("rejected requests persisted state: profiles=%d targets=%d", profiles, targets)
 	}
-	control := performManagedJSON(t, handler, http.MethodPost, path, management.CredentialProfileInput{
+	control := performManagedJSON(t, handler, http.MethodPost, path, profileinput.Input{
 		Kind: "username_password", Label: "ordinary",
 		Public: map[string]any{"username": "reader"}, Secret: map[string]any{"password": "metadata-test-only"},
 	})
@@ -80,7 +81,7 @@ func TestManagedMetadataHTTPUpdatesPreserveExactStoredOwnership(t *testing.T) {
 	handler := fixture.handler
 	response := performManagedJSON(t, handler, http.MethodPost, "/api/connector-targets/with-profile", management.CreateTargetWithProfileRequest{
 		Target: managedMetadataTargetRequest("metadata-update"),
-		Profile: management.CredentialProfileInput{
+		Profile: profileinput.Input{
 			Kind: "username_password", Label: "reader",
 			Public: map[string]any{"username": "reader"}, Secret: map[string]any{"password": "metadata-test-only"},
 		},
@@ -95,7 +96,7 @@ func TestManagedMetadataHTTPUpdatesPreserveExactStoredOwnership(t *testing.T) {
 	combinedPath := fmt.Sprintf("/api/connector-targets/%d/with-profile/%d", target.ID, profileID)
 	update := func(public map[string]any, combined bool) int {
 		t.Helper()
-		request := management.CredentialProfileInput{Kind: "username_password", Label: "reader", Public: public}
+		request := profileinput.Input{Kind: "username_password", Label: "reader", Public: public}
 		if !combined {
 			return performManagedJSON(t, handler, http.MethodPut, path, request).Code
 		}

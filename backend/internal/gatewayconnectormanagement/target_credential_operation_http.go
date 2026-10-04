@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	targethttp "github.com/aipermission/aipermission/backend/internal/connectortargets/httpapi"
@@ -34,7 +35,7 @@ func runCredentialTargetOperation(w http.ResponseWriter, r *http.Request, worksp
 		httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	if _, supported := connectormanagement.CredentialSchemaForKind(connector, profile.Kind); !supported {
+	if _, supported := profileinput.SchemaForKind(connector, profile.Kind); !supported {
 		httptransport.WriteError(w, http.StatusBadRequest, "unsupported credential kind")
 		return
 	}

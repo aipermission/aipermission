@@ -12,6 +12,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
 	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -241,7 +242,7 @@ func RequireCompletedCredentialCleanup(result connectors.ActionResult, err error
 }
 
 func validateProvisionedCredentialProfile(connector connectors.Connector, profile connectors.ProvisionedCredentialProfile) error {
-	schema, ok := CredentialSchemaForKind(connector, profile.Kind)
+	schema, ok := profileinput.SchemaForKind(connector, profile.Kind)
 	if !ok {
 		return connectortargets.ValidationError("unsupported credential kind")
 	}

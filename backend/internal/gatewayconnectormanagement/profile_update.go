@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -23,7 +24,7 @@ func UpdatePreparedCredentialProfile(
 		}
 	}
 	updated, err := connectormanagement.UpdatePreparedCredentialProfile(
-		ctx, store, target.domain(), profile.domain(), connectormanagement.PreparedCredentialProfile(prepared), ports.domain(), ensureDomain,
+		ctx, store, target.domain(), profile.domain(), profileinput.Prepared(prepared), ports.domain(), ensureDomain,
 	)
 	return credentialProfileFromDomain(updated), err
 }

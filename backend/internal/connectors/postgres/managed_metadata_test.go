@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
@@ -86,19 +86,19 @@ func TestManagedMetadataValidationUsesGenericCredentialPreparation(t *testing.T)
 	} {
 		public := clonePublicMap(reserved)
 		public["username"] = "reader"
-		_, err := connectormanagement.PrepareCredentialProfile(t.Context(), connector, connectormanagement.CredentialProfileInput{
+		_, err := profileinput.Prepare(t.Context(), connector, profileinput.Input{
 			Kind: "username_password", Label: "My credential", Public: public,
 			Secret: map[string]any{"password": "unit-test-only"},
-		}, true, nil, "", connectormanagement.CredentialPreparationPorts{})
+		}, true, nil, "", profileinput.Ports{})
 		if err == nil {
 			t.Fatalf("generic create accepted forged management metadata %#v", reserved)
 		}
 	}
 	for _, public := range []map[string]any{{"username": "reader"}, {"username": "reader", "managed_by_aipermission": false}} {
-		if _, err := connectormanagement.PrepareCredentialProfile(t.Context(), connector, connectormanagement.CredentialProfileInput{
+		if _, err := profileinput.Prepare(t.Context(), connector, profileinput.Input{
 			Kind: "username_password", Label: "My credential", Public: public,
 			Secret: map[string]any{"password": "unit-test-only"},
-		}, true, nil, "", connectormanagement.CredentialPreparationPorts{}); err != nil {
+		}, true, nil, "", profileinput.Ports{}); err != nil {
 			t.Fatalf("ordinary credential was rejected: %v", err)
 		}
 	}

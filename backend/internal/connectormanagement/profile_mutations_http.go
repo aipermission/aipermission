@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
@@ -14,7 +15,7 @@ import (
 type ProfileMutationScope struct {
 	Database              *sql.DB
 	Registry              connectors.Catalog
-	Preparation           CredentialPreparationPorts
+	Preparation           profileinput.Ports
 	AcquireExclusive      func(context.Context) (func(), error)
 	Admission             *connectors.DeliveryAdmissionIdentity
 	WithTransaction       func(context.Context, func(*sql.Tx, AuditAppender) error) error
@@ -42,7 +43,7 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	var request CredentialProfileInput
+	var request profileinput.Input
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
@@ -62,7 +63,7 @@ func (h *ProfileMutationHTTPHandler) Create(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteError(w, http.StatusBadRequest, "unsupported connector kind")
 		return
 	}
-	prepared, err := PrepareCredentialProfile(r.Context(), connector, request, true, nil, "", scope.Preparation)
+	prepared, err := profileinput.Prepare(r.Context(), connector, request, true, nil, "", scope.Preparation)
 	if err != nil {
 		writeCredentialPreparationError(w, err)
 		return
@@ -97,8 +98,8 @@ func createPreparedCredentialProfile(
 	ctx context.Context,
 	store *connectortargets.Store,
 	target connectortargets.Target,
-	prepared PreparedCredentialProfile,
-	preparation CredentialPreparationPorts,
+	prepared profileinput.Prepared,
+	preparation profileinput.Ports,
 	ensureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error,
 ) (connectortargets.CredentialProfile, error) {
 	if store == nil || ensureRuntimeSurfaces == nil {
@@ -112,7 +113,7 @@ func createPreparedCredentialProfile(
 	if err != nil {
 		return connectortargets.CredentialProfile{}, err
 	}
-	encrypted, err := EncryptPreparedCredentialSecret(ctx, profile.ID, prepared, preparation)
+	encrypted, err := profileinput.EncryptSecret(ctx, profile.ID, prepared, preparation)
 	if err != nil {
 		return connectortargets.CredentialProfile{}, err
 	}
@@ -141,7 +142,7 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	var request CredentialProfileInput
+	var request profileinput.Input
 	if !httptransport.DecodeJSON(w, r, &request, httptransport.DefaultJSONBodyBytes) {
 		return
 	}
@@ -175,7 +176,7 @@ func (h *ProfileMutationHTTPHandler) Update(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	existingView := connectortargets.CredentialProfileView(existing)
-	prepared, err := PrepareCredentialProfile(
+	prepared, err := profileinput.Prepare(
 		r.Context(), connector, request, request.Secret != nil,
 		&existingView, existing.EncryptedSecretJSON, scope.Preparation,
 	)
@@ -225,14 +226,14 @@ func UpdatePreparedCredentialProfile(
 	store *connectortargets.Store,
 	target connectortargets.Target,
 	existing connectortargets.CredentialProfile,
-	prepared PreparedCredentialProfile,
-	preparation CredentialPreparationPorts,
+	prepared profileinput.Prepared,
+	preparation profileinput.Ports,
 	ensureRuntimeSurfaces func(context.Context, *connectortargets.Store, connectortargets.Target, connectortargets.CredentialProfile) error,
 ) (connectortargets.CredentialProfile, error) {
 	if store == nil || ensureRuntimeSurfaces == nil {
 		return connectortargets.CredentialProfile{}, errProfileMutationRuntimeUnavailable
 	}
-	encrypted, err := EncryptPreparedCredentialSecret(ctx, existing.ID, prepared, preparation)
+	encrypted, err := profileinput.EncryptSecret(ctx, existing.ID, prepared, preparation)
 	if err != nil {
 		return connectortargets.CredentialProfile{}, err
 	}
@@ -275,11 +276,11 @@ func (h *ProfileMutationHTTPHandler) resolve(w http.ResponseWriter, update bool)
 }
 
 func writeCredentialPreparationError(w http.ResponseWriter, err error) {
-	var inputErr CredentialInputError
+	var inputErr profileinput.InputError
 	switch {
 	case errors.As(err, &inputErr):
 		httptransport.WriteError(w, http.StatusBadRequest, inputErr.Error())
-	case errors.Is(err, ErrCredentialSecretDecode):
+	case errors.Is(err, profileinput.ErrSecretDecode):
 		httptransport.WriteInternalError(w)
 	default:
 		writeTargetError(w, err)

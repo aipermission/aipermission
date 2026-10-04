@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
@@ -23,7 +24,7 @@ func TestProfileMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 	released := 0
 	lifecycleChanges := []TargetLifecycleChange{}
 	scope := profileMutationTestScope(fixture, &auditActions)
-	scope.Preparation = CredentialPreparationPorts{
+	scope.Preparation = profileinput.Ports{
 		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			if profileID < 1 || encrypted != "encrypted-profile-secret" {
 				t.Fatalf("decrypt input = %d %q", profileID, encrypted)
@@ -63,7 +64,7 @@ func TestProfileMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 
 	create := performProfileMutationJSON(t, mux, http.MethodPost,
 		"/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10)+"/profiles",
-		CredentialProfileInput{Kind: "operator", Label: "secondary", Secret: map[string]any{}},
+		profileinput.Input{Kind: "operator", Label: "secondary", Secret: map[string]any{}},
 	)
 	var created ProfileSummary
 	decodeManagementResponse(t, create, &created)
@@ -80,7 +81,7 @@ func TestProfileMutationHandlersOwnCreateAndUpdateTransactions(t *testing.T) {
 
 	update := performProfileMutationJSON(t, mux, http.MethodPut,
 		"/connector-targets/"+strconv.FormatInt(fixture.target.ID, 10)+"/profiles/"+strconv.FormatInt(created.ID, 10),
-		CredentialProfileInput{Kind: "operator", Label: "secondary-renamed"},
+		profileinput.Input{Kind: "operator", Label: "secondary-renamed"},
 	)
 	var updated ProfileSummary
 	decodeManagementResponse(t, update, &updated)
@@ -153,10 +154,10 @@ func TestProfileMutationsRejectMissingExclusiveRelease(t *testing.T) {
 	fixture := newManagementHTTPFixture(t)
 	for _, testCase := range []struct {
 		name, method, path string
-		payload            CredentialProfileInput
+		payload            profileinput.Input
 	}{
-		{name: "create", method: http.MethodPost, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles", payload: CredentialProfileInput{Kind: "operator", Label: "must-not-create", Secret: map[string]any{}}},
-		{name: "update", method: http.MethodPut, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles/" + strconv.FormatInt(fixture.profile.ID, 10), payload: CredentialProfileInput{Kind: fixture.profile.Kind, Label: "must-not-change"}},
+		{name: "create", method: http.MethodPost, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles", payload: profileinput.Input{Kind: "operator", Label: "must-not-create", Secret: map[string]any{}}},
+		{name: "update", method: http.MethodPut, path: "/connector-targets/" + strconv.FormatInt(fixture.target.ID, 10) + "/profiles/" + strconv.FormatInt(fixture.profile.ID, 10), payload: profileinput.Input{Kind: fixture.profile.Kind, Label: "must-not-change"}},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			auditActions := []string{}
@@ -193,11 +194,11 @@ func TestCredentialPreparationHTTPErrorClassification(t *testing.T) {
 		mustNotSee string
 	}{
 		{
-			name: "input", err: CredentialInputError{Err: errors.New("invalid profile input")},
+			name: "input", err: profileinput.InputError{Err: errors.New("invalid profile input")},
 			status: http.StatusBadRequest, want: "invalid profile input",
 		},
 		{
-			name: "secret decode", err: errors.Join(ErrCredentialSecretDecode, errors.New("cipher detail")),
+			name: "secret decode", err: errors.Join(profileinput.ErrSecretDecode, errors.New("cipher detail")),
 			status: http.StatusInternalServerError, mustNotSee: "cipher detail",
 		},
 		{
@@ -221,7 +222,7 @@ func profileMutationTestScope(fixture *managementHTTPFixture, auditActions *[]st
 	return ProfileMutationScope{
 		Database: fixture.database,
 		Registry: fixture.registry,
-		Preparation: CredentialPreparationPorts{
+		Preparation: profileinput.Ports{
 			Encrypt: func(context.Context, int64, map[string]any) (string, error) { return "encrypted", nil },
 		},
 		WithTransaction: func(ctx context.Context, mutate func(*sql.Tx, AuditAppender) error) error {
