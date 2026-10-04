@@ -4,12 +4,20 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
 func TestCoreJSONRoutesRejectLossyResourceNames(t *testing.T) {
 	fixture := newAPITestFixture(t)
 	token := createAPITestToken(t, fixture, t.Context(), "unicode boundary")
+	var dispatches atomic.Int64
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		dispatches.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer remote.Close()
+	target := createS3IdentityRuntime(t, fixture.server, remote.URL)
 	var initialCount int
 	if err := fixture.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM projects").Scan(&initialCount); err != nil {
 		t.Fatal(err)
@@ -19,7 +27,7 @@ func TestCoreJSONRoutesRejectLossyResourceNames(t *testing.T) {
 			t.Run(path+"/"+name, func(t *testing.T) {
 				body := `{"name":"` + name + `"}`
 				if strings.Contains(path, "connector-actions") {
-					body = `{"target_ref":"fixture:1:1","action_name":"delete_object","input":{"key":"` + name + `"},"reason":"identity test","idempotency_key":"identity-test"}`
+					body = `{"target_ref":"` + target.Ref + `","action_name":"delete_object","input":{"key":"` + name + `"},"reason":"identity test","idempotency_key":"identity-test"}`
 				}
 				request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 				request.Host, request.RemoteAddr = "localhost:8080", "127.0.0.1:12345"
@@ -38,7 +46,7 @@ func TestCoreJSONRoutesRejectLossyResourceNames(t *testing.T) {
 		}
 	}
 	var count int
-	if err := fixture.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM projects").Scan(&count); err != nil || count != initialCount {
-		t.Fatalf("invalid project name was persisted: count=%d err=%v", count, err)
+	if err := fixture.db.QueryRowContext(t.Context(), "SELECT COUNT(*) FROM projects").Scan(&count); err != nil || count != initialCount || dispatches.Load() != 0 {
+		t.Fatalf("invalid JSON caused a mutation: projects=%d S3_calls=%d err=%v", count, dispatches.Load(), err)
 	}
 }
