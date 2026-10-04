@@ -391,7 +391,7 @@
     "internal/connectors/kubernetes": 42,
     "internal/connectors/kubernetes/apiadapter": 62,
     "internal/connectors/mail": 53,
-    "internal/connectors/mail/content": 13.5,
+    "internal/connectors/mail/content": 96,
     "internal/connectors/postgres": 50,
     "internal/connectors/postgres/apiadapter": 90,
     "internal/connectors/postgres/cleanup": 100,
