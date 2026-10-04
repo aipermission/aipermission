@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 )
 
 type backupHTTPServiceFixture struct {
@@ -160,14 +162,13 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 		t.Fatalf("enable response=%d %s", enableResponse.Code, enableResponse.Body.String())
 	}
 
-	store := NewStore(database)
-	if _, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
+	if _, _, err := uploadoperation.NewStore(database).Claim(t.Context(), uploadoperation.ClaimRequest{
 		IdempotencyKey: "service-url-change", ProviderID: created.ID, DatabaseID: "db-test",
 		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: "install-test",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.MarkUploadDispatched(t.Context(), "service-url-change"); err != nil {
+	if err := uploadoperation.NewStore(database).MarkDispatched(t.Context(), "service-url-change"); err != nil {
 		t.Fatal(err)
 	}
 	replacementService := newBackupHTTPServiceFixture(t)
@@ -179,7 +180,7 @@ func TestProviderHTTPHandlersOwnLifecycle(t *testing.T) {
 	if activeUpdate.Code != http.StatusOK {
 		t.Fatalf("active update response=%d %s", activeUpdate.Code, activeUpdate.Body.String())
 	}
-	operation, err := store.GetUploadOperation(t.Context(), "service-url-change")
+	operation, err := uploadoperation.NewStore(database).Get(t.Context(), "service-url-change")
 	if err != nil || operation.Status != "expired" || operation.CompletedAt == nil || !strings.Contains(operation.LastError, "service identity changed") {
 		t.Fatalf("operation after service URL change=%#v err=%v", operation, err)
 	}

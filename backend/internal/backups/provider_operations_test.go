@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -323,7 +324,7 @@ func TestProviderOperationsSerializeRemoteSnapshotReconciliationWithUpload(t *te
 	if err != nil || record.DeletedAt != nil {
 		t.Fatalf("uploaded record was reconciled as missing: record=%#v err=%v", record, err)
 	}
-	operation, err := NewStore(database).GetUploadOperation(t.Context(), "serialized-upload")
+	operation, err := uploadoperation.NewStore(database).Get(t.Context(), "serialized-upload")
 	if err != nil || operation.Status != "completed" || operation.ProviderFileID != record.ProviderFileID {
 		t.Fatalf("upload operation = %#v, err=%v", operation, err)
 	}
@@ -418,14 +419,14 @@ func TestUploadRetryReconcilesOneRemoteVersionAfterUncertainResults(t *testing.T
 			if first := invoke(); first.Code < 400 {
 				t.Fatalf("first uncertain attempt unexpectedly succeeded: %d %s", first.Code, first.Body.String())
 			}
-			operation, err := NewStore(database).GetUploadOperation(context.Background(), "stable-upload")
+			operation, err := uploadoperation.NewStore(database).Get(context.Background(), "stable-upload")
 			if err != nil || operation.Status != "outcome_unknown" {
 				t.Fatalf("uncertain operation was not preserved: operation=%#v err=%v", operation, err)
 			}
 			if second := invoke(); second.Code != http.StatusCreated {
 				t.Fatalf("retry failed: %d %s", second.Code, second.Body.String())
 			}
-			operation, err = NewStore(database).GetUploadOperation(context.Background(), "stable-upload")
+			operation, err = uploadoperation.NewStore(database).Get(context.Background(), "stable-upload")
 			if err != nil || operation.Status != "completed" || operation.ProviderFileID != backup.ID {
 				t.Fatalf("operation was not reconciled: operation=%#v err=%v", operation, err)
 			}
@@ -478,7 +479,7 @@ func TestUploadRetryStopsAfterRemoteOperationTombstoneExpires(t *testing.T) {
 			t.Fatalf("attempt %d response = %d %s", attempt+1, response.Code, response.Body.String())
 		}
 	}
-	operation, err := NewStore(database).GetUploadOperation(context.Background(), "expired-upload")
+	operation, err := uploadoperation.NewStore(database).Get(context.Background(), "expired-upload")
 	if err != nil || operation.Status != "expired" || operation.CompletedAt == nil {
 		t.Fatalf("expired operation was not terminal: operation=%#v err=%v", operation, err)
 	}
@@ -508,7 +509,7 @@ func TestCompletedUploadReplayExpiresAfterRemoteRetention(t *testing.T) {
 	provider := createProviderTestRecord(t, database, service.URL, testOldServiceToken, "active")
 	store := NewStore(database)
 	sourceInstallationID := backupSourceInstallationID(filepath.Dir(databasePath))
-	_, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
+	_, _, err := uploadoperation.NewStore(database).Claim(t.Context(), uploadoperation.ClaimRequest{
 		IdempotencyKey: "retained-response", ProviderID: provider.ID, DatabaseID: "db-test",
 		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: sourceInstallationID,
 	})
@@ -523,7 +524,7 @@ func TestCompletedUploadReplayExpiresAfterRemoteRetention(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CompleteUploadOperation(t.Context(), "retained-response", "backup-retained"); err != nil {
+	if err := uploadoperation.NewStore(database).Complete(t.Context(), "retained-response", "backup-retained"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -540,7 +541,7 @@ func TestCompletedUploadReplayExpiresAfterRemoteRetention(t *testing.T) {
 	response := httptest.NewRecorder()
 	handlers.UploadProviderBackup(response, request)
 
-	operation, readErr := store.GetUploadOperation(t.Context(), "retained-response")
+	operation, readErr := uploadoperation.NewStore(database).Get(t.Context(), "retained-response")
 	if response.Code != http.StatusGone || !strings.Contains(response.Body.String(), `"code":"operation_expired"`) ||
 		readErr != nil || operation.Status != "expired" || listCalls.Load() != 1 || snapshots.Load() != 0 {
 		t.Fatalf("response=%d %s operation=%#v readErr=%v lists=%d snapshots=%d",
@@ -604,7 +605,7 @@ func TestUploadRejectsInvalidOperationKeyBeforeClaimOrSnapshot(t *testing.T) {
 	if response.Code != http.StatusBadRequest || snapshots.Load() != 0 {
 		t.Fatalf("response=%d %s snapshots=%d", response.Code, response.Body.String(), snapshots.Load())
 	}
-	if _, err := NewStore(database).GetUploadOperation(t.Context(), "bad/key"); !errors.Is(err, sql.ErrNoRows) {
+	if _, err := uploadoperation.NewStore(database).Get(t.Context(), "bad/key"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("invalid operation was persisted: %v", err)
 	}
 }
@@ -624,8 +625,7 @@ func TestUploadDefersStaleUncertainOperationExpiryToRemoteService(t *testing.T) 
 	t.Cleanup(service.Close)
 	database, databasePath := openProviderTestDatabase(t)
 	provider := createProviderTestRecord(t, database, service.URL, testOldServiceToken, "active")
-	store := NewStore(database)
-	_, _, err := store.ClaimUploadOperation(t.Context(), ClaimUploadOperationRequest{
+	_, _, err := uploadoperation.NewStore(database).Claim(t.Context(), uploadoperation.ClaimRequest{
 		IdempotencyKey: "stale-uncertain-upload", ProviderID: provider.ID, DatabaseID: "db-test",
 		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: backupSourceInstallationID(filepath.Dir(databasePath)),
 	})
@@ -653,7 +653,7 @@ func TestUploadDefersStaleUncertainOperationExpiryToRemoteService(t *testing.T) 
 	response := httptest.NewRecorder()
 	handlers.UploadProviderBackup(response, request)
 
-	operation, readErr := store.GetUploadOperation(t.Context(), "stale-uncertain-upload")
+	operation, readErr := uploadoperation.NewStore(database).Get(t.Context(), "stale-uncertain-upload")
 	if response.Code != http.StatusGone || !strings.Contains(response.Body.String(), `"code":"operation_expired"`) ||
 		readErr != nil || operation.Status != "expired" || snapshots.Load() != 1 || uploadCalls.Load() != 1 {
 		t.Fatalf("response=%d %s operation=%#v readErr=%v snapshots=%d remote=%d",
@@ -664,21 +664,20 @@ func TestUploadDefersStaleUncertainOperationExpiryToRemoteService(t *testing.T) 
 func TestUploadOperationCompletionIsIdempotentForTheSameRemoteBackup(t *testing.T) {
 	database, _ := openProviderTestDatabase(t)
 	provider := createProviderTestRecord(t, database, "http://127.0.0.1:1", testOldServiceToken, "active")
-	store := NewStore(database)
-	_, _, err := store.ClaimUploadOperation(context.Background(), ClaimUploadOperationRequest{
+	_, _, err := uploadoperation.NewStore(database).Claim(context.Background(), uploadoperation.ClaimRequest{
 		IdempotencyKey: "completion-race", ProviderID: provider.ID, DatabaseID: "db-test",
 		WorkspaceInstanceID: "instance-test", StreamID: "workspace-test", SourceInstallationID: "install-test",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-stable"); err != nil {
+	if err := uploadoperation.NewStore(database).Complete(context.Background(), "completion-race", "backup-stable"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-stable"); err != nil {
+	if err := uploadoperation.NewStore(database).Complete(context.Background(), "completion-race", "backup-stable"); err != nil {
 		t.Fatalf("same completion was not idempotent: %v", err)
 	}
-	if err := store.CompleteUploadOperation(context.Background(), "completion-race", "backup-different"); err == nil {
+	if err := uploadoperation.NewStore(database).Complete(context.Background(), "completion-race", "backup-different"); err == nil {
 		t.Fatal("different remote backup unexpectedly reused a completed operation")
 	}
 }

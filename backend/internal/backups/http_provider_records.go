@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/backups/uploadoperation"
 	"github.com/aipermission/aipermission/backend/internal/httpattachment"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
@@ -102,11 +103,12 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 	remoteName := stringFromMap(provider.Public, "database_name")
 	sourceInstallationID := backupSourceInstallationID(runtime.InstallationDataPath)
 	store := NewStore(runtime.Database)
-	operation, _, err := store.ClaimUploadOperation(r.Context(), ClaimUploadOperationRequest{
+	journal := uploadoperation.NewStore(runtime.Database)
+	operation, _, err := journal.Claim(r.Context(), uploadoperation.ClaimRequest{
 		IdempotencyKey: request.IdempotencyKey, ProviderID: provider.ID, DatabaseID: runtime.DatabaseID,
 		WorkspaceInstanceID: runtime.WorkspaceInstanceID, StreamID: streamID, SourceInstallationID: sourceInstallationID,
 	})
-	if errors.Is(err, ErrUploadIdempotencyConflict) {
+	if errors.Is(err, uploadoperation.ErrIdempotencyConflict) {
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 		return
 	}
@@ -153,14 +155,14 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		httptransport.WriteInternalError(w)
 		return
 	}
-	if err := store.MarkUploadDispatched(r.Context(), operationKey); err != nil {
+	if err := journal.MarkDispatched(r.Context(), operationKey); err != nil {
 		handleBackupProviderError(w, err)
 		return
 	}
 	backup, _, err := client.Upload(r.Context(), streamID, remoteName, sourceInstallationID, operationKey, snapshot.Path)
 	if err != nil {
 		if backupUploadOperationExpired(err) {
-			if expireErr := store.MarkUploadExpired(r.Context(), operationKey); expireErr != nil {
+			if expireErr := journal.MarkExpired(r.Context(), operationKey); expireErr != nil {
 				handleBackupProviderError(w, expireErr)
 				return
 			}
@@ -188,7 +190,7 @@ func (h *HTTPHandlers) UploadProviderBackup(w http.ResponseWriter, r *http.Reque
 		if mutationErr = WriteServiceBaseline(r.Context(), tx, stringFromMap(provider.Public, "base_url"), streamID, backup); mutationErr != nil {
 			return mutationErr
 		}
-		return txStore.CompleteUploadOperation(r.Context(), operationKey, backup.ID)
+		return uploadoperation.NewStore(tx).Complete(r.Context(), operationKey, backup.ID)
 	})
 	if err != nil {
 		markBackupUploadOutcomeUnknown(runtime.Database, operationKey, err)
@@ -206,7 +208,7 @@ func backupUploadOperationExpired(err error) bool {
 func markBackupUploadOutcomeUnknown(database *sql.DB, key string, operationErr error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = NewStore(database).MarkUploadOutcomeUnknown(ctx, key, operationErr)
+	_ = uploadoperation.NewStore(database).MarkOutcomeUnknown(ctx, key, operationErr)
 }
 
 func (h *HTTPHandlers) PruneProviderBackups(w http.ResponseWriter, r *http.Request) {
