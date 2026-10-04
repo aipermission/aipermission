@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets/actioncapacity"
 	"github.com/aipermission/aipermission/backend/internal/expirypolicy"
 	"github.com/aipermission/aipermission/backend/internal/history"
 	"github.com/aipermission/aipermission/backend/internal/timeformat"
@@ -651,7 +652,7 @@ func enforceActionRequestTokenCapacity(ctx context.Context, executor storeDB, to
 	if tokenID == nil || *tokenID < 1 {
 		return ValidationError("token capacity requires a token request")
 	}
-	withinCapacity, err := actionRequestWithinTokenCapacity(ctx, executor, *tokenID, id)
+	withinCapacity, err := actioncapacity.WithinDefault(ctx, executor, *tokenID, id)
 	if err != nil {
 		return err
 	}
