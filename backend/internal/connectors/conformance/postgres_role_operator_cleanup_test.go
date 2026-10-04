@@ -54,7 +54,8 @@ func TestPostgresRoleOperatorCleanupConfirmsRemoteOrphanBeforeTerminalAudit(t *t
 				}
 				if calls != 2 || name != "connector.role.cleanup_finished" || data["outcome"] != "cleanup_confirmed" ||
 					data["confirmed"] != fresh || fresh.Record.Status != rolejournal.Cleaned || fresh.Record.Generation == entry.Record.Generation {
-					t.Fatal("cleanup terminal audit preceded durable confirmation")
+					t.Fatalf("cleanup terminal audit preceded durable confirmation: calls=%d action=%q outcome=%v same_record=%t status=%s generation_changed=%t",
+						calls, name, data["outcome"], data["confirmed"] == fresh, fresh.Record.Status, fresh.Record.Generation != entry.Record.Generation)
 				}
 				assertPostgresOperatorOrphanCleaned(t, fixture, fresh)
 				if auditFails {
