@@ -241,6 +241,13 @@ fixtures and do not make release checks depend on an external backup provider.
   enabled.
 - First-run remote restore keeps service credentials transient and validates the
   encrypted database locally before installation.
+- Remote service metadata, redirects, and download-reader diagnostics are
+  checked for known forms of the configured service credential before exposure.
+  JSON decoder and JSON response-body read errors use fixed messages;
+  standard cancellation and deadline classifications remain available. This is
+  not a guarantee against arbitrary encodings of a credential. Malformed upload
+  success metadata leaves the operation `outcome_unknown` under its original
+  idempotency key, not a completed backup or an automatic new-key retry.
 - Mail action history can include bounded incoming bodies, outgoing drafts,
   recipients, subjects, and approval previews. These records remain encrypted
   but travel with `.aipdb` backups; configure finite history retention for
