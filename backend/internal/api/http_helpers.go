@@ -1,14 +1,14 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
-	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 	"net/http"
 	"strconv"
 	"strings"
 
+	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
+	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
 type httpDomainError struct {
@@ -88,7 +88,5 @@ func handleDomainError(w http.ResponseWriter, err error, domain httpDomainError)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	httptransport.WriteJSON(w, status, payload)
 }
