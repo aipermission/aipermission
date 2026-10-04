@@ -174,6 +174,11 @@ Infrastructure composition also opens native disposable workspaces to check
 handle/component isolation, captured action authority, closed-handle rejection,
 and settings rollback on required audit failure. These scoped controls ratchet
 their owner baseline without claiming complete entrypoint or service coverage.
+Action workflow fixtures combine native SQLCipher, authenticated record crypto,
+and the actual audit coordinator: authority drift prevents dispatch, replay
+does not re-execute, audit failure rolls back admission or terminal persistence,
+and mandatory credential masking survives optional transforms in history.
+Connector execution remains an in-memory fixture, not remote-service proof.
 The frontend changed-owner inventory also has no zero-valued owner floors;
 its full per-owner measurement remains part of the final candidate gate.
 The policy protects transport, gateway-owner, audit, connector, session, token,
