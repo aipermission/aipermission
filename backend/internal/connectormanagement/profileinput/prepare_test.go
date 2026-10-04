@@ -1,4 +1,4 @@
-package connectormanagement
+package profileinput
 
 import (
 	"context"
@@ -9,7 +9,9 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
 
-type credentialPreparationTestConnector struct{ managementTestConnector }
+type credentialPreparationTestConnector struct{ connectors.Connector }
+
+func (credentialPreparationTestConnector) Kind() string { return "preparation_fixture" }
 
 func (credentialPreparationTestConnector) CredentialSchemas() []connectors.CredentialSchema {
 	return []connectors.CredentialSchema{{
@@ -24,7 +26,7 @@ func (credentialPreparationTestConnector) CredentialSchemas() []connectors.Crede
 
 func TestPrepareCredentialProfilePreservesAndRemovesPreviousSecrets(t *testing.T) {
 	previous := &connectors.CredentialProfileView{ID: 7}
-	ports := CredentialPreparationPorts{
+	ports := Ports{
 		Decrypt: func(_ context.Context, profileID int64, encrypted string) (map[string]any, error) {
 			if profileID != 7 || encrypted != "encrypted" {
 				t.Fatalf("decrypt identity = %d %q", profileID, encrypted)
@@ -32,7 +34,7 @@ func TestPrepareCredentialProfilePreservesAndRemovesPreviousSecrets(t *testing.T
 			return map[string]any{"password": "old-password", "session_token": "temporary"}, nil
 		},
 	}
-	prepared, err := PrepareCredentialProfile(t.Context(), credentialPreparationTestConnector{}, CredentialProfileInput{
+	prepared, err := Prepare(t.Context(), credentialPreparationTestConnector{}, Input{
 		Kind: "account", Label: "main", Public: map[string]any{"username": "operator"},
 		Secret: map[string]any{"password": "new-password", "session_token": nil},
 	}, true, previous, "encrypted", ports)
@@ -48,9 +50,9 @@ func TestPrepareCredentialProfilePreservesAndRemovesPreviousSecrets(t *testing.T
 }
 
 func TestPrepareCredentialProfileLoadsSecretsForMetadataOnlyValidation(t *testing.T) {
-	prepared, err := PrepareCredentialProfile(t.Context(), credentialPreparationTestConnector{}, CredentialProfileInput{
+	prepared, err := Prepare(t.Context(), credentialPreparationTestConnector{}, Input{
 		Kind: "account", Label: "renamed", Public: map[string]any{"username": "operator"},
-	}, false, &connectors.CredentialProfileView{ID: 7}, "encrypted", CredentialPreparationPorts{
+	}, false, &connectors.CredentialProfileView{ID: 7}, "encrypted", Ports{
 		Decrypt: func(context.Context, int64, string) (map[string]any, error) {
 			return map[string]any{"password": "preserved"}, nil
 		},
@@ -64,27 +66,27 @@ func TestPrepareCredentialProfileLoadsSecretsForMetadataOnlyValidation(t *testin
 }
 
 func TestPrepareCredentialProfileClassifiesInputAndSecretDecodeErrors(t *testing.T) {
-	_, err := PrepareCredentialProfile(t.Context(), credentialPreparationTestConnector{}, CredentialProfileInput{Kind: "missing"}, true, nil, "", CredentialPreparationPorts{})
-	var inputErr CredentialInputError
+	_, err := Prepare(t.Context(), credentialPreparationTestConnector{}, Input{Kind: "missing"}, true, nil, "", Ports{})
+	var inputErr InputError
 	if !errors.As(err, &inputErr) || inputErr.Error() != "unsupported credential kind" {
 		t.Fatalf("unsupported kind error = %T %v", err, err)
 	}
-	_, err = PrepareCredentialProfile(t.Context(), credentialPreparationTestConnector{}, CredentialProfileInput{
+	_, err = Prepare(t.Context(), credentialPreparationTestConnector{}, Input{
 		Kind: "account", Public: map[string]any{"username": "operator"},
-	}, false, &connectors.CredentialProfileView{ID: 7}, "encrypted", CredentialPreparationPorts{
+	}, false, &connectors.CredentialProfileView{ID: 7}, "encrypted", Ports{
 		Decrypt: func(context.Context, int64, string) (map[string]any, error) { return nil, errors.New("decode failed") },
 	})
-	if !errors.Is(err, ErrCredentialSecretDecode) || strings.Contains(err.Error(), "operator") {
+	if !errors.Is(err, ErrSecretDecode) || strings.Contains(err.Error(), "operator") {
 		t.Fatalf("secret decode error = %v", err)
 	}
 }
 
 func TestCredentialInputErrorDefaultsAndUnwraps(t *testing.T) {
-	if got := (CredentialInputError{}).Error(); got != "invalid credential profile" {
+	if got := (InputError{}).Error(); got != "invalid credential profile" {
 		t.Fatalf("default error=%q", got)
 	}
 	cause := errors.New("invalid account")
-	wrapped := CredentialInputError{Err: cause}
+	wrapped := InputError{Err: cause}
 	if !errors.Is(wrapped, cause) {
 		t.Fatalf("wrapped error=%v", wrapped)
 	}
@@ -92,9 +94,9 @@ func TestCredentialInputErrorDefaultsAndUnwraps(t *testing.T) {
 
 func TestEncryptPreparedCredentialSecretUsesProfileBoundPort(t *testing.T) {
 	called := false
-	encrypted, err := EncryptPreparedCredentialSecret(t.Context(), 9, PreparedCredentialProfile{
+	encrypted, err := EncryptSecret(t.Context(), 9, Prepared{
 		Secret: map[string]any{"password": "secret"}, SecretChanged: true,
-	}, CredentialPreparationPorts{
+	}, Ports{
 		Encrypt: func(_ context.Context, profileID int64, secret map[string]any) (string, error) {
 			called = true
 			if profileID != 9 || secret["password"] != "secret" {

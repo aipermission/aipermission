@@ -5,6 +5,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectorcredentials"
 	"github.com/aipermission/aipermission/backend/internal/connectorcredentials/profilesecrets"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -18,9 +19,9 @@ type CredentialStorage struct {
 	WorkspaceID string
 }
 
-func RuntimeCredentialPreparation(storage CredentialStorage, provider CredentialCanonicalizerProvider) CredentialPreparationPorts {
+func RuntimeCredentialPreparation(storage CredentialStorage, provider CredentialCanonicalizerProvider) profileinput.Ports {
 	codec := profilesecrets.NewProfileSecretCodec(storage.Vault, storage.WorkspaceID)
-	return CredentialPreparationPorts{
+	return profileinput.Ports{
 		Canonicalize: func(ctx context.Context, connectorKind, credentialKind string, public map[string]any) (map[string]any, error) {
 			if provider != nil {
 				if canonicalize := provider(connectorKind); canonicalize != nil {

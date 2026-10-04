@@ -5,10 +5,12 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"net/http"
+
 	"github.com/aipermission/aipermission/backend/internal/connectorapproval"
 	"github.com/aipermission/aipermission/backend/internal/connectormanagement"
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
-	"net/http"
 )
 
 func InvalidTargetRefError() error { return connectortargets.ErrInvalidTargetRef }
@@ -31,8 +33,8 @@ type CreateTargetWithProfileRequest struct {
 }
 type CredentialCanonicalizer connectormanagement.CredentialCanonicalizer
 type CredentialStorage connectormanagement.CredentialStorage
-type CredentialProfileInput connectormanagement.CredentialProfileInput
-type PreparedCredentialProfile connectormanagement.PreparedCredentialProfile
+type CredentialProfileInput profileinput.Input
+type PreparedCredentialProfile profileinput.Prepared
 type ProfileSummary connectormanagement.ProfileSummary
 type ProvisionRequest connectormanagement.ProvisionRequest
 type TargetLifecycleChange connectormanagement.TargetLifecycleChange
@@ -103,10 +105,10 @@ func (boundary CredentialBoundary) RedactStructured(value any) (any, error) {
 func (boundary CredentialBoundary) Valid() bool { return boundary.value.Valid() }
 
 type CredentialPreparationPorts struct {
-	value connectormanagement.CredentialPreparationPorts
+	value profileinput.Ports
 }
 
-func (ports CredentialPreparationPorts) domain() connectormanagement.CredentialPreparationPorts {
+func (ports CredentialPreparationPorts) domain() profileinput.Ports {
 	return ports.value
 }
 func (ports CredentialPreparationPorts) Encrypt(ctx context.Context, profileID int64, secret map[string]any) (string, error) {

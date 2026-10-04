@@ -13,6 +13,7 @@ It is a navigator, not another implementation of security rules.
 | Permission, approval and public result projection               | `backend/internal/gatewayaccess`, `gatewayconnectoractions`, `gatewayconnectorapi` | [Permission Flow](../architecture/mcp-permission-flow.md) |
 | Workspace unlock, retirement and bounded shutdown               | `backend/internal/workspacelifecycle`, `workspaceruntime`                          | [Local Gateway](../architecture/local-gateway.md)         |
 | Credential resolution, cleanup and redaction                    | `backend/internal/connectorcredentials`, `connectorcapabilities`                   | [Credential Boundary](../security/credential-boundary.md) |
+| Credential form schema, secret merge and prepared input         | `backend/internal/connectormanagement/profileinput`                                | [Credential Boundary](../security/credential-boundary.md) |
 | Vault grants, requests and exact-session authorization          | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
 | Durable request/operation state                                 | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
 | Released baseline definitions and transactional upgrades        | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
@@ -76,6 +77,18 @@ preparation after lifecycle admission; do not repeat decrypt, boundary and
 runtime construction in HTTP handlers. Cancellation during preparation must
 prevent connector dispatch. Provisioning retains its original secret boundary
 for bounded post-dispatch compensation, which must not inherit cancellation.
+
+Credential form preparation lives in `connectormanagement/profileinput`. Both
+standalone and combined target/profile mutations call that owner directly:
+resolve the schema, merge stored secrets under the exact profile ID, validate
+submitted public and merged secret values, canonicalize public metadata,
+validate again, then invoke the connector's
+semantic validator. Metadata-only edits validate with existing secrets but do
+not rewrite them. Encryption receives the assigned profile ID through caller
+ports; it does not create a profile or open a transaction. The management owner
+still controls lifecycle admission, provisioned metadata preservation, audited
+transactions, secret revisions and runtime surface changes. Run the complete
+management and profile-input suites together when changing this boundary.
 
 Shell polling, request-generation invalidation and gateway context composition
 live in `frontend/src/components/use-app-shell-controller.ts`; the Shell owns

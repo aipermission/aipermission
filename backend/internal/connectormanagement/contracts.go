@@ -1,6 +1,9 @@
 package connectormanagement
 
-import "github.com/aipermission/aipermission/backend/internal/connectors"
+import (
+	"github.com/aipermission/aipermission/backend/internal/connectormanagement/profileinput"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+)
 
 type CreateTargetRequest struct {
 	ProjectID     int64          `json:"project_id"`
@@ -17,13 +20,13 @@ type UpdateTargetRequest struct {
 }
 
 type CreateTargetWithProfileRequest struct {
-	Target  CreateTargetRequest    `json:"target"`
-	Profile CredentialProfileInput `json:"profile"`
+	Target  CreateTargetRequest `json:"target"`
+	Profile profileinput.Input  `json:"profile"`
 }
 
 type UpdateTargetWithProfileRequest struct {
-	Target  UpdateTargetRequest    `json:"target"`
-	Profile CredentialProfileInput `json:"profile"`
+	Target  UpdateTargetRequest `json:"target"`
+	Profile profileinput.Input  `json:"profile"`
 }
 
 type TargetResponse struct {
