@@ -8,6 +8,7 @@
 scripts/**
 !scripts/production-source-boundary.mjs
 !scripts/monaco-sanitizer.mjs
+!scripts/initial-js-budget.mjs
 !public/
 !public/**
 !src/

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
+import { appVersion } from "./release.ts";
 import {
   indexSource,
   themeInitSource,
@@ -33,11 +34,13 @@ test("App keeps the primary route surface available", () => {
   assert.doesNotMatch(sidebarSource, /to: "\/servers"/);
 });
 
-test("static bootstrap and release metadata stay bundled", () => {
+test("static bootstrap and lightweight version metadata stay bundled", () => {
   assert.match(indexSource, /<script src="\/theme-init\.js"><\/script>/);
   assert.doesNotMatch(indexSource, /localStorage\.getItem\("aipermission-theme"\)/);
   assert.match(themeInitSource, /localStorage\.getItem\("aipermission-theme"\)/);
-  assert.match(releaseSource, /release\.generated\.json/);
+  assert.match(releaseSource, /import versionMetadata from "\.\/version\.generated\.json"/);
+  assert.doesNotMatch(releaseSource, /release\.generated\.json/);
+  assert.equal(appVersion, releaseManifest.version);
   assert.equal(releaseData.version, releaseManifest.version);
   assert.equal(releaseData.entries.length, 8);
   assert.equal(releaseData.entries[0].version, releaseManifest.version);

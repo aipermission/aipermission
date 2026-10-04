@@ -3,9 +3,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { productionSourceBoundary } from "./scripts/production-source-boundary.mjs";
 import { monacoSanitizer } from "./scripts/monaco-sanitizer.mjs";
+import { releaseNotesBoundary } from "./scripts/initial-js-budget.mjs";
 
 export default defineConfig({
-  plugins: [productionSourceBoundary(), monacoSanitizer(), react(), tailwindcss()],
+  plugins: [productionSourceBoundary(), monacoSanitizer(), releaseNotesBoundary(), react(), tailwindcss()],
   server: {
     port: 3210,
   },

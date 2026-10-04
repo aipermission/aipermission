@@ -34,14 +34,20 @@
       "lines": 100
     },
     "src/components/app-sidebar.tsx": {
-      "statements": 90.32,
-      "branches": 86.04,
-      "functions": 84.61,
-      "lines": 90.32
+      "statements": 93.93,
+      "branches": 86.66,
+      "functions": 92.85,
+      "lines": 93.54
     },
     "src/components/backup-freshness-notices.tsx": {
       "statements": 100,
       "branches": 91.66,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/changelog-entries.tsx": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },

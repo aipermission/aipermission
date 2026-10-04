@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { Link } from "react-router";
 import {
   Command,
@@ -24,10 +24,11 @@ import {
   UploadCloud,
   Vault,
 } from "lucide-react";
-import { appVersion, changelogEntries } from "../lib/release";
+import { appVersion } from "../lib/release";
 import { Badge, CountBadge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { Notice } from "./ui/notice";
 import { checkForUpdates } from "../lib/update-check";
 import { errorMessage } from "../lib/errors";
 import type { LucideIcon } from "lucide-react";
@@ -68,6 +69,12 @@ const navItems = [
 
 const githubUrl = "https://github.com/aipermission/aipermission";
 const npmUrl = "https://www.npmjs.com/package/@aipermission/mcp";
+function ChangelogUnavailable() {
+  return <Notice tone="bad">Changelog unavailable. Reload the page to retry.</Notice>;
+}
+const ChangelogEntries = lazy(() =>
+  import("./changelog-entries").then((module) => ({ default: module.ChangelogEntries })).catch(() => ({ default: ChangelogUnavailable })),
+);
 
 export function AppSidebar({
   pathname,
@@ -242,26 +249,11 @@ export function AppSidebar({
             ) : null}
             {updateState.state === "error" ? <p className="basis-full text-sm text-red-700">{updateState.error}</p> : null}
           </div>
-          {changelogEntries.map((entry) => (
-            <section key={entry.version} className="grid gap-3">
-              <div className="flex items-center justify-between gap-3 border-b border-stone-200 pb-2">
-                <h3 className="text-sm font-semibold text-stone-950">{entry.version}</h3>
-                <Badge>{entry.label}</Badge>
-              </div>
-              {entry.sections.map((section) => (
-                <div key={section.title} className="grid gap-2">
-                  <h4 className="text-xs font-semibold uppercase text-stone-500">{section.title}</h4>
-                  <ul className="grid gap-2 text-sm text-stone-700">
-                    {section.items.map((item) => (
-                      <li key={item} className="rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-            </section>
-          ))}
+          {changelogOpen ? (
+            <Suspense fallback={<Notice>Loading changelog...</Notice>}>
+              <ChangelogEntries />
+            </Suspense>
+          ) : null}
         </div>
       </Dialog>
     </aside>

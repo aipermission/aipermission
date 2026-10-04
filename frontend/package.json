@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "test:bundle:initial": "node --test scripts/initial-js-budget.test.mjs && node scripts/initial-js-budget.mjs",
+    "test:bundle:initial": "node --test ../scripts/frontend/initial-js-budget.test.mjs && node scripts/initial-js-budget.mjs",
     "types:generate": "openapi-typescript ../docs/api/openapi.json -o types/generated-openapi.d.ts",
     "types:check": "openapi-typescript ../docs/api/openapi.json -o types/generated-openapi.d.ts --check",
     "test:types": "npm run types:check && tsc --noEmit",

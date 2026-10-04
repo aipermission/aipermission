@@ -41,6 +41,7 @@ export const requiredAccessibilityTitles = Object.freeze([
 ]);
 
 export const requiredSmokeTitles = Object.freeze([
+  "loads canonical release notes only when the changelog opens",
   "renders security settings and updates MCP metadata exposure",
   "renders settings retention controls",
   "moves an edited connector to another project",
