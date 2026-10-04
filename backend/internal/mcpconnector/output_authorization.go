@@ -46,7 +46,7 @@ func (authorization *OutputAuthorization) ResponseForToken(
 }
 
 func (authorization *OutputAuthorization) Authorized(ctx context.Context, tokenID int64, request connectortargets.ActionRequest) bool {
-	if !authorization.valid() || request.TokenID == nil || *request.TokenID != tokenID {
+	if !authorization.valid() || !requestOwnedByToken(tokenID, request) {
 		return false
 	}
 	release, err := authorization.Delivery.Acquire(ctx)
@@ -96,7 +96,7 @@ func (authorization *OutputAuthorization) Deliver(w http.ResponseWriter, r *http
 
 // authorizedLocked requires the delivery gate to be held by the caller.
 func (authorization *OutputAuthorization) authorizedLocked(ctx context.Context, tokenID int64, request connectortargets.ActionRequest) bool {
-	if !authorization.MCPStarted() {
+	if !requestOwnedByToken(tokenID, request) || !authorization.MCPStarted() {
 		return false
 	}
 	now := authorization.now().UTC()
@@ -125,6 +125,10 @@ func (authorization *OutputAuthorization) authorizedLocked(ctx context.Context, 
 		principal,
 		vaultsessions.ObserveRequest{SessionID: *request.SessionID, SessionGeneration: *request.SessionGeneration},
 	)
+}
+
+func requestOwnedByToken(tokenID int64, request connectortargets.ActionRequest) bool {
+	return request.TokenID != nil && *request.TokenID == tokenID
 }
 
 func (authorization *OutputAuthorization) valid() bool {
