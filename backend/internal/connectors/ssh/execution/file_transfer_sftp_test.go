@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution/remotemetadata"
 	"github.com/pkg/sftp"
 )
 
@@ -18,16 +19,16 @@ type localMetadataCommitter struct {
 	*sftp.Client
 }
 
-func (client localMetadataCommitter) CompleteMetadata(_ context.Context, remotePath string) (remoteFileMetadata, error) {
+func (client localMetadataCommitter) CompleteMetadata(_ context.Context, remotePath string) (remotemetadata.Metadata, error) {
 	info, err := os.Lstat(remotePath)
 	if err != nil {
-		return remoteFileMetadata{}, err
+		return remotemetadata.Metadata{}, err
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return remoteFileMetadata{}, fmt.Errorf("local fixture stat type = %T", info.Sys())
+		return remotemetadata.Metadata{}, fmt.Errorf("local fixture stat type = %T", info.Sys())
 	}
-	return remoteFileMetadata{Mode: info.Mode(), UID: stat.Uid, GID: stat.Gid}, nil
+	return remotemetadata.Metadata{Mode: info.Mode(), UID: stat.Uid, GID: stat.Gid}, nil
 }
 
 func newSFTPFixture(t *testing.T) (*sftp.Client, string) {

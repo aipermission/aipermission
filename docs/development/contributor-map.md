@@ -50,6 +50,13 @@ session closure, mandatory redaction and transactional history projection.
 Run both `go test ./internal/console/manualinput` and the complete console suite
 when changing this boundary; do not duplicate classification in connectors.
 
+The SSH connector's `execution/remotemetadata` owner supplies complete remote
+stat metadata under one bounded-response contract. Call it only after peer
+verification and session admission; it does not replace the gateway permission
+pipeline. Mode/ownership preservation, atomic publication, uncertain mutation
+outcomes and staging recovery remain in transfer execution. Run both metadata
+and execution suites, including the disposable SFTP fixtures, for changes here.
+
 Human credential testing, backup and provisioning are composed by
 `backend/internal/connectormanagement`. Reuse its credential operation runtime
 preparation after lifecycle admission; do not repeat decrypt, boundary and

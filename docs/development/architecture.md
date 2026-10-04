@@ -185,6 +185,11 @@ place.
 - `internal/connectors/ssh/sshconfig`: conservative SSH config host discovery/parsing for SSH connector form prefill.
 - `internal/connectors/ssh/execution`: SSH command execution, SFTP file
   transfer primitives, and host key verification owned by the SSH connector.
+  Its `remotemetadata` owner reads bounded GNU/BSD stat responses from an
+  authenticated session and preserves exact ownership IDs and full mode bits.
+  It cannot authorize an upload, choose commit strategy or own staging cleanup;
+  those remain in the transfer execution owner. A supplied metadata session's
+  Close must unblock Run, which is drained before the metadata call returns.
 - `internal/filetransfer`: file transfer history metadata, progress, status, and
   checksum storage. File contents are not stored in SQLCipher.
 - `internal/gatewayoperations`: the command-request, backup, observation,

@@ -11,11 +11,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution/remotemetadata"
 	"github.com/pkg/sftp"
 )
 
@@ -184,7 +184,7 @@ func TestCommitRemoteUploadOverwritePreservesSpecialPermissionBits(t *testing.T)
 	want := os.FileMode(0o755) | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
 	client := &fakeUploadCommitter{
 		existing: map[string]bool{destination: true, staging: true},
-		metadata: map[string]remoteFileMetadata{
+		metadata: map[string]remotemetadata.Metadata{
 			destination: {Mode: want, UID: 1000, GID: 1000},
 			staging:     {Mode: 0o600, UID: 1000, GID: 1000},
 		},
@@ -232,105 +232,6 @@ func TestCommitRemoteUploadFailsClosedWithoutCompleteDestinationMetadata(t *test
 	}
 	if len(client.posixRenames) != 0 || len(client.chmods) != 0 {
 		t.Fatalf("incomplete metadata reached mutation: renames=%#v chmods=%#v", client.posixRenames, client.chmods)
-	}
-}
-
-func TestParseRemoteFileMetadataPreservesRootOwnershipAndPermissions(t *testing.T) {
-	metadata, err := parseRemoteFileMetadata("gnu 81c0 0 0\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !metadata.Mode.IsRegular() || metadata.Mode.Perm() != 0o700 || metadata.UID != 0 || metadata.GID != 0 {
-		t.Fatalf("metadata = %#v", metadata)
-	}
-}
-
-func TestParseRemoteFileMetadataAcceptsBSDStatMode(t *testing.T) {
-	metadata, err := parseRemoteFileMetadata("bsd 100640 501 20\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !metadata.Mode.IsRegular() || metadata.Mode.Perm() != 0o640 || metadata.UID != 501 || metadata.GID != 20 {
-		t.Fatalf("metadata = %#v", metadata)
-	}
-}
-
-func TestReadRemoteFileMetadataBoundsOutputAndHonorsCancellation(t *testing.T) {
-	for _, output := range []string{"gnu 81c0 0 0\n", "bsd 100640 501 20"} {
-		session := newFakeRemoteMetadataSession([][]byte{[]byte(output)}, false)
-		if _, err := readRemoteFileMetadata(t.Context(), session, "stat"); err != nil {
-			t.Fatalf("valid metadata %q: %v", output, err)
-		}
-	}
-
-	oversized := newFakeRemoteMetadataSession([][]byte{
-		bytes.Repeat([]byte(" "), maxRemoteMetadataOutputBytes),
-		[]byte("x"),
-	}, false)
-	if _, err := readRemoteFileMetadata(t.Context(), oversized, "stat"); err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("oversized metadata error = %v", err)
-	}
-	select {
-	case <-oversized.closed:
-	default:
-		t.Fatal("oversized metadata did not close the SSH session")
-	}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	blocked := newFakeRemoteMetadataSession(nil, true)
-	cancel()
-	if _, err := readRemoteFileMetadata(ctx, blocked, "stat"); !errors.Is(err, context.Canceled) {
-		t.Fatalf("canceled metadata error = %v", err)
-	}
-}
-
-type fakeRemoteMetadataSession struct {
-	chunks  [][]byte
-	blocked bool
-	stdout  io.Writer
-	closed  chan struct{}
-	once    sync.Once
-}
-
-func newFakeRemoteMetadataSession(chunks [][]byte, blocked bool) *fakeRemoteMetadataSession {
-	return &fakeRemoteMetadataSession{chunks: chunks, blocked: blocked, closed: make(chan struct{})}
-}
-
-func (session *fakeRemoteMetadataSession) SetStdout(output io.Writer) { session.stdout = output }
-
-func (session *fakeRemoteMetadataSession) Run(string) error {
-	if session.blocked {
-		<-session.closed
-		return net.ErrClosed
-	}
-	for _, chunk := range session.chunks {
-		if _, err := session.stdout.Write(chunk); err != nil {
-			return err
-		}
-		select {
-		case <-session.closed:
-			return net.ErrClosed
-		default:
-		}
-	}
-	return nil
-}
-
-func (session *fakeRemoteMetadataSession) Close() error {
-	session.once.Do(func() { close(session.closed) })
-	return nil
-}
-
-func TestRemoteMetadataCommandSupportsGNUAndBSDStatWithoutOptionLikePaths(t *testing.T) {
-	command := remoteMetadataCommand("-private")
-	if !strings.Contains(command, "stat -c") || !strings.Contains(command, "stat -f") || !strings.Contains(command, "'./-private'") {
-		t.Fatalf("metadata command = %q", command)
-	}
-}
-
-func TestQuoteRemoteShellArgEscapesPaths(t *testing.T) {
-	if got := quoteRemoteShellArg("/tmp/user's file"); got != `'/tmp/user'\''s file'` {
-		t.Fatalf("quoted path = %q", got)
 	}
 }
 
@@ -541,7 +442,7 @@ func TestRemoteUploadTempPathIsBoundedAndDoesNotExposeDestinationName(t *testing
 type fakeUploadCommitter struct {
 	existing                  map[string]bool
 	fileStats                 map[string]*sftp.FileStat
-	metadata                  map[string]remoteFileMetadata
+	metadata                  map[string]remotemetadata.Metadata
 	metadataErrors            map[string]error
 	createTargetBeforeLink    bool
 	createTargetWithLinkError bool
@@ -627,17 +528,17 @@ func (f *fakeUploadCommitter) Lstat(path string) (os.FileInfo, error) {
 	return nil, os.ErrNotExist
 }
 
-func (f *fakeUploadCommitter) CompleteMetadata(_ context.Context, path string) (remoteFileMetadata, error) {
+func (f *fakeUploadCommitter) CompleteMetadata(_ context.Context, path string) (remotemetadata.Metadata, error) {
 	if err := f.metadataErrors[path]; err != nil {
-		return remoteFileMetadata{}, err
+		return remotemetadata.Metadata{}, err
 	}
 	if metadata, ok := f.metadata[path]; ok {
 		return metadata, nil
 	}
 	if stat := f.fileStats[path]; stat != nil {
-		return remoteFileMetadata{Mode: stat.FileMode(), UID: stat.UID, GID: stat.GID}, nil
+		return remotemetadata.Metadata{Mode: stat.FileMode(), UID: stat.UID, GID: stat.GID}, nil
 	}
-	return remoteFileMetadata{Mode: 0o600, UID: 1000, GID: 1000}, nil
+	return remotemetadata.Metadata{Mode: 0o600, UID: 1000, GID: 1000}, nil
 }
 
 func (f *fakeUploadCommitter) Link(oldname string, newname string) error {
