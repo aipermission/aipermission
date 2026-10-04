@@ -376,7 +376,7 @@
     "internal/connectorcredentials/profilesecrets": 98,
     "internal/connectormanagement": 73,
     "internal/connectorresources": 60,
-    "internal/connectorruntime": 10,
+    "internal/connectorruntime": 63,
     "internal/connectors": 75,
     "internal/connectors/builtin": 80.5,
     "internal/connectors/builtin/adaptercontainers": 98,
