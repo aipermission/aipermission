@@ -425,6 +425,7 @@
     "internal/databasecatalog": 75.5,
     "internal/databaseownership": 75,
     "internal/db": 75,
+    "internal/db/baselineschema": 100,
     "internal/db/keymaterial": 100,
     "internal/db/auditmigration": 98,
     "internal/db/backupmigration": 64.5,
@@ -509,6 +510,7 @@
     "defaultMaxLines": 3500,
     "stricterRatchets": {
       "backend/internal/db": 2700,
+      "backend/internal/db/baselineschema": 700,
       "backend/internal/connectors/mail": 3200,
       "backend/internal/console": 3300,
       "backend/internal/connectors/s3": 3250

@@ -1,4 +1,4 @@
-package db
+package baselineschema
 
 var coreTableStatements = []string{
 	`CREATE TABLE IF NOT EXISTS connector_credential_resources (

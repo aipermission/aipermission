@@ -14,6 +14,7 @@ It is a navigator, not another implementation of security rules.
 | Credential resolution, cleanup and redaction              | `backend/internal/connectorcredentials`, `connectorcapabilities`                   | [Credential Boundary](../security/credential-boundary.md) |
 | Vault grants, requests and exact-session authorization    | `backend/internal/vaultactions`, `vaultrequests`, `vaultsessions`                  | [Vault API](../api/mcp-tools.md#project-vault-tools)      |
 | Durable request/operation state                           | `backend/internal/connectortargets`, `commandrequests`, `gatewayoperations`        | [REST API](../api/rest-api.md)                            |
+| Released baseline definitions and transactional upgrades  | `backend/internal/db/baselineschema` (definitions), `db` (migration policy/I/O)    | [Development Architecture](architecture.md)               |
 | MCP setup, private config writers and response validation | `packages/mcp/src`                                                                 | [MCP Client Setup](../setup/mcp-client-setup.md)          |
 | Test discovery, immutable baselines and release gates     | `scripts`, `maintenance-policy.json`, frontend/MCP policies                        | [Testing](testing.md)                                     |
 
@@ -21,6 +22,14 @@ Connector-specific transports and templates do not own a second approval,
 audit, history or credential pipeline. Browser completions must still belong
 to the current draft, dialog, session and request generation; matching an ID
 alone is not enough after switching away and back.
+
+Released baseline SQL belongs to `internal/db/baselineschema`; it returns
+caller-owned ordered statement slices, never a shared mutable plan. Add schema
+changes as new numbered migrations in `internal/db`, not by rewriting released
+baseline definitions. The DB owner still controls upgrade ordering, preflight
+checks, transactions, projection synchronization and restart recovery. The
+native baseline contract tests pin both SQL order and the resulting SQLite
+schema; run the complete DB suite when changing either owner.
 
 Human credential testing, backup and provisioning are composed by
 `backend/internal/connectormanagement`. Reuse its credential operation runtime
