@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { apiPost, apiPut } from "../../lib/api.ts";
-import { createTargetWithProfile, updateTargetWithProfile } from "./target-profile-save";
+import { createTargetWithProfile, updateTargetWithProfile } from "./atomic-save";
 
 vi.mock("../../lib/api.ts", () => ({ apiPost: vi.fn(), apiPut: vi.fn() }));
 

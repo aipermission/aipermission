@@ -15,7 +15,7 @@ import * as mail from "../mail/model";
 import * as rabbitmq from "../rabbitmq/model";
 import * as s3 from "../s3/model";
 import * as redis from "../redis/model";
-import type { LifecycleCredentialFormProps, CredentialFormPropsContext, LifecycleProfile } from "./target-profile-lifecycle-types";
+import type { LifecycleCredentialFormProps, CredentialFormPropsContext, LifecycleProfile } from "../../profile-lifecycle/types";
 import {
   defaultTargetProfile,
   firstTargetCredentialForm,

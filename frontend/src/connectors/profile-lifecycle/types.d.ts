@@ -31,8 +31,8 @@ export interface LifecycleCredentialForm {
 }
 
 export interface LifecycleCredentialRow<Profile extends LifecycleProfile, Target extends LifecycleTarget<Profile>> {
-  id: string | number;
-  target_id: string | number;
+  id: Exclude<Profile["id"], undefined>;
+  target_id: Exclude<Target["id"], undefined>;
   profile?: Profile;
   target?: Target;
 }
@@ -98,6 +98,23 @@ export interface LifecycleOptions<
   beforeSave?: ((_context: LifecycleSaveContext<Form, Target>) => unknown) | null;
   beforeSaveCredential?: ((_context: LifecycleCredentialContext<CredentialForm, Profile, Target>) => unknown) | null;
 }
+
+export type ProfilePersistenceOptions<
+  Form extends LifecycleTargetForm,
+  CredentialForm extends LifecycleCredentialForm,
+  Profile extends LifecycleProfile,
+  Target extends LifecycleTarget<Profile>,
+> = Omit<LifecycleOptions<Form, CredentialForm, Profile, Target>, "profilePayload"> & {
+  invalidIdentityMessage?: string;
+  targetProfilePayload: (
+    _form: Form,
+    _context: { operation: "target-create" | "target-update"; profile: Profile | null },
+  ) => Record<string, unknown>;
+  credentialProfilePayload: (
+    _form: CredentialForm,
+    _context: { operation: "credential-create" | "credential-update"; profile: Profile | null },
+  ) => Record<string, unknown>;
+};
 
 export interface CredentialFormPropsContext<Form, FormState extends { form: Form }, Status, Target> {
   targets: Target[];

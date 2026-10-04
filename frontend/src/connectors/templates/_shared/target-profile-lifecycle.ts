@@ -1,22 +1,17 @@
 import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts.ts";
-import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
+import { apiPost } from "../../../lib/api.ts";
+import { createProfilePersistence, selectedTargetProfile } from "../../profile-lifecycle/persistence.ts";
 import type { FormEvent, SetStateAction } from "react";
 import type {
   CredentialFormPropsContext,
   LifecycleCredentialFormProps,
-  LifecycleCredentialContext,
   LifecycleCredentialForm,
-  LifecycleCredentialRow,
   LifecycleDisplayRow,
-  LifecycleMessage,
-  LifecycleMessageContext,
   LifecycleOptions,
   LifecycleProfile,
-  LifecycleSaveContext,
   LifecycleTarget,
   LifecycleTargetForm,
-} from "./target-profile-lifecycle-types";
+} from "../../profile-lifecycle/types";
 
 const lifecycleFunctions = new WeakSet();
 const standardLifecycleFunctions = ["credentialFormProps", "deleteCredential", "deleteTarget", "save", "saveCredential", "test"] as const;
@@ -61,49 +56,14 @@ export function createTargetProfileLifecycle<
   CredentialForm extends LifecycleCredentialForm = LifecycleCredentialForm,
   Profile extends LifecycleProfile = LifecycleProfile,
   Target extends LifecycleTarget<Profile> = LifecycleTarget<Profile>,
->({
-  connectorKind,
-  connectorLabel,
-  targetPayload,
-  profilePayload,
-  credentialCreatedMessage = `${connectorLabel} credential created.`,
-  credentialUpdatedMessage = `${connectorLabel} credential updated.`,
-  credentialMissingMessage = `${connectorLabel} credential is not loaded.`,
-  unsupportedCredentialMessage = `Unsupported ${connectorLabel} credential operation.`,
-  beforeSave = null,
-  beforeSaveCredential = null,
-}: LifecycleOptions<Form, CredentialForm, Profile, Target>) {
-  function selectedProfile(target: Target | null | undefined, profileID: string | number | undefined) {
-    return (
-      target?.profiles?.find((item) => Number(item.id) === Number(profileID)) ||
-      (target?.profiles?.length === 1 ? target.profiles[0] : null)
-    );
-  }
-
-  async function save({ mode, form, target }: LifecycleSaveContext<Form, Target>) {
-    await beforeSave?.({ mode, form, target });
-    if (mode !== "edit") {
-      await createTargetWithProfile({
-        projectID: form.project_id,
-        targetPayload: { connector_kind: connectorKind, ...targetPayload(form) },
-        profilePayload: profilePayload(form, { operation: "target-create", profile: null }),
-      });
-      return;
-    }
-    const profile = selectedProfile(target, form.profile_id);
-    if (!target?.id || !profile?.id) throw new Error(`${connectorLabel} connector profile is not loaded.`);
-    await updateTargetWithProfile({
-      projectID: form.project_id,
-      targetID: target.id,
-      profileID: profile.id,
-      targetPayload: targetPayload(form),
-      profilePayload: profilePayload(form, { operation: "target-update", profile }),
-    });
-  }
-
-  async function deleteTarget({ target }: { target: Target }) {
-    await apiDelete(`/api/connector-targets/${target.id}`);
-  }
+>(options: LifecycleOptions<Form, CredentialForm, Profile, Target>) {
+  const { profilePayload, ...persistenceOptions } = options;
+  const { connectorLabel } = persistenceOptions;
+  const { save, deleteTarget, saveCredential, deleteCredential } = createProfilePersistence({
+    ...persistenceOptions,
+    targetProfilePayload: profilePayload,
+    credentialProfilePayload: profilePayload,
+  });
 
   function credentialFormProps<FormState extends { form: object }, Status, FormTarget extends Target>({
     targets,
@@ -131,42 +91,8 @@ export function createTargetProfileLifecycle<
     };
   }
 
-  async function saveCredential({
-    operation,
-    row,
-    formState,
-    targets = [],
-  }: Omit<LifecycleCredentialContext<CredentialForm, Profile, Target>, "form" | "targets"> & {
-    formState: { form: CredentialForm };
-    targets?: Target[];
-  }) {
-    const form = formState.form;
-    await beforeSaveCredential?.({ operation, row, form, targets });
-    const target = row?.target || targets.find((item) => Number(item.id) === Number(form.target_id)) || null;
-    if (operation === "create") {
-      await apiPost(
-        `/api/connector-targets/${form.target_id}/profiles`,
-        profilePayload(form, { operation: "credential-create", profile: null }),
-      );
-      return { message: lifecycleMessage(credentialCreatedMessage, { form, row: null, target }) };
-    }
-    if (operation === "update") {
-      if (!row) throw new Error(credentialMissingMessage);
-      await apiPut(
-        `/api/connector-targets/${form.target_id}/profiles/${row.id}`,
-        profilePayload(form, { operation: "credential-update", profile: row.profile || null }),
-      );
-      return { message: lifecycleMessage(credentialUpdatedMessage, { form, row, target }) };
-    }
-    throw new Error(unsupportedCredentialMessage);
-  }
-
-  async function deleteCredential({ row }: { row: LifecycleCredentialRow<Profile, Target> }) {
-    await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-  }
-
   async function test({ target, profile }: { target: Target; profile?: Profile | null }) {
-    const selected = profile || selectedProfile(target, "");
+    const selected = profile || selectedTargetProfile(target, "");
     if (!selected) throw new Error(`${connectorLabel} connector profile is not loaded.`);
     const data = connectorConnectionTestResponse(await apiPost(`/api/connector-targets/${target.id}/profiles/${selected.id}/test`, {}));
     return { ok: data.ok, error: data.message || null, data };
@@ -218,11 +144,4 @@ export function connectorCredentialRows<Profile extends LifecycleProfile, Target
         delete_disabled: "",
       })),
     );
-}
-
-function lifecycleMessage<Form, Profile extends LifecycleProfile, Target extends LifecycleTarget<Profile>>(
-  value: LifecycleMessage<Form, Profile, Target>,
-  context: LifecycleMessageContext<Form, Profile, Target>,
-) {
-  return typeof value === "function" ? value(context) : value;
 }

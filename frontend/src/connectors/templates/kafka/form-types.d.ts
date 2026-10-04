@@ -1,7 +1,7 @@
 import type { CredentialProfileForm } from "../_shared/connector-form-types";
 import type { ComponentProps } from "react";
 import type { ConnectionModeFields } from "../_shared/network-transport-fields";
-import type { LifecycleTarget } from "../_shared/target-profile-lifecycle-types";
+import type { LifecycleTarget } from "../../profile-lifecycle/types";
 
 export type KafkaSASLForm = { sasl_mechanism: string; existing_sasl_mechanism?: string; username: string; password: string };
 export type KafkaCredentialForm = CredentialProfileForm & KafkaSASLForm;

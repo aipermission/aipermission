@@ -1,6 +1,6 @@
 import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts.ts";
-import { apiDelete, apiPost, apiPut } from "../../../lib/api.ts";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save.ts";
+import { apiPost } from "../../../lib/api.ts";
+import { createProfilePersistence, selectedTargetProfile } from "../../profile-lifecycle/persistence.ts";
 import { connectorCredentialRows } from "./target-profile-lifecycle.ts";
 import type { DatabaseCredentialForm } from "./database-form-types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
@@ -35,6 +35,22 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     credentialMetadata = defaultCredentialMetadata,
     includeEmptyPassword = false,
   } = config;
+
+  const { save, deleteTarget, saveCredential, deleteCredential } = createProfilePersistence<
+    DatabaseModelForm<Fields>,
+    Credential,
+    DatabaseProfile,
+    DatabaseTarget
+  >({
+    connectorKind: kind,
+    connectorLabel: label,
+    targetPayload: (form) => ({ name: form.name, config: targetConfig(form) }),
+    targetProfilePayload: (form, { operation, profile }) =>
+      profilePayload(form, profile, operation === "target-create", targetCredentialPublic(form)),
+    credentialProfilePayload: (form, { operation, profile }) =>
+      profilePayload(form, profile, operation === "credential-create", credentialPublic(form)),
+    invalidIdentityMessage: "Connector target profile is not loaded.",
+  });
 
   function emptyForm(): DatabaseModelForm<Fields> {
     return {
@@ -87,26 +103,6 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     return mode === "edit" ? "Save changes" : "Create connector";
   }
 
-  async function save({
-    mode,
-    form,
-    target,
-  }: {
-    mode: string;
-    form: DatabaseModelForm<Fields>;
-    target?: DatabaseTarget | null;
-  }): Promise<void> {
-    if (mode === "edit") {
-      await updateTarget(form, target);
-      return;
-    }
-    await createTarget(form);
-  }
-
-  async function deleteTarget({ target }: { target: DatabaseTarget }): Promise<void> {
-    await apiDelete(`/api/connector-targets/${target.id}`);
-  }
-
   function emptyCredentialState({ targets = [] }: { targets?: DatabaseTarget[] } = {}) {
     const firstTarget = targets.find((target) => target.connector_kind === kind);
     return { form: { ...credentialDefaults, target_id: String(firstTarget?.id || "") } };
@@ -138,35 +134,6 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
     };
   }
 
-  async function saveCredential({
-    operation,
-    row,
-    formState,
-  }: {
-    operation: string;
-    row?: DatabaseCredentialRow | null;
-    formState: { form: Credential };
-  }) {
-    const form = formState.form;
-    if (operation === "create") {
-      await apiPost(`/api/connector-targets/${form.target_id}/profiles`, profilePayload(form, null, true, credentialPublic(form)));
-      return { message: `${label} credential created.` };
-    }
-    if (operation === "update") {
-      if (!row) throw new Error(`${label} credential is not loaded.`);
-      await apiPut(
-        `/api/connector-targets/${form.target_id}/profiles/${row.id}`,
-        profilePayload(form, row.profile ?? null, false, credentialPublic(form)),
-      );
-      return { message: `${label} credential updated.` };
-    }
-    throw new Error(`Unsupported ${label} credential operation.`);
-  }
-
-  async function deleteCredential({ row }: { row: Pick<DatabaseCredentialRow, "id" | "target_id"> }): Promise<void> {
-    await apiDelete(`/api/connector-targets/${row.target_id}/profiles/${row.id}`);
-  }
-
   function credentialRows<Profile extends DatabaseProfile, Target extends DatabaseTarget & { profiles?: Profile[] }>({
     targets,
   }: {
@@ -182,7 +149,7 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
   }
 
   async function test({ target, profile }: { target: DatabaseTarget; profile?: DatabaseProfile | null }) {
-    const selectedProfile = profile || (target?.profiles?.length === 1 ? target.profiles[0] : null);
+    const selectedProfile = profile || selectedTargetProfile(target, "");
     if (!selectedProfile) throw new Error("Connector profile is not loaded.");
     const data = connectorConnectionTestResponse(
       await apiPost(`/api/connector-targets/${target.id}/profiles/${selectedProfile.id}/test`, {}),
@@ -205,28 +172,6 @@ export function createDatabaseConnectorModel<Fields extends DatabaseTargetDefaul
 
   function deleteDialog({ target }: { target?: DatabaseTarget | null }) {
     return databaseDeleteDialog(label, target);
-  }
-
-  async function createTarget(form: DatabaseModelForm<Fields>): Promise<void> {
-    await createTargetWithProfile({
-      projectID: form.project_id,
-      targetPayload: { connector_kind: kind, name: form.name, config: targetConfig(form) },
-      profilePayload: profilePayload(form, null, true, targetCredentialPublic(form)),
-    });
-  }
-
-  async function updateTarget(form: DatabaseModelForm<Fields>, target?: DatabaseTarget | null): Promise<void> {
-    const profile =
-      target?.profiles?.find((item) => Number(item.id) === Number(form.profile_id)) ||
-      (target?.profiles?.length === 1 ? target.profiles[0] : null);
-    if (!target || !profile) throw new Error(`${label} connector profile is not loaded.`);
-    await updateTargetWithProfile({
-      projectID: form.project_id,
-      targetID: target.id,
-      profileID: profile.id,
-      targetPayload: { name: form.name, config: targetConfig(form) },
-      profilePayload: profilePayload(form, profile, false, targetCredentialPublic(form)),
-    });
   }
 
   function profilePayload(

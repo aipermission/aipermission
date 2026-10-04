@@ -15,6 +15,8 @@ export default defineConfig({
         "src/lib/use-connector-permissions.ts",
         "src/connectors/templates/_shared/action-runner.ts",
         "src/connectors/templates/_shared/target-profile-lifecycle.ts",
+        "src/connectors/profile-lifecycle/persistence.ts",
+        "src/connectors/profile-lifecycle/atomic-save.ts",
         "src/components/console/connector-action-approval-dialog.tsx",
         "src/components/console/connector-token-permission-panel.tsx",
         "src/components/console/use-console-page-state.ts",

@@ -169,6 +169,13 @@ test("rejects production modules above the line budget", (context) => {
   assert.ok(result.failures.some((failure) => failure.includes("oversized.js has 2 lines; budget is 1")));
 });
 
+test("profile persistence belongs to the shared connector layer without template privileges", (context) => {
+  const { result } = createSourceFixture(context, "profile-persistence");
+  assert.deepEqual(result.failures, [
+    "connectors/profile-lifecycle/persistence.js imports connectors/templates/fixture/model.js across forbidden boundary: shared connector code must not depend on a concrete template",
+  ]);
+});
+
 test("classifies only terminal test filename markers as test support", (context) => {
   const { result } = createSourceFixture(context, "test-support");
   assert.ok(result.failures.some((failure) => failure.includes("production modules must not import test support")));

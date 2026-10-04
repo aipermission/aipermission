@@ -602,6 +602,17 @@ create/update/delete/test routes into each model. Keep a custom lifecycle only
 when the remote system has materially different cleanup or provisioning
 semantics, and cover that exception with focused tests.
 
+The standard lifecycle and the database model share one persistence owner in
+`frontend/src/connectors/profile-lifecycle`. It owns generic target/profile
+CRUD, atomic target-plus-profile saves, profile selection, and validation-hook
+ordering. Database models use distinct typed target and credential serializers;
+password omission and public credential fields remain serializer decisions,
+not branches in the persistence owner. Return the owner's mutation functions
+directly; do not add forwarding methods or duplicate API routes in templates.
+The atomic save helper also supports custom provisioning lifecycles without
+registering them as standard lifecycles. Run the owner tests plus the affected
+template model tests whenever changing these boundaries.
+
 | Export                                                                                                                          |          Required | Purpose                                                                                             |
 | ------------------------------------------------------------------------------------------------------------------------------- | ----------------: | --------------------------------------------------------------------------------------------------- |
 | `emptyForm`                                                                                                                     |               yes | Initial add-target form state.                                                                      |

@@ -9,6 +9,7 @@ It is a navigator, not another implementation of security rules.
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------- |
 | Connector schemas, preparation and external execution           | `backend/internal/connectors/<kind>`                                               | [Add a Connector](add-a-connector.md)                     |
 | Connector UI and local request ownership                        | `frontend/src/connectors/templates/<kind>` and `_shared`                           | [Development Architecture](architecture.md)               |
+| Shared browser target/profile persistence                       | `frontend/src/connectors/profile-lifecycle`                                        | [Add a Connector](add-a-connector.md)                     |
 | Permission, approval and public result projection               | `backend/internal/gatewayaccess`, `gatewayconnectoractions`, `gatewayconnectorapi` | [Permission Flow](../architecture/mcp-permission-flow.md) |
 | Workspace unlock, retirement and bounded shutdown               | `backend/internal/workspacelifecycle`, `workspaceruntime`                          | [Local Gateway](../architecture/local-gateway.md)         |
 | Credential resolution, cleanup and redaction                    | `backend/internal/connectorcredentials`, `connectorcapabilities`                   | [Credential Boundary](../security/credential-boundary.md) |

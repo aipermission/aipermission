@@ -127,6 +127,24 @@ it("keeps deletion scoped to the selected target and profile", async () => {
   expect(apiDelete).toHaveBeenLastCalledWith("/api/connector-targets/4");
 });
 
+it("keeps database editor defaults local and never invents a live console or recovery action", () => {
+  const connector = model();
+  expect(connector.activeCredential()).toBeNull();
+  expect(connector.usesLiveConsole()).toBe(false);
+  expect(connector.recoverableRunningActions()).toEqual([]);
+  expect(connector.operationFromError()).toBeNull();
+  expect(connector.credentialHint()).toBeNull();
+  expect(connector.emptyCredentialState()).toEqual({ form: credentialDefaults });
+  expect(connector.credentialStateFromRow({ row: { id: 8, target_id: 4, name: "reader" } })).toEqual({
+    form: { ...credentialDefaults, target_id: "4", profile_label: "reader", risk_label: "" },
+  });
+  expect(connector.submitDisabled({ state: { state: "saving" } })).toBe(true);
+  expect(connector.submitLabel({ state: { state: "saving" }, mode: "edit" })).toBe("Saving...");
+  expect(connector.submitLabel({ state: { state: "idle" }, mode: "create" })).toBe("Create connector");
+  expect(connector.targetDisplayName({})).toBe("Database target");
+  expect(connector.targetProfileLabel({})).toBe("default");
+});
+
 it("preserves native profile types and independent runtime IDs in display rows", () => {
   const nativeTarget = {
     ...target,
@@ -165,6 +183,15 @@ it("keeps presentation-only targets out of persistence and connection-test opera
   expectTypeOf<DatabasePresentationTarget>().not.toExtend<NonNullable<Parameters<typeof connector.save>[0]["target"]>>();
   expectTypeOf<DatabasePresentationTarget>().not.toExtend<Parameters<typeof connector.deleteTarget>[0]["target"]>();
   expectTypeOf<DatabasePresentationTarget>().not.toExtend<Parameters<typeof connector.test>[0]["target"]>();
+  expectTypeOf<Parameters<typeof connector.deleteCredential>[0]["row"]["id"]>().toEqualTypeOf<number>();
+  expectTypeOf<Parameters<typeof connector.deleteCredential>[0]["row"]["target_id"]>().toEqualTypeOf<number>();
+});
+
+it("retains atomic-helper rejection text for malformed loaded database identity", async () => {
+  await expect(model().save({ mode: "edit", target: { ...target, id: 0 }, form: model().emptyForm() })).rejects.toThrow(
+    "Connector target profile is not loaded.",
+  );
+  expect(apiPut).not.toHaveBeenCalled();
 });
 
 it("types connector-specific credential and target serializers independently", async () => {

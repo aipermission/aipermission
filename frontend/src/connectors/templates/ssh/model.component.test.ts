@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { emptyForm, formFromTarget, hostKeyActionFromError, operationFromError, resumeHostKeyAction } from "./model";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { apiPost, apiPut } from "../../../lib/api.ts";
+import { emptyForm, formFromTarget, hostKeyActionFromError, operationFromError, resumeHostKeyAction, save } from "./model";
 import {
   isHostKeyError,
   keyNameFromFilename,
@@ -18,8 +19,38 @@ const hostKey = {
   key_type: "ssh-ed25519",
 };
 const conflict = { status: 409, data: { code: "unknown_ssh_host_key", host_key: hostKey } };
+const config = { host: "example.test", port: 22, description: "", startup_input_after_connect: "", force_shell_command: "" };
+
+vi.mock("../../../lib/api.ts", () => ({ apiPost: vi.fn(), apiPut: vi.fn(), apiGet: vi.fn(), apiDelete: vi.fn() }));
+beforeEach(() => vi.resetAllMocks());
 
 describe("SSH model boundaries", () => {
+  it("uses the shared atomic owner for deferred setup and the exact selected profile", async () => {
+    const target = { id: 3, name: "Example", connector_kind: "ssh", profiles: [{ id: 9 }, { id: 10 }] };
+    const form = { ...emptyForm({ firstCredentialID: 7 }), name: "Example", host: "example.test", project_id: 2, setup_later: true };
+    vi.mocked(apiPost).mockResolvedValueOnce(target);
+    await save({ mode: "create", form });
+    expect(apiPost).toHaveBeenCalledExactlyOnceWith("/api/connector-targets/with-profile", {
+      target: { connector_kind: "ssh", name: "Example", config, project_id: 2 },
+      profile: { kind: "private_key", label: "root", public: { username: "root", ssh_key_id: 7 } },
+    });
+    vi.mocked(apiPut).mockResolvedValueOnce(target);
+    await save({ mode: "edit", form: { ...form, profile_id: "10" }, target });
+    expect(apiPut).toHaveBeenCalledExactlyOnceWith("/api/connector-targets/3/with-profile/10", {
+      target: { name: "Example", config, project_id: 2 },
+      profile: { kind: "private_key", label: "root", public: { username: "root", ssh_key_id: 7 } },
+    });
+    expect(apiPost).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates uncertain atomic persistence without retrying custom provisioning", async () => {
+    const failure = new Error("mutation outcome unknown");
+    vi.mocked(apiPost).mockRejectedValueOnce(failure);
+    await expect(save({ mode: "create", form: { ...emptyForm({ firstCredentialID: 7 }), setup_later: true } })).rejects.toBe(failure);
+    expect(apiPost).toHaveBeenCalledTimes(1);
+    expect(apiPut).not.toHaveBeenCalled();
+  });
+
   it("validates host-key metadata before exposing recovery operations", () => {
     expect(isHostKeyError(conflict)).toBe(true);
     for (const value of [
@@ -53,13 +84,7 @@ describe("SSH model boundaries", () => {
     const form = { ...emptyForm({ firstCredentialID: 7 }), name: "Example", host: "example.test", profile_id: "9" };
     const payload = payloadFromForm(form);
     expect(profilePublicFromPayload(payload)).toEqual({ username: "root", ssh_key_id: 7 });
-    expect(targetConfigFromPayload(payload)).toEqual({
-      host: "example.test",
-      port: 22,
-      description: "",
-      startup_input_after_connect: "",
-      force_shell_command: "",
-    });
+    expect(targetConfigFromPayload(payload)).toEqual(config);
     expect(payload.profile_id).toBe(9);
     expect(
       formFromTarget({

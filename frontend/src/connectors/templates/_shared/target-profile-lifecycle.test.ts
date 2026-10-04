@@ -50,7 +50,11 @@ test("standard connector models keep generic target and profile CRUD in the shar
     const typedModel = new URL(`../${kind}/model.ts`, import.meta.url);
     const model = existsSync(typedModel) ? typedModel : new URL(`../${kind}/model.js`, import.meta.url);
     const source = readFileSync(model, "utf8");
-    assert.doesNotMatch(source, /target-profile-save/, `${kind} must not reimplement target/profile persistence`);
+    assert.doesNotMatch(
+      source,
+      /(?:target-profile-save|profile-lifecycle\/(?:atomic-save|persistence))/,
+      `${kind} must not reimplement target/profile persistence`,
+    );
     assert.doesNotMatch(source, /\/api\/connector-targets\/.*\/profiles/, `${kind} must not call generic profile routes directly`);
   }
 });

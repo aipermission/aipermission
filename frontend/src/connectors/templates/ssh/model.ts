@@ -1,7 +1,7 @@
 import { connectorConnectionTestResponse } from "../../../lib/gateway-contracts/connector-management-contracts";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../lib/api";
 import { defaultTargetProfile } from "../_shared/target-profile-lifecycle";
-import { createTargetWithProfile, updateTargetWithProfile } from "../target-profile-save";
+import { createTargetWithProfile, updateTargetWithProfile } from "../../profile-lifecycle/atomic-save";
 import {
   payloadFromForm,
   targetConfigFromPayload,
