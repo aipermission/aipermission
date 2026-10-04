@@ -468,7 +468,7 @@
     "internal/localhttp": 78,
     "internal/maintenanceconsole": 39.5,
     "internal/maintenancepolicy": 72,
-    "internal/mcpconnector": 19,
+    "internal/mcpconnector": 50,
     "internal/messagequeue": 78.5,
     "internal/migration": 73,
     "internal/observability": 60,
