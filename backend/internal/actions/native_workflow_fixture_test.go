@@ -54,6 +54,11 @@ func (connector *nativeWorkflowConnector) ExecuteAction(ctx context.Context, run
 
 func newNativeWorkflowFixture(t *testing.T, rule connectortargets.ActionPermissionRule, risk connectors.RiskLevel) nativeWorkflowFixture {
 	t.Helper()
+	return newNativeWorkflowFixtureWithSecret(t, rule, risk, nativeWorkflowSecret)
+}
+
+func newNativeWorkflowFixtureWithSecret(t *testing.T, rule connectortargets.ActionPermissionRule, risk connectors.RiskLevel, secret string) nativeWorkflowFixture {
+	t.Helper()
 	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "actions.aipdb"), "DisposableWorkflowPassword123")
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +86,7 @@ func newNativeWorkflowFixture(t *testing.T, rule connectortargets.ActionPermissi
 	if err != nil {
 		t.Fatal(err)
 	}
-	sealed, err := recordcrypto.EncryptJSON(secretVault, "native-workflow", recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": nativeWorkflowSecret})
+	sealed, err := recordcrypto.EncryptJSON(secretVault, "native-workflow", recordcrypto.ConnectorCredentialProfile, profile.ID, map[string]any{"password": secret})
 	if err != nil {
 		t.Fatal(err)
 	}
