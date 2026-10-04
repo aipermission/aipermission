@@ -11,6 +11,8 @@ type RedactionOptions struct {
 	RedactText               func(string) string
 	RedactKey                func(string) string
 	RedactCapability         func(string) string
+	// RedactScalar checks registered credentials, not optional text patterns.
+	RedactScalar func(string) string
 }
 
 // CanonicalizeAndRedact establishes the connector result boundary in one
@@ -35,7 +37,8 @@ func CanonicalizeAndRedactWithSourceLimits(value any, sourceLimits Limits, proje
 }
 
 // Redact traverses a canonical JSON value and applies the same persistence
-// policy to every string leaf. Declared temporary capabilities preserve their
+// policy to string leaves and mandatory credential checks to scalar leaves.
+// Declared temporary capabilities preserve their
 // signed syntax while still honoring operator-defined custom redaction.
 func Redact(value any, options RedactionOptions) (any, error) {
 	return redactValue(value, options, true)
@@ -43,8 +46,10 @@ func Redact(value any, options RedactionOptions) (any, error) {
 
 func redactValue(value any, options RedactionOptions, allowCapabilities bool) (any, error) {
 	switch typed := value.(type) {
-	case nil, bool, json.Number:
+	case nil:
 		return value, nil
+	case bool, json.Number:
+		return redactScalar(typed, options.RedactScalar), nil
 	case string:
 		return redactText(options.RedactText, typed), nil
 	case []any:
@@ -112,4 +117,15 @@ func redactText(redactor func(string) string, value string) string {
 		return value
 	}
 	return redactor(value)
+}
+
+func redactScalar(value any, redactor func(string) string) any {
+	if redactor != nil {
+		encoded, err := json.Marshal(value)
+		if err == nil && redactor(string(encoded)) != string(encoded) {
+			// Never emit a partly redacted numeric spelling or a rounded substitute.
+			return CredentialRedactionMarker
+		}
+	}
+	return value
 }
