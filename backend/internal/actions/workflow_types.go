@@ -70,6 +70,23 @@ type TerminalPersistenceError struct {
 func (err *TerminalPersistenceError) Error() string { return TerminalPersistenceErrorText }
 func (err *TerminalPersistenceError) Unwrap() error { return err.Err }
 
+type TerminalPersistenceResponse struct {
+	Status        connectors.ResultStatus `json:"status"`
+	Code          string                  `json:"code"`
+	RequestID     int64                   `json:"request_id"`
+	Error         string                  `json:"error"`
+	AssistantHint string                  `json:"assistant_hint"`
+}
+
+// Response preserves the uncertain request identity without exposing the cause.
+func (err *TerminalPersistenceError) Response() TerminalPersistenceResponse {
+	return TerminalPersistenceResponse{
+		Status: connectors.ResultOutcomeUnknown, Code: "connector_action_persistence_unknown",
+		RequestID: err.RequestID, Error: TerminalPersistenceErrorText,
+		AssistantHint: "Do not retry automatically. Inspect the recorded request and external target state first.",
+	}
+}
+
 func NewTerminalPersistenceError(requestID int64, err error) error {
 	if err == nil {
 		return nil

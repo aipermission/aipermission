@@ -233,11 +233,7 @@ func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope,
 	var persistenceErr *actions.TerminalPersistenceError
 	switch {
 	case errors.As(err, &persistenceErr):
-		httptransport.WriteJSON(w, http.StatusServiceUnavailable, map[string]any{
-			"status": connectors.ResultOutcomeUnknown, "code": "connector_action_persistence_unknown",
-			"request_id": persistenceErr.RequestID, "error": actions.TerminalPersistenceErrorText,
-			"assistant_hint": "Do not retry automatically. Inspect the recorded request and external target state first.",
-		})
+		httptransport.WriteJSON(w, http.StatusServiceUnavailable, persistenceErr.Response())
 	case errors.Is(err, actions.ErrMCPExecutionStopped):
 		httptransport.WriteJSON(w, http.StatusOK, map[string]any{
 			"status": "stopped", "error": "MCP execution is stopped in the local gateway. Start MCP from the web UI before running commands.",
