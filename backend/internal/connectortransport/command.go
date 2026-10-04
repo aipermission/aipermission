@@ -34,10 +34,8 @@ func (transport Command) RunConnectorCommand(ctx context.Context, request connec
 	}
 	timeout := defaultCommandTimeout
 	if request.TimeoutSeconds > 0 {
-		timeout = time.Duration(request.TimeoutSeconds) * time.Second
-		if timeout > MaxCommandTimeout {
-			timeout = MaxCommandTimeout
-		}
+		seconds := min(request.TimeoutSeconds, int(MaxCommandTimeout/time.Second))
+		timeout = time.Duration(seconds) * time.Second
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
