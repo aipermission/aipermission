@@ -14,8 +14,10 @@ func TestDockerDaemonRealService(t *testing.T) {
 	requireConformance(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
 	defer cancel()
+	// Serialize translation while retaining both virtual CPUs and the complete
+	// daemon qualification; this fixture needs no parallel translation threads.
 	command := exec.CommandContext(ctx, "qemu-system-x86_64",
-		"-accel", "tcg,thread=multi,tb-size=64", "-cpu", "max", "-m", "1024", "-smp", "2", "-nic", "none",
+		"-accel", "tcg,thread=single,tb-size=64", "-cpu", "max", "-m", "1024", "-smp", "2", "-nic", "none",
 		"-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot",
 		"-kernel", "/fixtures/docker-vm/kernel", "-initrd", "/fixtures/docker-vm/initramfs.gz",
 		"-append", "console=ttyS0 quiet panic=-1")

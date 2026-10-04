@@ -137,7 +137,8 @@ test("Docker daemon qualification cannot reach the host daemon or network", () =
   const scenario = read(
     "backend/internal/connectors/conformance/docker_vm_test.go",
   );
-  assert.match(scenario, /"-accel", "tcg,thread=multi,tb-size=64"/);
+  assert.match(scenario, /"-accel", "tcg,thread=single,tb-size=64"/);
+  assert.match(scenario, /"-smp", "2"/);
   assert.match(scenario, /"-nic", "none"/);
   assert.doesNotMatch(scenario, /-enable-kvm|-virtfs|-netdev|-drive|-device/);
   const init = read(`${prefix}/init`);
