@@ -400,7 +400,7 @@
     "internal/connectors/rabbitmq": 53,
     "internal/connectors/redis": 62,
     "internal/connectors/s3": 75,
-    "internal/connectors/s3/apiadapter": 2.5,
+    "internal/connectors/s3/apiadapter": 42,
     "internal/connectors/s3/sigv4": 59,
     "internal/connectors/sqlresult": 58,
     "internal/connectors/sqlsafe": 63,
