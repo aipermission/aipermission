@@ -7,6 +7,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/commandrequests/finality"
 	"github.com/aipermission/aipermission/backend/internal/db/auditmigration"
+	"github.com/aipermission/aipermission/backend/internal/db/baselineschema"
 )
 
 const (
@@ -94,25 +95,12 @@ func migrationBatch1To4() []migration {
 		{
 			version:     connectorNativeBaselineVersion,
 			description: connectorNativeBaselineDescription,
-			statements: sqlStatements(
-				coreTableStatements,
-				fileTransferTableStatements,
-				historyTableStatements,
-				indexStatements,
-				searchIndexStatements,
-			),
+			statements:  baselineschema.Connector(),
 		},
 		{
 			version:     2,
 			description: "backup provider metadata",
-			statements: sqlStatements(
-				backupProviderTableStatements,
-				[]string{
-					`CREATE INDEX IF NOT EXISTS idx_backup_providers_type_status ON backup_providers(provider_type, status);`,
-					`CREATE INDEX IF NOT EXISTS idx_backup_records_provider_database_time ON backup_records(provider_id, database_name, backup_created_at);`,
-					`CREATE INDEX IF NOT EXISTS idx_backup_records_database_time ON backup_records(database_name, backup_created_at);`,
-				},
-			),
+			statements:  baselineschema.BackupProviders(),
 		},
 		{
 			version:     3,
@@ -208,7 +196,7 @@ func migrationBatch5To8() []migration {
 		{
 			version:     5,
 			description: "project vault foundation",
-			statements:  projectVaultTableStatements,
+			statements:  baselineschema.ProjectVault(),
 		},
 		{
 			version:     6,
@@ -502,16 +490,4 @@ func migrationBatch14To17() []migration {
 			},
 		},
 	}
-}
-
-func sqlStatements(groups ...[]string) []string {
-	var total int
-	for _, group := range groups {
-		total += len(group)
-	}
-	statements := make([]string, 0, total)
-	for _, group := range groups {
-		statements = append(statements, group...)
-	}
-	return statements
 }
