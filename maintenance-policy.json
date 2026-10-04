@@ -453,7 +453,7 @@
     "internal/gatewayworkspace/capabilities/operation": 98,
     "internal/gatewayworkspace/capabilities/vault": 73,
     "internal/gatewayworkspace/catalog": 98,
-    "internal/gatewayworkspace/lifecycle": 13,
+    "internal/gatewayworkspace/lifecycle": 86,
     "internal/history": 46,
     "internal/httpattachment": 86.5,
     "internal/httptransport": 87.5,
