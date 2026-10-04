@@ -86,6 +86,8 @@ func collectConnectorCredentialStrings(value any, values map[string]struct{}) {
 		for _, item := range typed {
 			collectConnectorCredentialStrings(item, values)
 		}
+	case json.Number, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		collectSensitiveValueStrings(typed, values)
 	}
 }
 
@@ -346,6 +348,8 @@ func (r CredentialBoundary) RedactStructured(value any) (any, error) {
 		return result, nil
 	case string:
 		return r.Redact(typed), nil
+	case json.Number, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64:
+		return redactScalar(typed, r.Redact), nil
 	default:
 		return value, nil
 	}

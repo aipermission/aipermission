@@ -72,6 +72,7 @@ func (r *Redactor) ValueWithLimits(ctx context.Context, value any, sensitiveFiel
 		RedactCapability: func(value string) string {
 			return r.redactCredentialText(ctx, value, boundary.Redact, r.capabilityText)
 		},
+		RedactScalar: boundary.Redact,
 	})
 }
 

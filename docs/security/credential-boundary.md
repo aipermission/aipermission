@@ -150,6 +150,14 @@ the same recursive redaction to typed, map, slice, and custom-marshaled output
 and reuses that exact projection for encrypted history and MCP. Redaction is
 best-effort and can be extended with custom regex rules in Security.
 
+Numeric and boolean result leaves also cross the mandatory registered-credential
+check, including nested rows and metadata. A matching scalar spelling is withheld
+as a whole credential marker; unrelated values retain their canonical type.
+Optional text-pattern rules do not rewrite values that remain numeric or boolean
+after canonicalization. Large or inexact numbers projected as precision-preserving
+strings still receive text policy, including on repeated projection. This checks
+registered spellings, not every numerically equivalent transformation.
+
 Basic masking recognizes quoted JSON secret names, including escaped names,
 and JSON carried inside text fields such as `stdout` or `body`. JSON string
 values are decoded and re-encoded before masking, keeping the surrounding
