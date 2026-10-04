@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 func TestCoreJSONRoutesRejectLossyResourceNames(t *testing.T) {
@@ -76,7 +78,7 @@ func TestCoreJSONDecoderRejectsUnknownAndTrailingFields(t *testing.T) {
 		if decodeJSON(response, request, &decoded) || response.Code != http.StatusBadRequest {
 			t.Fatalf("non-strict JSON accepted: %s", raw)
 		}
-		var body errorResponse
+		var body httptransport.ErrorResponse
 		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil || body.Error != "invalid json body" {
 			t.Fatalf("unstable or revealing error: body=%s err=%v", response.Body.String(), err)
 		}

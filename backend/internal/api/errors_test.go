@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/httptransport"
 )
 
 const defaultJSONBodyBytes = 1 << 20
@@ -17,7 +19,7 @@ func TestWriteErrorWithCodePreservesStableMachineContract(t *testing.T) {
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d", recorder.Code)
 	}
-	var response errorResponse
+	var response httptransport.ErrorResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -82,7 +84,7 @@ func TestDecodeJSONReturnsStablePayloadTooLargeResponse(t *testing.T) {
 	if recorder.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusRequestEntityTooLarge)
 	}
-	var response errorResponse
+	var response httptransport.ErrorResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode error response: %v", err)
 	}
