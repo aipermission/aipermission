@@ -134,6 +134,13 @@ func adaptMCPActionScopeProvider(provider gatewayaccess.MCPActionScopeProvider) 
 	}
 	return func(w http.ResponseWriter, r *http.Request) (mcpconnector.ActionScope, bool) {
 		scope, ok := provider(w, r)
+		var resourcePolicy func(context.Context, string, string) (mcpconnector.ActionResourcePolicy, error)
+		if scope.ResourcePolicy != nil {
+			resourcePolicy = func(ctx context.Context, targetRef, actionName string) (mcpconnector.ActionResourcePolicy, error) {
+				policy, err := scope.ResourcePolicy(ctx, targetRef, actionName)
+				return mcpconnector.ActionResourcePolicy{MaxInputBytes: policy.MaxInputBytes}, err
+			}
+		}
 		var call func(context.Context, mcpconnector.ActionCall) (mcpconnector.ActionCallResult, error)
 		if scope.Call != nil {
 			call = func(ctx context.Context, request mcpconnector.ActionCall) (mcpconnector.ActionCallResult, error) {
@@ -147,15 +154,10 @@ func adaptMCPActionScopeProvider(provider gatewayaccess.MCPActionScopeProvider) 
 		}
 		return mcpconnector.ActionScope{
 			Database: scope.Database, RuntimeID: scope.RuntimeID, TokenID: scope.TokenID, Output: outputAuthorization(scope.Output),
-			ActionVisible: scope.ActionVisible,
-			ReplayExists:  scope.ReplayExists,
-			ResourcePolicy: func(ctx context.Context, targetRef, actionName string) (mcpconnector.ActionResourcePolicy, error) {
-				policy, err := scope.ResourcePolicy(ctx, targetRef, actionName)
-				return mcpconnector.ActionResourcePolicy{
-					MaxInputBytes: policy.MaxInputBytes,
-				}, err
-			},
-			Call: call, Observe: scope.Observe, Redact: scope.Redact,
+			ActionVisible:  scope.ActionVisible,
+			ReplayExists:   scope.ReplayExists,
+			ResourcePolicy: resourcePolicy,
+			Call:           call, Observe: scope.Observe, Redact: scope.Redact,
 			RunningHint: func(request connectortargets.ActionRequest) string {
 				if scope.RunningHint == nil {
 					return ""
