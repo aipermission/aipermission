@@ -3,18 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { downloadBlob, downloadJSON } from "../../lib/api";
 import { ActivityBlock, SQLOutputBlock } from "../../connectors/templates/_shared/sql-result-output";
+import { readExportBlob } from "./export-blob";
 
 vi.mock("../../lib/api", () => ({ downloadBlob: vi.fn(), downloadJSON: vi.fn() }));
 
 async function exportedCSV(): Promise<string> {
   const [blob] = vi.mocked(downloadBlob).mock.calls.at(-1) ?? [];
   if (!(blob instanceof Blob)) throw new Error("CSV download was not created");
-  const reader = new FileReader();
-  return new Promise<string>((resolve, reject) => {
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsText(blob);
-  });
+  return readExportBlob(blob);
 }
 
 it("renders ordered columns and exports escaped CSV with the connector filename", async () => {
