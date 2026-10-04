@@ -450,7 +450,7 @@
     "internal/gatewayoperations/transfer": 38.5,
     "internal/gatewayoperations/transfer/runtime": 53,
     "internal/gatewayvault": 40,
-    "internal/gatewayworkspace": 18,
+    "internal/gatewayworkspace": 92,
     "internal/gatewayworkspace/capabilities/access": 98,
     "internal/gatewayworkspace/capabilities/connector": 98,
     "internal/gatewayworkspace/capabilities/observation": 98,

@@ -158,6 +158,12 @@ This freezes observed coverage, not a claim that every owner has adequate
 failure-path coverage. Low baselines still identify debt: behavioral tests,
 not a percentage-only increase, must justify stronger assurance. Cross-package
 integration coverage complements rather than replaces the package-local run.
+The workspace owner also exercises `Component.Open` against disposable native
+SQLCipher files: exclusive ownership, failed-open cleanup, persistent replay
+identity, rotating runtime identity, workspace-bound capability projections,
+and worker recovery before storage release. Its HTTP unlock/lock fixture uses
+that same runtime factory; it does not replace authenticated browser acceptance
+or connector-service conformance tests.
 The frontend changed-owner inventory also has no zero-valued owner floors;
 its full per-owner measurement remains part of the final candidate gate.
 The policy protects transport, gateway-owner, audit, connector, session, token,
