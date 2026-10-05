@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "36046c10b954dc4ad1e5be9863501bff5c2e7480fd9851a29e3dfa0a23df88a6"
+      "sha256": "60276dc95c84cb022ad03c35eb999d12f8d73033d9d45d60fbe726eeb25d42e7"
     }
   ],
   "npm": [
@@ -7849,11 +7849,11 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "36046c10b954dc4ad1e5be9863501bff5c2e7480fd9851a29e3dfa0a23df88a6"
+    "sha256": "60276dc95c84cb022ad03c35eb999d12f8d73033d9d45d60fbe726eeb25d42e7"
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged; Monaco sanitizer DOMPurify v3.4.16 retains its existing dual-license metadata",
+    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged; Monaco sanitizer DOMPurify v3.4.16 retains its existing dual-license metadata; native PCRE2 minimum metadata aligned to Debian patch deb12u2",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

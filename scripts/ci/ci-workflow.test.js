@@ -86,6 +86,12 @@ test("full-source frontend verification has a bounded thirty-minute budget", () 
   assert.equal(frontend["timeout-minutes"], 30);
 });
 
+test("backend runtime enforces its patched PCRE2 inventory minimum", () => {
+  const inventory = JSON.parse(read("docs/security/native-dependencies.json"));
+  assert.equal(inventory.sqlcipher.container.runtime_minimum_versions["libpcre2-8-0"], "10.42-1+deb12u2");
+  assert.match(read("backend/Dockerfile"), /dpkg --compare-versions[^\n]+libpcre2-8-0[^\n]+ge "10\.42-1\+deb12u2"/);
+});
+
 test("frontend runtime installs patched PCRE2 before dropping root", () => {
   assert.match(
     read("frontend/Dockerfile"),

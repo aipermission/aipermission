@@ -29,7 +29,7 @@ RUN apt-get update \
 	&& apt-get update \
 	&& apt-get install -y --no-install-recommends postgresql-client-18 \
 	&& apt-get purge -y --auto-remove curl gnupg \
-	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge "10.42-1+deb12u1" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge "10.42-1+deb12u2" \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd --system --uid 10001 --home /app --shell /usr/sbin/nologin aipermission \
 	&& mkdir -p /app/data \
