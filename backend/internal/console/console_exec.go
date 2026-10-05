@@ -244,22 +244,26 @@ func (s *managedConsoleSession) waitReady(ctx context.Context) error {
 		case "connected":
 			return nil
 		case "error", "closed":
-			s.mu.Lock()
-			errText := s.errText
-			s.mu.Unlock()
-			if errText == "" {
-				errText = "console session is not active"
-			}
-			return errors.New(errText)
+			return s.readinessError("console session is not active")
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-s.ctx.Done():
-			return fmt.Errorf("console session closed")
+			return s.readinessError("console session closed")
 		case <-ticker.C:
 		}
 	}
+}
+
+func (s *managedConsoleSession) readinessError(fallback string) error {
+	s.mu.Lock()
+	errText := s.errText
+	s.mu.Unlock()
+	if errText == "" {
+		errText = fallback
+	}
+	return errors.New(errText)
 }
 
 func (s *managedConsoleSession) waitForCommandResult(ctx context.Context, startOffset int64, marker string) (string, int, error) {
