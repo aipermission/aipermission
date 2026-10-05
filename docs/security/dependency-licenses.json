@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "71993239c412bd8dee02546e06d6dbded1b888d9606044a668ae455f1f088ac0"
+      "sha256": "d5c9402dfd5f7a9fbc7af3b5d9e651ab5044a1f49cdcfbaf8049ddf0f06f37b9"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "4e4763417c477f8151717e1c27179a3126374d2dc8d7e9fed490d71a718eb7f2"
+      "sha256": "89c58ceb20cd016ab278edb47028121e65ad4a3ea35959e00930e9b932ef9045"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "56854930b8a4b806eecb71445d8dc393703d00806b31df9afcd9ea7abb0ff8a3"
+      "metadata_sha256": "219fd9ef1cca90cc75e81b7111547b749daa299e30fefde3cee4fa084145d27b"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1741,11 +1741,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@types/node",
       "name": "@types/node",
-      "version": "24.19.0",
+      "version": "24.19.1",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@types/node/-/node-24.19.0.tgz",
-      "integrity": "sha512-zY+5tKxXdhGh1PYI0ac+7juvEu4OI6vWtVVoj5i2m42jxAY1U+zHGt6QCyOFwykdP62sM3MJ9stoYYUw5aCWew==",
-      "metadata_sha256": "4e9ca40c8fb15961c99c4aa5d9b3dcbb31c23079ee948e1c5bc253e6b745c460"
+      "resolved": "https://registry.npmjs.org/@types/node/-/node-24.19.1.tgz",
+      "integrity": "sha512-aS3/DG0oM05K0RIXXP+hKjinGG5IgSSVGzswZxW3O0sS3pH4/fycXundUC9XsszgKCk4gHXylTEK6hyFxVxnoQ==",
+      "metadata_sha256": "13ab241c0e870273695a846169741beb953466be3ef4c193335353f2c62f9bf0"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2731,11 +2731,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/globals",
       "name": "globals",
-      "version": "17.12.0",
+      "version": "17.13.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/globals/-/globals-17.12.0.tgz",
-      "integrity": "sha512-cezEd/DTyyht9cvSSURyygXPfy04GtWO/5e6ZPvH7fCtjKz9PYOmuawphw1Ctd1f6C+5JypXfGD7ahNMXvevBA==",
-      "metadata_sha256": "870b587c75f7b4c9492ee06ce05cda729536c809ef42a4b4dd9051754a0c4779"
+      "resolved": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
+      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
+      "metadata_sha256": "514fe0e203f06056565da38ea9d8640a9a3d449640b5fb049857cd5374cd73d0"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3001,91 +3001,91 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd",
       "name": "jscpd",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd/-/jscpd-5.3.3.tgz",
-      "integrity": "sha512-BLSHnjrByjRCFENUOCPY/xYcPVOxSINTdybjUHuEAbEROmamD+BCQOTy2eLjxuyBWcR34ARV7q1O0/OOiJzxQg==",
-      "metadata_sha256": "65207803940a1eadaddffea1984498f99e7c3ce95b2911cd0cc1d85e287abfb5"
+      "resolved": "https://registry.npmjs.org/jscpd/-/jscpd-5.4.0.tgz",
+      "integrity": "sha512-6mU8OHff4rPJ3D5lIsQns82/aQhDas22gMsGurHx1wcrfXWOZDNaobi6rKhLevo+77ntWKUXOwtM6lcrkJeL7w==",
+      "metadata_sha256": "4927b26a0b4fba9b8e2d7ec462a88776d73544e4cb0c072406a63bbdad7af3c1"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-darwin-arm64",
       "name": "jscpd-darwin-arm64",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-darwin-arm64/-/jscpd-darwin-arm64-5.3.3.tgz",
-      "integrity": "sha512-fjjfjNf5p9jhEwFvgRyOteGPV7TYwPZ/bFhPiITs2KgvirDMOv7d5lgVSmS3BUHSBMyNwzxjyrAvvvSsE2LdXA==",
-      "metadata_sha256": "ccbf31e9ab4ee16d434d174b0676b311cdd92953ed9723a986ead2de96e1cb0f"
+      "resolved": "https://registry.npmjs.org/jscpd-darwin-arm64/-/jscpd-darwin-arm64-5.4.0.tgz",
+      "integrity": "sha512-fNIDtNn9WE4YXoFoqf+3tkHb1+GaKKOeKzh77Wx61Gfa9iDxlCv5rO0Fjy7oWmGehUUKqslDaeXXtn/RoDprCg==",
+      "metadata_sha256": "f124c151220ea6c865d443f1742e6152a584a131ab9950871ba5e0e315a6fe10"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-darwin-x64",
       "name": "jscpd-darwin-x64",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-darwin-x64/-/jscpd-darwin-x64-5.3.3.tgz",
-      "integrity": "sha512-MnVxRZX0IWDHP+ze6cMNTQuRsyBy/UB58fgZm/+R8fyktYVScOtYEQw+6AOz2ng6EjzYaCxGJwzlni94yfEZkA==",
-      "metadata_sha256": "4de24c5d5a59d0a70dd7a56dbcc42bb9552c2e2d70fffa4f32fb5541d91fd9e6"
+      "resolved": "https://registry.npmjs.org/jscpd-darwin-x64/-/jscpd-darwin-x64-5.4.0.tgz",
+      "integrity": "sha512-bxlnCVEb69SGIsas1+PaqZyFY8iYVTVjCBxfjVD74UafX115Ysw+oO9LAlsJaGsKUnK8Zsq5bhM33kBHux6bTA==",
+      "metadata_sha256": "8ee2ec33fb53e6c5f3df9294108daa5c37e3115fc5e9ad0008764ac5d189feb2"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-linux-arm64-gnu",
       "name": "jscpd-linux-arm64-gnu",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-linux-arm64-gnu/-/jscpd-linux-arm64-gnu-5.3.3.tgz",
-      "integrity": "sha512-sowSw71vQguhEGvM78tNECWCD3ZSSL8T2SE68GKEe89cux0ZjUXx3CRbcarladZ6Pzobpq7Koe4vtRVKHAdBEA==",
-      "metadata_sha256": "9e0cd0bc8fe42b1db5e60573ef83775f120d269505974a7302e17b303f1d1eb5"
+      "resolved": "https://registry.npmjs.org/jscpd-linux-arm64-gnu/-/jscpd-linux-arm64-gnu-5.4.0.tgz",
+      "integrity": "sha512-c4hX5QjuRyzLFJ+A+jNGHRpGlDvxcx+zzs4RJmZHpl23istuTMIkelwTOWliF4gXOm0RWXDlX/ywWKr9+Lre7w==",
+      "metadata_sha256": "b58964d03100668e1514e022be24d9b6eff40abc8573ffdb9d22ebf6a0f74748"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-linux-arm64-musl",
       "name": "jscpd-linux-arm64-musl",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-linux-arm64-musl/-/jscpd-linux-arm64-musl-5.3.3.tgz",
-      "integrity": "sha512-pPSPdzRZD3NNHi/5y3ud9z2E3SjIAYh7VWyGrIs0DVzwI7n/0paRFkQ0W6VCdWfPCK6Tnb1yeMgX/vOrygV0sg==",
-      "metadata_sha256": "4416c4774952be4473062154acb6a8fa6b8373b1c55fb0081ff9d5dc4bfd4bb9"
+      "resolved": "https://registry.npmjs.org/jscpd-linux-arm64-musl/-/jscpd-linux-arm64-musl-5.4.0.tgz",
+      "integrity": "sha512-p4FUCNyL8WPTlizdZqfjontFwJ/+jnERYM2+YX2miYvm0NxzsIi23MhfzPl/eUHxkiT5wethV0NRYEAkJr999Q==",
+      "metadata_sha256": "8393193ccd6295ed686cb108463fc8aba656551caecbcb204f2dde710760149a"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-linux-x64-gnu",
       "name": "jscpd-linux-x64-gnu",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-linux-x64-gnu/-/jscpd-linux-x64-gnu-5.3.3.tgz",
-      "integrity": "sha512-FwB2UrrGk5HWXPLlGnGBJJgTgE/f6zhE+MJYpkl2KZvMuj8y6bZqYTW+vgBy82aTqdgokKgEf6aScBeAqR63Fg==",
-      "metadata_sha256": "92f3ca9ee3c10a8ed879c78bfc9c36b387e12a34b26d42938880871ec79b559c"
+      "resolved": "https://registry.npmjs.org/jscpd-linux-x64-gnu/-/jscpd-linux-x64-gnu-5.4.0.tgz",
+      "integrity": "sha512-44NXS0gtYbjBCc53Gwilgj7PPwnWv9YTF/rGc0ZfnFcpzSoOKKU11yH+qHfCVie1hHte1wHyZ1f9Kjc8nGe2/g==",
+      "metadata_sha256": "6abbfe5b728032701625ea7286a3fe9f9449c62277f449505992aef73763194d"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-linux-x64-musl",
       "name": "jscpd-linux-x64-musl",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-linux-x64-musl/-/jscpd-linux-x64-musl-5.3.3.tgz",
-      "integrity": "sha512-J4lN8yc6VieD1Hh/TvtOcRm7bZ3D20idaoy6VZb0iWEa9Ui5M5vJa+hOLK1ye6i6Lyn8CkkSBFCqS9jqsTiF9A==",
-      "metadata_sha256": "725680e68166c7fc792a0c540d74a6f2fd35ed25bed8e7052250824bdfb0414a"
+      "resolved": "https://registry.npmjs.org/jscpd-linux-x64-musl/-/jscpd-linux-x64-musl-5.4.0.tgz",
+      "integrity": "sha512-m9XHj14Zwia9RjWDkHDrl6VJ3W/b7m8qjFqjhcJ668Vkxoj4Ri/qeo0bo6is+fSw+bYxYexV6xxqIKRDolc8Lg==",
+      "metadata_sha256": "2603c8bf967345573fd794a1209ff7c316e042f0a67e46cad2035bde5129ee63"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-windows-arm64-msvc",
       "name": "jscpd-windows-arm64-msvc",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-windows-arm64-msvc/-/jscpd-windows-arm64-msvc-5.3.3.tgz",
-      "integrity": "sha512-mvvHaMrtEkiFdt09RWxbIvlgGfTH0Q7pBecUU4d4nYsz2+6Fs/7KKgWwiMQV80PPGRqCLvOkzpgBDnz9aAgbtA==",
-      "metadata_sha256": "59e069bc3df982cd45e703ef025ac177b2d00f0076ea9f48eb7268de9f87a34b"
+      "resolved": "https://registry.npmjs.org/jscpd-windows-arm64-msvc/-/jscpd-windows-arm64-msvc-5.4.0.tgz",
+      "integrity": "sha512-AoP5RXyb9gIf8xmFwAc+Rgh4XJNyX1upcD+R1A6u4XjsDo2/oF+KKB4dtKnG2DbFQ+0fyFg/ClOcw+asQZJfPg==",
+      "metadata_sha256": "45b89fa9f87842e2a3bf1a25a0134bb009aace5037162d50b0cc1d83d7780e2f"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/jscpd-windows-x64-msvc",
       "name": "jscpd-windows-x64-msvc",
-      "version": "5.3.3",
+      "version": "5.4.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/jscpd-windows-x64-msvc/-/jscpd-windows-x64-msvc-5.3.3.tgz",
-      "integrity": "sha512-4kinkEmmOfmv6glGbjihtmmoJoeR4Czg6dVoR/NNT88jKTnGWZdaSc83je4AEIdznyE9FHKPbg/WpqE9zNJFmQ==",
-      "metadata_sha256": "3b9ea818c2895725651988a6c108a76b17edd1b4d1e1fae0d6e4d2c0ef352c3b"
+      "resolved": "https://registry.npmjs.org/jscpd-windows-x64-msvc/-/jscpd-windows-x64-msvc-5.4.0.tgz",
+      "integrity": "sha512-dYkb5mAo5i7fjrtf2Ft6z9a/I38RJMd4JirEgJiW2BIv5pAGmfMVPDy1xEXL3hJqraXzeMIfnzqJFanefCyC6g==",
+      "metadata_sha256": "998c2c8a5dbd35d69d58cec58117c1aae07eb0563e900cd44d70730921631ecc"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3331,11 +3331,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.48.0",
+      "version": "1.49.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.48.0.tgz",
-      "integrity": "sha512-R0CIKY/fXiC6y9xRBADgsK+VW2p/pcTJOMhLZf1T+uG+vJUvyUR02nGOgmIIC7MPkiNK4Ox8QDnbqF8rJYWPZQ==",
-      "metadata_sha256": "991451b50bd3634e5a20a2a5bf5cfd651b3b075852f4f08fa3ef10341e986be6"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.49.0.tgz",
+      "integrity": "sha512-ApfaNM4/7jBrVopqLJ84Jz8TMQ1Q1JeZ1PmKh25aeS3E1FTVcMkSh1bEQB7dfzdIrwXRP8p3z4AJjTIHHb5IIA==",
+      "metadata_sha256": "0b433da0ab2e57d589216b7a2364c154d11763301bad8435a93f7744acbd99e0"
     },
     {
       "source": "frontend/package-lock.json",
@@ -7853,7 +7853,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence and MCP globals v17.13.0 unchanged MIT metadata; retained unchanged evidence and acknowledged historical cache gaps",
+    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
