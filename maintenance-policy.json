@@ -361,7 +361,7 @@
     "internal/boundedtext": 86,
     "internal/commandrequests": 74.5,
     "internal/commandrequests/finality": 100,
-    "internal/config": 73.5,
+    "internal/config": 77.5,
     "internal/connectorapproval": 40.5,
     "internal/connectorcapabilities": 100,
     "internal/connectorcredentials": 100,
