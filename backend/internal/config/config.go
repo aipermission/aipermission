@@ -198,6 +198,10 @@ func validateGatewaySecret(value string) error {
 }
 
 func LoadOrCreateGatewaySecret(dataPath string) (string, error) {
+	return loadOrCreateGatewaySecret(dataPath, createGatewaySecretExclusive)
+}
+
+func loadOrCreateGatewaySecret(dataPath string, create func(string, string) (bool, error)) (string, error) {
 	path := GatewaySecretPath(dataPath)
 	value, err := readGatewaySecret(path)
 	if err == nil {
@@ -212,7 +216,7 @@ func LoadOrCreateGatewaySecret(dataPath string) (string, error) {
 		return "", fmt.Errorf("generate gateway secret: %w", err)
 	}
 	encoded := base64.StdEncoding.EncodeToString(secret)
-	created, err := createGatewaySecretExclusive(path, encoded)
+	created, err := create(path, encoded)
 	if err != nil {
 		return "", err
 	}
