@@ -81,6 +81,11 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The local sanitizer update changes only the frontend root metadata and
+DOMPurify identity to 3.4.16; its `(MPL-2.0 OR Apache-2.0)` declaration is
+unchanged. All Go records, evidence, and 38 acknowledged gaps are preserved.
+This remains a metadata review, not a compatibility or legal determination.
+
 The local 0.2.64 release assembly refresh aligns the npm records and source
 hashes with the current exact lockfiles: MCP SDK 1.31.0, frontend Node types
 24.19.0, TypeScript ESLint parser and related packages 8.71.0, jscpd and its
@@ -152,3 +157,22 @@ remain outside this inventory. SPDX parsing, compatibility, notice delivery,
 and distribution obligations require separate owner/legal review. This is not
 a history-ratcheted or cryptographically signed approval system: deliberate
 baseline edits remain subject to independent review.
+
+## Embedded Editor Sanitizer
+
+Monaco 0.57.0 includes an embedded DOMPurify copy as well as a declared npm
+dependency. An npm override alone does not replace that embedded code.
+The frontend pins DOMPurify 3.4.16 and its Vite bridge redirects only Monaco's
+exact sanitizer import to that package in both the production graph and Vite's
+development dependency optimizer. An actual optimizer regression verifies the
+patched output and source identity. Production graph verification rejects
+the embedded module or a missing replacement. The override also keeps Monaco's
+declared dependency on the same reviewed version.
+
+[GHSA-p98j-92pf-mc4p](https://github.com/advisories/GHSA-p98j-92pf-mc4p)
+requires `IN_PLACE` sanitization with a node-removing afterSanitize hook. The
+dependency regression reproduces detached-handler retention on 3.4.15 and
+checks both patched hook paths; it is not evidence that the application's
+string-based editor sanitization exposed that exploit. Retain the bridge until
+a reviewed Monaco upgrade removes the affected embedded copy, and rerun editor
+browser tests when changing either sanitizer or editor versions.
