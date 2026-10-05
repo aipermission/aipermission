@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "94ae51145608c18a607b2ad0f30382c5a88ad462b2b9134cdc6f36e616f2f62b"
+      "sha256": "17cd0a2519ba56ef6193497f27442a0f64bc115ac10361dd06b4b2afdb3f404b"
     },
     {
       "path": "scripts/package.json",
@@ -5211,11 +5211,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/globals",
       "name": "globals",
-      "version": "17.12.0",
+      "version": "17.13.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/globals/-/globals-17.12.0.tgz",
-      "integrity": "sha512-cezEd/DTyyht9cvSSURyygXPfy04GtWO/5e6ZPvH7fCtjKz9PYOmuawphw1Ctd1f6C+5JypXfGD7ahNMXvevBA==",
-      "metadata_sha256": "870b587c75f7b4c9492ee06ce05cda729536c809ef42a4b4dd9051754a0c4779"
+      "resolved": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
+      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
+      "metadata_sha256": "514fe0e203f06056565da38ea9d8640a9a3d449640b5fb049857cd5374cd73d0"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -7853,7 +7853,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed compression v1.20.1 license evidence and metadata; retained unchanged version evidence and acknowledged historical cache gaps",
+    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence and MCP globals v17.13.0 unchanged MIT metadata; retained unchanged evidence and acknowledged historical cache gaps",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
