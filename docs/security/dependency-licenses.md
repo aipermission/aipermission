@@ -96,6 +96,11 @@ its hash is unchanged. The prior Go parser capture, evidence records, metadata
 review, and 38 acknowledged gaps are preserved unchanged. This is an offline
 metadata alignment, not a new Go evidence review or legal determination.
 
+The 0.2.65 security refresh raises the backend PCRE2 runtime minimum to
+`10.42-1+deb12u2` and updates the native inventory reference hashes. The
+patched image must pass the same vulnerability scan as every release image;
+the package-version guard is not a substitute for scanning the final image.
+
 The initial offline capture has 602 npm records (including three roots),
 88 Go module/version records, and local named-file evidence for all 37 current
 Go requirements. The 38 absent versions are historical checksum-only entries.
