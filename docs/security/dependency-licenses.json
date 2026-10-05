@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "593fac813fbf43a602e7e6db56f1ee735bc255869ee3ce46a380a9523223d6a0"
+      "sha256": "64f12a254f1324c0d51047af83f8e323c5ac9a26fe87fd08f3263ee8c643cd45"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "172339af157c3c37ef962dd94c9a07755fd25971ec8f89f34728d6c76340387f"
+      "sha256": "050c447dbe2fa26310340645f9270db27c609900b4b73abb74b345f9bc33b587"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "e984b62ebff2eda7ecfd477c4c473f728c84d5d1c5188e5e261e77066d89580a"
+      "metadata_sha256": "a71cb3aae96690303dcc1956c087117d837501d28c3c2caec5da15b749f39dfc"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3331,11 +3331,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.49.0",
+      "version": "1.50.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.49.0.tgz",
-      "integrity": "sha512-ApfaNM4/7jBrVopqLJ84Jz8TMQ1Q1JeZ1PmKh25aeS3E1FTVcMkSh1bEQB7dfzdIrwXRP8p3z4AJjTIHHb5IIA==",
-      "metadata_sha256": "0b433da0ab2e57d589216b7a2364c154d11763301bad8435a93f7744acbd99e0"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.50.0.tgz",
+      "integrity": "sha512-RqHPQtKX6S9IE1xOL4oTHHsVQbcwJWTnmlxI6AdI9IpOwKiy7q+COPCQyMepI/Qu1x3h7sunpyEMvqtgFbgNiQ==",
+      "metadata_sha256": "c702dc603783f88785207f68e16c10a39aa845ce046e387c767b42ce73affdda"
     },
     {
       "source": "frontend/package-lock.json",
@@ -7853,7 +7853,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged; Monaco sanitizer DOMPurify v3.4.16 retains its existing dual-license metadata; native PCRE2 minimum metadata aligned to Debian patch deb12u2",
+    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.50.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged; Monaco sanitizer DOMPurify v3.4.16 retains its existing dual-license metadata; native PCRE2 minimum metadata aligned to Debian patch deb12u2",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
