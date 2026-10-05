@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "d5c9402dfd5f7a9fbc7af3b5d9e651ab5044a1f49cdcfbaf8049ddf0f06f37b9"
+      "sha256": "877d8d68a6cbf285c564c5b8f6921ba5c4459f5936b939cc2a011be0e701a75e"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "89c58ceb20cd016ab278edb47028121e65ad4a3ea35959e00930e9b932ef9045"
+      "sha256": "779e86b6e3beedd5a16337a38435614fb3f9096b8dbb0ff22ffd3b092d721667"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "219fd9ef1cca90cc75e81b7111547b749daa299e30fefde3cee4fa084145d27b"
+      "metadata_sha256": "70e757a9301a54744d1c33564382f235af41f073767525541b88e6607379f319"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2391,11 +2391,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/dompurify",
       "name": "dompurify",
-      "version": "3.4.15",
+      "version": "3.4.16",
       "declared_license": "(MPL-2.0 OR Apache-2.0)",
-      "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.15.tgz",
-      "integrity": "sha512-EUBjM+B+lkDE41iE82DDSCfkoPGfXx8IxFxPMjNzm/Uk4xDet77rTN9wqlxlVg71kK7XGuUMv6wUxJUwwv+Xyw==",
-      "metadata_sha256": "ed828f529381bcca8a4ff920cf43febe5e8ede8dd84857231688a3b212625bb9"
+      "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.16.tgz",
+      "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ==",
+      "metadata_sha256": "f6658ad2d89b3a5cf85251ca5279ed8fc941c265a73631d327f7f70624e433a9"
     },
     {
       "source": "frontend/package-lock.json",
@@ -7853,7 +7853,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged",
+    "reviewer": "Codex maintainer: reviewed compression v1.20.1 evidence, MCP/frontend globals v17.13.0, lucide-react v1.49.0, Node types v24.19.1 and jscpd v5.4.0 metadata; declarations remain unchanged; historical evidence gaps remain acknowledged; Monaco sanitizer DOMPurify v3.4.16 retains its existing dual-license metadata",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

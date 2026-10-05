@@ -2,9 +2,10 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { productionSourceBoundary } from "./scripts/production-source-boundary.mjs";
+import { monacoSanitizer } from "./scripts/monaco-sanitizer.mjs";
 
 export default defineConfig({
-  plugins: [productionSourceBoundary(), react(), tailwindcss()],
+  plugins: [productionSourceBoundary(), monacoSanitizer(), react(), tailwindcss()],
   server: {
     port: 3210,
   },
