@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "cbfed2b05b1b0d650ff6a012a52c9c87b3d7205302738865dda08bb9787dcd5d"
+      "sha256": "e4115cf21d37f255ab974e61150f91f75a62871bbfdd1015fa8fbb5e697ab8a5"
     },
     {
       "path": "scripts/package.json",
@@ -5701,11 +5701,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/proxy-addr",
       "name": "proxy-addr",
-      "version": "2.0.7",
+      "version": "2.0.8",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz",
-      "integrity": "sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==",
-      "metadata_sha256": "597b9a72f738d045a4e1d8ed50cbde44915a3591ba25611fef09b35c53bdb933"
+      "resolved": "https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz",
+      "integrity": "sha512-5nnx0yGyVUcY6t9RnWcARWtwT9F1D8O9rt08htPvnd49W1IgZtmLkhu9WfMzQj1cFxjHIO6connUNVW5k7AVyQ==",
+      "metadata_sha256": "6bb42d9adc6f69d055ac7a032b6d45e8e1850ccd73ee6be382d3cf9f9e041b57"
     },
     {
       "source": "packages/mcp/package-lock.json",

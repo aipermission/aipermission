@@ -14,6 +14,13 @@ lockfiles, their package manifests, `backend/go.mod`, `backend/go.sum`, and
 hashes deliberately make even formatting changes require a baseline review.
 No installed npm dependency tree is used.
 
+The MCP SDK's transitive `proxy-addr` dependency is locked to 2.0.8 for
+[GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h).
+Its declared MIT license, registry integrity and lockfile metadata are reviewed
+in the inventory. A behavioral regression checks the actual dependency resolved
+through SDK/Express against IPv4-mapped IPv6 trust subnet spoofing. This does
+not imply that the stdio MCP bridge exposes an Express HTTP server.
+
 Each npm record retains its lockfile and installation location, package name
 (including explicit alias targets), version, resolved URL, integrity, and
 verbatim declared license. A canonical metadata hash covers all package-entry
