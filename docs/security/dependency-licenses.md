@@ -21,6 +21,13 @@ in the inventory. A behavioral regression checks the actual dependency resolved
 through SDK/Express against IPv4-mapped IPv6 trust subnet spoofing. This does
 not imply that the stdio MCP bridge exposes an Express HTTP server.
 
+The frontend's development-only `source-map-js` dependency is locked to 1.2.2
+for [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
+Its BSD-3-Clause declaration is unchanged. A regression resolves the actual
+Vite/PostCSS dependency and verifies immediate rejection of invalid, excessive,
+and cumulative nested indexed-map offsets while retaining valid mappings.
+This build-tool dependency is not part of the production npm dependency tree.
+
 Each npm record retains its lockfile and installation location, package name
 (including explicit alias targets), version, resolved URL, integrity, and
 verbatim declared license. A canonical metadata hash covers all package-entry

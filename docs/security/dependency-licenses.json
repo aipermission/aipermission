@@ -15,7 +15,7 @@
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "050c447dbe2fa26310340645f9270db27c609900b4b73abb74b345f9bc33b587"
+      "sha256": "acc27ce6a516854075b4ba41e7eaf7159655f3e28e68b21fc66c93afd89a9448"
     },
     {
       "path": "packages/mcp/package.json",
@@ -3901,11 +3901,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/source-map-js",
       "name": "source-map-js",
-      "version": "1.2.1",
+      "version": "1.2.2",
       "declared_license": "BSD-3-Clause",
-      "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.1.tgz",
-      "integrity": "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==",
-      "metadata_sha256": "0b2bc8b23a6924ba5a955625a6bfb1c6da84cc8dedfd6a55405405e6059e8989"
+      "resolved": "https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz",
+      "integrity": "sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==",
+      "metadata_sha256": "6f546e949240557af34885b1ad111a6961736b917f6e8198afa2bebf648b9a2d"
     },
     {
       "source": "frontend/package-lock.json",
