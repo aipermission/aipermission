@@ -196,6 +196,15 @@ for generated MCP setup and normally stays empty so the UI origin is used.
 `AIPERMISSION_API_URL` belongs to the launched MCP client process and is not a
 Compose `.env` setting.
 
+`AIPERMISSION_CONNECTOR_REQUEST_STORAGE_MIB` optionally sets the per-token
+connector request storage budget (default 256 MiB; integers 256 through 4096).
+For example, set it to `1024` in `.env` and recreate the stack for a 1 GiB
+budget. This is persisted record capacity, not RAM or active-job concurrency.
+Completed results count until retention removes them. Increasing it preserves
+records but allows more disk use; it does not change the 20,000-row limit,
+four-running-action limit, permissions, or retention policy. Invalid values
+prevent startup. Do not disable retention merely because the budget increased.
+
 `AIPERMISSION_GATEWAY_SECRET` is optional and should be left unset for normal
 local installs. On first start, the gateway generates a high-entropy local vault
 secret and stores it in the Docker data volume. If explicitly set for advanced

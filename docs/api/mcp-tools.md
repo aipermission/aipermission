@@ -469,7 +469,8 @@ maximum; MCP rejects missing, non-integer, or out-of-range published limits.
 This counts serialized action-input JSON, not the HTTP request envelope or
 decoded file size. The idempotent request
 transaction atomically backpressures new work when the projected record would
-exceed 20,000 rows or 256 MiB of persisted request data for that token; active
+exceed 20,000 rows or the configured persisted request storage budget for that
+token (256 MiB by default); active
 records reserve their bounded terminal-output capacity. Capacity rejection
 returns HTTP `429` and code `connector_action_backpressure`. Persisted capacity
 errors identify the limiting axis and show only that token's projected numeric
@@ -479,6 +480,15 @@ include `Retry-After`: completed records still occupy capacity until retention
 removes them, so waiting one minute does not promise recovery. Review retention
 and the reported token usage in the local gateway. An exact idempotent replay remains
 available and does not allocate another persisted request.
+
+For high-volume local use, the operator may set
+`AIPERMISSION_CONNECTOR_REQUEST_STORAGE_MIB` in the gateway environment to an
+integer from 256 through 4096. This changes only the per-token stored-byte
+budget, not the fixed row/running limits, token permissions, or retention
+policy. Increasing the budget preserves existing records but permits more
+encrypted data to accumulate; check disk capacity and keep retention enabled.
+Invalid configuration prevents gateway startup. MCP actions cannot set this
+operator-owned process configuration.
 
 Target and profile discovery is resolved inside the token's active project
 scope. A missing reference and a reference hidden from that token both produce
