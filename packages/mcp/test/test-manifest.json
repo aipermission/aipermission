@@ -20,11 +20,12 @@
     "test/server.test.js",
     "test/skill-drift.test.js",
     "test/test-manifest-policy.test.js",
+    "test/terminal/secret-prompt.test.js",
     "test/transport/http-transport.test.js",
     "test/transport/origin.test.js",
     "test/transport/withheld-output.test.js"
   ],
-  "minimumTests": 225,
+  "minimumTests": 226,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",
