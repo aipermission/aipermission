@@ -388,7 +388,7 @@ var postgresQualifiedTypedLiteralPattern = regexp.MustCompile(`(?i)(?:^|[^a-z0-9
 
 func isFunctionSyntaxKeyword(value string) bool {
 	switch strings.ToLower(value) {
-	case "as", "cast", "exists", "filter", "from", "group", "in", "over", "select", "values", "when", "where", "with", "within":
+	case "all", "and", "any", "as", "cast", "exists", "filter", "from", "group", "in", "not", "or", "over", "select", "some", "values", "when", "where", "with", "within":
 		return true
 	default:
 		return false
