@@ -1289,6 +1289,30 @@ one-time manual purge:
 
 Valid targets are `history`, `audit`, `console`, and `messages`.
 
+`GET /api/settings/connector-capacity` is an authenticated local UI read, not
+an MCP action. It returns unrevoked token names and lossless decimal-string
+`token_id` values, plus `rows`, `stored_bytes`, `reserved_bytes`, `running`,
+`pending`, and a backend-classified `level` for each token. It never returns
+token values, credentials, commands, or request content. Responses are private
+and not cached. Reports are scoped to the current unlocked database.
+
+The top-level `row_limit`, `byte_limit`, `running_limit`,
+`next_request_reservation_bytes`, and `history_days` describe the current
+configuration. `stored_bytes` measures persisted request fields, not physical
+database size or RAM. Active running and approval-pending requests reserve
+6 MiB each for terminal results. Storage warnings start at 80%, become critical
+at 90%, and show `exhausted` when another record and its result reservation
+cannot fit. Concurrency saturation is independent of storage warning levels.
+No records are removed and no limits change when this endpoint is read.
+
+Settings displays this report and refreshes every 30 seconds while visible.
+Failed refreshes explicitly mark the last reading as stale; UI session
+invalidation clears cached token identities. Disabled history retention (`0`)
+is highlighted because retained completed requests continue to consume the
+budget. Hourly cleanup only frees eligible older records. Increasing retention
+frequency does not remove recent records, and automatic cleanup does not
+guarantee headroom for a high-volume workload.
+
 Completed idempotent connector actions leave a non-secret replay tombstone when
 their detailed history expires. The tombstone preserves target/profile/action
 identity and retry policy, but not input, output, reason, or credential data.
