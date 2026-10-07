@@ -329,11 +329,9 @@ func (m *Manager) transcriptTail(ctx context.Context, sessionID int64, limit int
 	rows, err := m.db.QueryContext(ctx, `
 		SELECT data
 		FROM console_session_chunks
-		WHERE session_id = ?
-		ORDER BY seq DESC
-		LIMIT ?`,
+		WHERE session_id = ? AND data != ''
+		ORDER BY seq DESC`,
 		sessionID,
-		(limit/maxConsoleChunkLength)+2,
 	)
 	if err != nil {
 		return terminaltext.TailStringByBytes(fallback, limit)

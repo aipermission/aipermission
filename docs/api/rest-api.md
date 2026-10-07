@@ -1591,6 +1591,10 @@ POST   /api/console/targets/{id}/restart
 
 The backend owns the SSH shell. Browser and MCP clients attach to the same `session_id`; if the browser closes while Docker/backend keeps running, the shell and transcript remain in the backend. Recent transcript text is kept as a bounded session snapshot, while the persistent stream is also stored as append-only chunks for long-running sessions.
 
+Transcript recovery reads newest chunks until the requested byte budget is
+filled, independent of flush size. Many small flushes do not shorten the
+recovered tail. Output order and UTF-8 boundaries are retained.
+
 Console websockets are locally hardened with bounded message size, client count, read deadlines, ping/pong keepalive, and lightweight input/resize frequency limits. These are abuse guardrails for the local gateway; they are not a remote multi-user quota system.
 
 Pending redacted transcript output is bounded to 512 KiB per session, including
