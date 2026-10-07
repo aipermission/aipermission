@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets/actioncapacity"
 	"github.com/aipermission/aipermission/backend/internal/localhttp"
 )
 
@@ -27,6 +28,9 @@ type Config struct {
 }
 
 func Load() (Config, error) {
+	if _, err := actioncapacity.RuntimeLimits(); err != nil {
+		return Config{}, err
+	}
 	frontendPort := env("AIPERMISSION_FRONTEND_PORT", "3210")
 	cfg := Config{
 		Host:         env("AIPERMISSION_BACKEND_HOST", "127.0.0.1"),

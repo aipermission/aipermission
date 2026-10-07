@@ -656,7 +656,10 @@ func enforceActionRequestTokenCapacity(ctx context.Context, executor storeDB, to
 	if err != nil {
 		return err
 	}
-	limits := actioncapacity.DefaultLimits()
+	limits, err := actioncapacity.RuntimeLimits()
+	if err != nil {
+		return err
+	}
 	if usage.LimitReason(limits) != "" {
 		return &ActionRequestCapacityError{Usage: usage, Limits: limits}
 	}
