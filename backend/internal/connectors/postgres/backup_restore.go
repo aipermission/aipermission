@@ -98,9 +98,11 @@ func (Connector) Restore(ctx context.Context, runtime connectors.RuntimeContext,
 	stderr.Limit = maxRestoreLog
 	cmd := exec.CommandContext(ctx, "psql", args...)
 	cmd.Env = invocation.Env
+	restrictKey := strings.TrimPrefix(completionMarker, "aipermission_restore_complete_")
 	cmd.Stdin = io.MultiReader(
+		strings.NewReader("\\restrict "+restrictKey+"\n"),
 		content,
-		strings.NewReader("\n\\echo "+completionMarker+"\n"),
+		strings.NewReader("\n\\unrestrict "+restrictKey+"\n\\echo "+completionMarker+"\n"),
 	)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -163,17 +165,31 @@ func validatedPostgresRestoreContent(ctx context.Context, request connectors.Res
 	if _, err := content.Seek(0, io.SeekStart); err != nil {
 		return fail(fmt.Errorf("rewind restore SQL file: %w", err))
 	}
-	read, controlsTransaction, err := validatePostgresRestoreMetaCommands(ctx, content)
+	staged, err := os.CreateTemp("", "aipermission-postgres-restricted-*")
+	if err != nil {
+		return fail(fmt.Errorf("stage restricted restore SQL: %w", err))
+	}
+	cleanupSource := cleanup
+	cleanup = func() {
+		cleanupSource()
+		_ = staged.Close()
+		_ = os.Remove(staged.Name())
+	}
+	writer := bufio.NewWriter(staged)
+	read, controlsTransaction, err := validatePostgresRestoreMetaCommands(ctx, content, writer)
 	if err != nil {
 		return fail(err)
 	}
 	if read != request.Size {
 		return fail(fmt.Errorf("restore SQL file size does not match the uploaded artifact"))
 	}
-	if _, err := content.Seek(0, io.SeekStart); err != nil {
+	if err := writer.Flush(); err != nil {
+		return fail(fmt.Errorf("flush restricted restore SQL: %w", err))
+	}
+	if _, err := staged.Seek(0, io.SeekStart); err != nil {
 		return fail(fmt.Errorf("rewind restore SQL file: %w", err))
 	}
-	return content, cleanup, controlsTransaction, nil
+	return staged, cleanup, controlsTransaction, nil
 }
 
 func seekablePostgresRestoreContent(ctx context.Context, content io.Reader, declaredSize int64) (io.ReadSeeker, func(), error) {
@@ -200,12 +216,12 @@ func seekablePostgresRestoreContent(ctx context.Context, content io.Reader, decl
 	return temporary, cleanup, nil
 }
 
-func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader) (int64, bool, error) {
+func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader, output io.Writer) (int64, bool, error) {
 	inCopyData := false
 	restrictToken := ""
 	restrictSeen := false
 	lexical := postgresRestoreLexicalState{statementStart: true}
-	reader := bufio.NewReader(content)
+	reader := bufio.NewReader(io.LimitReader(connectors.ReaderWithContext(ctx, content), maxBackupBytes+1))
 	var total int64
 	for {
 		if err := ctx.Err(); err != nil {
@@ -213,10 +229,13 @@ func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader)
 		}
 		rawLine, readErr := reader.ReadString('\n')
 		total += int64(len(rawLine))
+		if total > maxBackupBytes {
+			return total, false, fmt.Errorf("restore SQL file exceeds the size limit")
+		}
 		line := strings.TrimSpace(strings.TrimSuffix(rawLine, "\n"))
 		line = strings.TrimSuffix(line, "\r")
 		if inCopyData {
-			if line == `\.` {
+			if strings.TrimSuffix(strings.TrimSuffix(rawLine, "\n"), "\r") == `\.` {
 				inCopyData = false
 			}
 		} else if lexical.empty() && strings.HasPrefix(line, `\`) {
@@ -225,14 +244,18 @@ func validatePostgresRestoreMetaCommands(ctx context.Context, content io.Reader)
 			if metaErr != nil {
 				return total, false, metaErr
 			}
+			// The gateway owns restricted mode; validated dump markers cannot exit it.
+			rawLine = "\n"
 		} else {
-			upper := strings.ToUpper(line)
 			if err := lexical.scanLine(line); err != nil {
 				return total, false, err
 			}
-			if lexical.empty() && strings.HasPrefix(upper, "COPY ") && strings.HasSuffix(upper, " FROM STDIN;") {
+			if lexical.empty() && lexical.completedCopyInput {
 				inCopyData = true
 			}
+		}
+		if _, err := io.WriteString(output, rawLine); err != nil {
+			return total, false, fmt.Errorf("write restricted restore SQL: %w", err)
 		}
 		if readErr != nil {
 			if !errors.Is(readErr, io.EOF) {
@@ -287,6 +310,11 @@ type postgresRestoreLexicalState struct {
 	firstKeyword        string
 	firstToken          strings.Builder
 	controlsTransaction bool
+	copyStatement       bool
+	copyFrom            bool
+	copyInput           bool
+	copyDepth           int
+	completedCopyInput  bool
 }
 
 func (state *postgresRestoreLexicalState) empty() bool {
@@ -294,6 +322,7 @@ func (state *postgresRestoreLexicalState) empty() bool {
 }
 
 func (state *postgresRestoreLexicalState) scanLine(line string) error {
+	state.completedCopyInput = false
 	for index := 0; index < len(line); {
 		if state.dollarQuote != "" {
 			if strings.HasPrefix(line[index:], state.dollarQuote) {
@@ -376,11 +405,14 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			}
 		case line[index] == ';':
 			state.finishFirstToken()
+			state.completedCopyInput = state.copyStatement && state.copyInput
+			state.copyStatement, state.copyFrom, state.copyInput = false, false, false
+			state.copyDepth = 0
 			state.secondTokenExpected = false
 			state.firstKeyword = ""
 			state.statementStart = true
 			index++
-		case postgresIdentifierByte(line[index]) && (state.statementStart || state.secondTokenExpected):
+		case postgresIdentifierByte(line[index]) && (state.statementStart || state.secondTokenExpected || state.copyStatement):
 			state.firstToken.WriteByte(line[index])
 			index++
 		case line[index] == ' ' || line[index] == '\t' || line[index] == '\r':
@@ -388,11 +420,23 @@ func (state *postgresRestoreLexicalState) scanLine(line string) error {
 			index++
 		default:
 			state.finishStatementPrefix()
+			state.copyParenthesis(line[index])
 			index++
 		}
 	}
 	state.finishFirstToken()
 	return nil
+}
+
+func (state *postgresRestoreLexicalState) copyParenthesis(value byte) {
+	if !state.copyStatement {
+		return
+	}
+	if value == '(' {
+		state.copyDepth++
+	} else if value == ')' && state.copyDepth > 0 {
+		state.copyDepth--
+	}
 }
 
 func (state *postgresRestoreLexicalState) finishStatementPrefix() {
@@ -408,6 +452,17 @@ func (state *postgresRestoreLexicalState) finishFirstToken() {
 	}
 	token := strings.ToUpper(state.firstToken.String())
 	state.firstToken.Reset()
+	wasStart := state.statementStart
+	if wasStart {
+		state.copyStatement = token == "COPY"
+		state.completedCopyInput = false
+	}
+	if state.copyStatement && state.copyDepth == 0 {
+		if state.copyFrom && token == "STDIN" {
+			state.copyInput = true
+		}
+		state.copyFrom = token == "FROM"
+	}
 	state.statementStart = false
 	if state.secondTokenExpected {
 		if state.firstKeyword == "PREPARE" && token == "TRANSACTION" {
@@ -415,6 +470,9 @@ func (state *postgresRestoreLexicalState) finishFirstToken() {
 		}
 		state.secondTokenExpected = false
 		state.firstKeyword = ""
+		return
+	}
+	if !wasStart {
 		return
 	}
 	switch token {

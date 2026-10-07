@@ -206,7 +206,9 @@ as duplicate-dispatch protection, not proof that every restore is atomic. The
 connector reports top-level transaction-control artifacts as `outcome_unknown`
 even when its end-of-stream marker is observed. This includes prepared
 transaction control such as `PREPARE TRANSACTION`. The connector rejects unsafe
-or mismatched `\\restrict` markers before starting `psql`.
+or mismatched `\\restrict` markers before starting `psql`. Validated dump markers
+are stripped outside COPY data; the gateway wraps the staged SQL in restricted
+mode with an independently generated key that the artifact cannot release.
 If that audit record cannot be persisted, the API reports
 `audit_persistence_failed`; inspect the target before retrying because the
 external restore may already have changed it. The operation retains a durable
