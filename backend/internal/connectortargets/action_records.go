@@ -652,12 +652,13 @@ func enforceActionRequestTokenCapacity(ctx context.Context, executor storeDB, to
 	if tokenID == nil || *tokenID < 1 {
 		return ValidationError("token capacity requires a token request")
 	}
-	withinCapacity, err := actioncapacity.WithinDefault(ctx, executor, *tokenID, id)
+	usage, err := actioncapacity.Measure(ctx, executor, *tokenID, id)
 	if err != nil {
 		return err
 	}
-	if !withinCapacity {
-		return ErrActionRequestCapacity
+	limits := actioncapacity.DefaultLimits()
+	if usage.LimitReason(limits) != "" {
+		return &ActionRequestCapacityError{Usage: usage, Limits: limits}
 	}
 	return nil
 }

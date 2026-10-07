@@ -29,9 +29,25 @@ type Usage struct {
 }
 
 func WithinDefault(ctx context.Context, executor sqldb.Executor, tokenID, incomingID int64) (bool, error) {
-	return Within(ctx, executor, tokenID, incomingID, Limits{
-		Rows: MaxRows, Bytes: MaxBytes, Running: MaxRunning,
-	})
+	return Within(ctx, executor, tokenID, incomingID, DefaultLimits())
+}
+
+func DefaultLimits() Limits {
+	return Limits{Rows: MaxRows, Bytes: MaxBytes, Running: MaxRunning}
+}
+
+// LimitReason distinguishes active work from retained storage without exposing payloads.
+func (usage Usage) LimitReason(limits Limits) string {
+	if usage.Rows > limits.Rows {
+		return "stored_rows"
+	}
+	if usage.Bytes > limits.Bytes {
+		return "stored_bytes"
+	}
+	if usage.Running > limits.Running {
+		return "running_requests"
+	}
+	return ""
 }
 
 func Within(ctx context.Context, executor sqldb.Executor, tokenID, incomingID int64, limits Limits) (bool, error) {
@@ -39,7 +55,7 @@ func Within(ctx context.Context, executor sqldb.Executor, tokenID, incomingID in
 	if err != nil {
 		return false, err
 	}
-	return usage.Rows <= limits.Rows && usage.Bytes <= limits.Bytes && usage.Running <= limits.Running, nil
+	return usage.LimitReason(limits) == "", nil
 }
 
 // Measure requires a configured executor; it neither opens nor commits a transaction.

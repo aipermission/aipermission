@@ -231,6 +231,7 @@ func writeResourceLimit(w http.ResponseWriter, retryAfter time.Duration) {
 
 func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope, err error) {
 	var persistenceErr *actions.TerminalPersistenceError
+	var capacityErr *connectortargets.ActionRequestCapacityError
 	switch {
 	case errors.As(err, &persistenceErr):
 		httptransport.WriteJSON(w, http.StatusServiceUnavailable, persistenceErr.Response())
@@ -240,6 +241,11 @@ func writeActionError(w http.ResponseWriter, r *http.Request, scope ActionScope,
 		})
 	case errors.Is(err, connectortargets.ErrActionRequestIdempotency):
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
+	case errors.As(err, &capacityErr):
+		if capacityErr.Usage.LimitReason(capacityErr.Limits) == "running_requests" {
+			w.Header().Set("Retry-After", "60")
+		}
+		writeCodedError(w, http.StatusTooManyRequests, capacityErr.Error(), "connector_action_backpressure")
 	case errors.Is(err, connectortargets.ErrActionRequestCapacity):
 		writeResourceLimit(w, time.Minute)
 	case errors.Is(err, connectortargets.ErrInvalidTargetRef), errors.Is(err, connectortargets.ErrTargetProfileNotFound):
