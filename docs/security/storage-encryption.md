@@ -108,7 +108,7 @@ If no database exists, the first screen shows:
 Create Database asks the user to set a local database password:
 
 - password and confirmation are collected in two inputs
-- new passwords must be at least 14 characters and include uppercase letters, lowercase letters, and numbers
+- new passwords must contain at least 14 Unicode code points and include ASCII uppercase letters, lowercase letters, and numbers
 - the password is never returned in backend responses
 - the password is not an API token or a separate backup password
 - the password is not stored as persistent plaintext
@@ -180,7 +180,7 @@ If more than one database is unlocked, the UI asks whether to lock the current d
 Settings rekeys the active database with SQLCipher `rekey`.
 
 - the current password must be verified first
-- the new password must be at least 14 characters and include uppercase letters, lowercase letters, and numbers
+- the new password must contain at least 14 Unicode code points and include ASCII uppercase letters, lowercase letters, and numbers
 - the operation applies only to the active unlocked database
 - the current backend process remains unlocked
 - after container restart or Lock Database, the new password is required

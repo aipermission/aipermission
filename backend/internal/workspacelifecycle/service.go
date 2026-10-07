@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/db"
@@ -164,7 +165,7 @@ func ValidatePassword(password, confirmation string) error {
 	if err := keymaterial.ValidatePassphrase(password); err != nil {
 		return err
 	}
-	if len(password) < 14 {
+	if utf8.RuneCountInString(password) < 14 {
 		return fmt.Errorf("password must be at least 14 characters")
 	}
 	if password != confirmation {
