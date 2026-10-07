@@ -15,6 +15,7 @@ export function useUnlockStatus() {
     generation: 0,
     pending: null,
   });
+  const displayedDatabase = useRef("");
 
   const loadUnlockStatus = useCallback(async (signal?: AbortSignal) => {
     const owner = ownership.current;
@@ -30,6 +31,14 @@ export function useUnlockStatus() {
       if (controller.signal.aborted || !owner.mounted || generation !== owner.generation) return;
       const data = databaseStatusResponse(response);
       if (typeof data.state !== "string" || data.state.length === 0) throw new Error("Invalid unlock status response.");
+      if (data.state === "unlocked" && data.database_id) {
+        if (displayedDatabase.current && displayedDatabase.current !== data.database_id) {
+          setUnlock({ state: "loading", data: null, error: null });
+          window.location.reload();
+          return;
+        }
+        displayedDatabase.current = data.database_id;
+      }
       setUnlock({ state: "ready", data, error: null });
     } catch (error) {
       if (controller.signal.aborted || !owner.mounted || generation !== owner.generation) return;

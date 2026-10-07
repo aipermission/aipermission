@@ -35,7 +35,7 @@ beforeEach(async () => {
         },
       }),
   );
-  await apiGet("/api/status");
+  await apiPost("/api/unlock", {});
   await resetLocalActionRetryLedger();
 });
 
@@ -81,7 +81,7 @@ it.each([{ id: 99 }, { target_ref: "example:2:2" }, { action_name: "different_ac
 it.each(["another-workspace", ""])("ignores observations without the captured workspace binding %s", async (responseWorkspace) => {
   installGateway(approval({ status: "completed" }), "detail", responseWorkspace);
   await apiPost("/api/connector-actions/local-run", body);
-  await apiGet(observationPath("detail"));
+  await expect(apiGet(observationPath("detail"))).rejects.toThrow(/workspace binding mismatch/);
   expect(await listLocalActionRetryEntries()).toHaveLength(1);
 });
 
@@ -95,13 +95,13 @@ it.each(["another-workspace", ""])(
   },
 );
 
-it("sends the captured binding only for explicit reads and settles a matching observation", async () => {
+it("sends the captured binding for ordinary and explicit reads and settles a matching observation", async () => {
   installGateway(approval({ status: "completed" }), "detail");
   await apiPost("/api/connector-actions/local-run", body);
   const read = vi.fn(async (_url: string, _options?: RequestInit) => json(approval({ status: "completed" })));
   vi.stubGlobal("fetch", read);
   await apiGet("/api/status");
-  expect(read.mock.calls[0]?.[1]).not.toHaveProperty("headers");
+  expect(new Headers(read.mock.calls[0]?.[1]?.headers).get("X-AIPermission-Workspace")).toBe(workspace);
   await apiGet(observationPath("detail"), { workspaceBinding: workspace });
   expect(read).toHaveBeenLastCalledWith(
     expect.stringContaining(observationPath("detail")),
@@ -130,7 +130,7 @@ it("does not let a late explicitly bound read replace the current workspace", as
         },
       }),
   );
-  await apiGet("/api/status");
+  await apiPost("/api/databases/switch", { database_id: nextWorkspace });
   reply.resolve(
     new Response(JSON.stringify(approval({ status: "completed" })), {
       headers: {
@@ -332,7 +332,7 @@ it("settles a late read only in its captured workspace, never the newly selected
         },
       }),
   );
-  await apiGet("/api/status");
+  await apiPost("/api/databases/switch", { database_id: nextWorkspace });
   reply.resolve(json(approval({ status: "completed" })));
   await reading;
   expect(await entries.allEntries(nextAttempt.scope)).toHaveLength(1);

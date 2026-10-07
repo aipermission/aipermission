@@ -25,7 +25,7 @@ setupMutationRetryStorage();
 beforeEach(async () => {
   observations.clear();
   vi.stubGlobal("fetch", async () => response({}));
-  await apiGet("/api/status");
+  await apiPost("/api/unlock", {});
 });
 
 function approval(overrides: Partial<ConnectorApproval> = {}) {
@@ -267,7 +267,7 @@ it("discards a late successful mutation from a previous workspace even with the 
         },
       }),
   );
-  await apiGet("/api/status");
+  await apiPost("/api/databases/switch", { database_id: "next-mutation-workspace" });
   rendered.rerender();
   await waitFor(() => expect(rendered.result.current.locked).toBe(false));
   await act(async () => {

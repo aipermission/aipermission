@@ -10,6 +10,13 @@ Missing or mismatched headers leave a dispatched mutation unconfirmed; they do
 not authorize a workspace switch, a definitive rejection, or blind replay.
 Unpinned database-switch requests retain their normal workspace discovery.
 
+Ordinary browser JSON reads also send the tab's captured workspace and reject a
+successful reply with a missing or different workspace header before exposing
+its data or settling a retry. A changed-workspace hint cannot override that
+ownership check. Unlock-status discovery remains available while locked; when
+it reports a different unlocked database, the old workspace view is discarded
+and the page reloads. Successful database switches invalidate sibling views.
+
 Workspace-bound download, diagnostics, and browser attach routes do not support
 `HEAD`. Session and workspace validation run first: a stale or missing workspace
 binding receives `409 Conflict`; a matching authenticated request receives

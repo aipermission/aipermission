@@ -1,6 +1,6 @@
 import { expect } from "@playwright/test";
 import { createServer } from "node:http";
-import { test, mockResponse, installStaticMockRoutes } from "./mock-browser.mjs";
+import { test, mockResponse, installStaticMockRoutes, fulfillWorkspace, workspaceHeaders } from "./mock-browser.mjs";
 import AxeBuilder from "@axe-core/playwright";
 import { responsiveViewportMatrix } from "../scripts/playwright-gate-manifest.mjs";
 import { observeSQLBrowserRuntime, verifySQLBrowserRuntime } from "./sql-editor-browser.mjs";
@@ -20,10 +20,8 @@ test.beforeEach(async ({ page, apiIsolation }) => {
   let projectScopeRevision = "project-scopes-1";
   let mcpRuntimeEnabled = false;
   await apiIsolation.route(page, "http://localhost:8080/api/unlock/status", ["GET"], async (route) => {
-    await route.fulfill({
-      headers: unlocked
-        ? { "X-AIPermission-Workspace": "browser-fixture-workspace", "access-control-expose-headers": "X-AIPermission-Workspace" }
-        : {},
+    await fulfillWorkspace(route, {
+      headers: unlocked ? workspaceHeaders : {},
       json: unlocked
         ? mockResponse("unlockedStatus")
         : {
@@ -37,12 +35,8 @@ test.beforeEach(async ({ page, apiIsolation }) => {
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({ database_id: "default", password: "local-password" });
     unlocked = true;
-    await route.fulfill({
-      headers: {
-        "set-cookie": "aipermission_ui_session=test; Path=/; SameSite=Strict",
-        "X-AIPermission-Workspace": "browser-fixture-workspace",
-        "access-control-expose-headers": "X-AIPermission-Workspace",
-      },
+    await fulfillWorkspace(route, {
+      headers: { "set-cookie": "aipermission_ui_session=test; Path=/; SameSite=Strict" },
       json: { state: "unlocked", database_id: "default", database_name: "Default" },
     });
   });
@@ -56,12 +50,12 @@ test.beforeEach(async ({ page, apiIsolation }) => {
     expect(databaseFile.name).toBe("imported.aipdb");
     expect(await databaseFile.text()).toBe("encrypted-test-fixture");
     unlocked = true;
-    await route.fulfill({ json: { state: "unlocked", database_id: "imported", database_name: "Imported project" } });
+    await fulfillWorkspace(route, { json: { state: "unlocked", database_id: "imported", database_name: "Imported project" } });
   });
 
   await apiIsolation.route(page, "http://localhost:8080/api/settings/security", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
-      await route.fulfill({
+      await fulfillWorkspace(route, {
         json: {
           reusable_tokens: false,
           expose_mcp_server_metadata: true,
@@ -72,7 +66,7 @@ test.beforeEach(async ({ page, apiIsolation }) => {
       });
       return;
     }
-    await route.fulfill({
+    await fulfillWorkspace(route, {
       json: {
         reusable_tokens: false,
         expose_mcp_server_metadata: false,
@@ -86,19 +80,19 @@ test.beforeEach(async ({ page, apiIsolation }) => {
     if (route.request().method() === "PUT") {
       mcpRuntimeEnabled = Boolean(route.request().postDataJSON().enabled);
     }
-    await route.fulfill({ json: { enabled: mcpRuntimeEnabled, start_enabled: false, updated_at: "2026-05-31T00:00:00Z" } });
+    await fulfillWorkspace(route, { json: { enabled: mcpRuntimeEnabled, start_enabled: false, updated_at: "2026-05-31T00:00:00Z" } });
   });
 
   await apiIsolation.route(page, "http://localhost:8080/api/settings/retention", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
-      await route.fulfill({ json: { history_days: 14, audit_days: 14, console_days: 7, message_days: 7 } });
+      await fulfillWorkspace(route, { json: { history_days: 14, audit_days: 14, console_days: 7, message_days: 7 } });
       return;
     }
-    await route.fulfill({ json: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 } });
+    await fulfillWorkspace(route, { json: { history_days: 0, audit_days: 0, console_days: 0, message_days: 0 } });
   });
 
   await apiIsolation.route(page, /http:\/\/localhost:8080\/api\/history\?.*/, ["GET"], async (route) => {
-    await route.fulfill({ json: { items: [], total: 0, limit: 50, has_more: false } });
+    await fulfillWorkspace(route, { json: { items: [], total: 0, limit: 50, has_more: false } });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/tokens/1/connector-permissions", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
@@ -122,11 +116,11 @@ test.beforeEach(async ({ page, apiIsolation }) => {
         ...permission,
       }));
       connectorPermissionRevision = "connector-permissions-2";
-      await route.fulfill({ json: { items: connectorPermissions, revision: connectorPermissionRevision } });
+      await fulfillWorkspace(route, { json: { items: connectorPermissions, revision: connectorPermissionRevision } });
       return;
     }
     expect(route.request().method()).toBe("GET");
-    await route.fulfill({ json: { items: connectorPermissions, revision: connectorPermissionRevision } });
+    await fulfillWorkspace(route, { json: { items: connectorPermissions, revision: connectorPermissionRevision } });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/tokens/1/project-scopes", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
@@ -141,7 +135,7 @@ test.beforeEach(async ({ page, apiIsolation }) => {
     } else {
       expect(route.request().method()).toBe("GET");
     }
-    await route.fulfill({ json: { items: [projectScope(enabledProjectIDs.includes(1))], revision: projectScopeRevision } });
+    await fulfillWorkspace(route, { json: { items: [projectScope(enabledProjectIDs.includes(1))], revision: projectScopeRevision } });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/tokens/1/project-capabilities", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
@@ -165,7 +159,7 @@ test.beforeEach(async ({ page, apiIsolation }) => {
     } else {
       expect(route.request().method()).toBe("GET");
     }
-    await route.fulfill({
+    await fulfillWorkspace(route, {
       json: { definitions: mockResponse("projectCapabilityDefinitions"), items: projectCapabilities, revision: projectCapabilityRevision },
     });
   });
@@ -257,27 +251,23 @@ test("@high-risk persists an explicit server-only reconciliation across reload w
   apiIsolation,
 }) => {
   const request = { ...mockResponse("pendingApproval"), status: "outcome_unknown" };
-  const headers = {
-    "X-AIPermission-Workspace": "browser-fixture-workspace",
-    "access-control-expose-headers": "X-AIPermission-Workspace",
-  };
   let verifiedReads = 0;
   await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals?status=outcome_unknown", ["GET"], async (route) => {
     expect(route.request().method()).toBe("GET");
-    expect(route.request().headers()["x-aipermission-workspace"]).toBe(headers["X-AIPermission-Workspace"]);
-    await route.fulfill({ headers, json: [request] });
+    expect(route.request().headers()["x-aipermission-workspace"]).toBe(workspaceHeaders["X-AIPermission-Workspace"]);
+    await fulfillWorkspace(route, { json: [request] });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals/42", ["GET"], async (route) => {
     expect(route.request().method()).toBe("GET");
-    expect(route.request().headers()["x-aipermission-workspace"]).toBe(headers["X-AIPermission-Workspace"]);
+    expect(route.request().headers()["x-aipermission-workspace"]).toBe(workspaceHeaders["X-AIPermission-Workspace"]);
     verifiedReads += 1;
-    await route.fulfill({ headers, json: request });
+    await fulfillWorkspace(route, { json: request });
   });
   await unlock(page);
   await context.addCookies([
     {
       name: scopedUICookieName("aipermission_workspace", new URL(page.url())),
-      value: headers["X-AIPermission-Workspace"],
+      value: workspaceHeaders["X-AIPermission-Workspace"],
       url: new URL(page.url()).origin,
       sameSite: "Strict",
     },
@@ -290,7 +280,7 @@ test("@high-risk persists an explicit server-only reconciliation across reload w
   await expect(page.getByRole("button", { name: "Reconcile server request 42" })).toHaveCount(0);
   expect(verifiedReads).toBe(1);
   const proof = {
-    scope: headers["X-AIPermission-Workspace"],
+    scope: workspaceHeaders["X-AIPermission-Workspace"],
     request_id: 42,
     target_ref: request.target_ref,
     action_name: request.action_name,
@@ -497,7 +487,7 @@ test("moves an edited connector to another project", async ({ page, apiIsolation
   let updatePayload = null;
   await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/1/with-profile/1", ["PUT"], async (route) => {
     updatePayload = route.request().postDataJSON();
-    await route.fulfill({
+    await fulfillWorkspace(route, {
       json: { ...mockResponse("targetDetail"), project_id: 2, project_name: "My Project", project_slug: "my-project" },
     });
   });
@@ -522,17 +512,17 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
   const approval = mockResponse("pendingApproval");
   await page.unroute("http://localhost:8080/api/connector-action-approvals");
   await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals", ["GET"], async (route) => {
-    await route.fulfill({ json: pending ? [approval] : [] });
+    await fulfillWorkspace(route, { json: pending ? [approval] : [] });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals/42", ["GET"], async (route) => {
-    await route.fulfill({ json: approval });
+    await fulfillWorkspace(route, { json: approval });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals/42/run", ["POST"], async (route) => {
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({ user_note: "", approval_context_hash: "approval-context-42" });
     runCount += 1;
     pending = false;
-    await route.fulfill({ json: { ...approval, status: "completed" } });
+    await fulfillWorkspace(route, { json: { ...approval, status: "completed" } });
   });
 
   await unlock(page);
@@ -558,11 +548,11 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
     const profiles = [sqlTargetProfile(kind, 1, "admin"), sqlTargetProfile(kind, 2, "readonly")];
     await page.unroute("http://localhost:8080/api/targets");
     await apiIsolation.route(page, "http://localhost:8080/api/targets", ["GET"], async (route) =>
-      route.fulfill({ json: { items: profiles } }),
+      fulfillWorkspace(route, { json: { items: profiles } }),
     );
     await page.unroute("http://localhost:8080/api/connector-action-approvals");
     await apiIsolation.route(page, "http://localhost:8080/api/connector-action-approvals", ["GET"], async (route) => {
-      await route.fulfill({
+      await fulfillWorkspace(route, {
         json: [
           {
             ...mockResponse("pendingApproval"),
@@ -582,7 +572,7 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
       });
     });
     await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/2/profiles/*/actions", ["GET"], async (route) => {
-      await route.fulfill({ json: { items: [mockResponse("sqlQueryAction")] } });
+      await fulfillWorkspace(route, { json: { items: [mockResponse("sqlQueryAction")] } });
     });
     await apiIsolation.route(page, "http://localhost:8080/api/connector-actions/local-run", ["POST"], async (route) => {
       expect(route.request().method()).toBe("POST");
@@ -597,7 +587,7 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
         });
         manualQueries.push(request);
       }
-      await route.fulfill({
+      await fulfillWorkspace(route, {
         json: {
           request_id: 7,
           target_ref: request.target_ref,
@@ -641,13 +631,13 @@ test("@high-risk reconnects a live console after the remote session exits", asyn
   await page.unroute("http://localhost:8080/api/console/sessions");
   await apiIsolation.route(page, "http://localhost:8080/api/console/sessions", ["GET", "POST"], async (route) => {
     if (route.request().method() === "POST") {
-      await route.fulfill({ json: liveConsoleSession(11) });
+      await fulfillWorkspace(route, { json: liveConsoleSession(11) });
       return;
     }
-    await route.fulfill({ json: [liveConsoleSession(10)] });
+    await fulfillWorkspace(route, { json: [liveConsoleSession(10)] });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/vault-session-options?runtime_id=1", ["GET"], async (route) => {
-    await route.fulfill({ json: { supported: false, items: [], defaults: [] } });
+    await fulfillWorkspace(route, { json: { supported: false, items: [], defaults: [] } });
   });
   await page.routeWebSocket(/\/api\/console\/sessions\/\d+\/attach/, (socket) => {
     socketCount += 1;
@@ -676,14 +666,14 @@ test("@high-risk cancels an active transfer from the transfer center", async ({ 
   let canceled = false;
   let cancelCount = 0;
   await apiIsolation.route(page, "http://localhost:8080/api/file-transfer-batches?limit=30", ["GET"], async (route) => {
-    await route.fulfill({ json: { items: [transferBatch(canceled ? "canceled" : "running")] } });
+    await fulfillWorkspace(route, { json: { items: [transferBatch(canceled ? "canceled" : "running")] } });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/file-transfer-batches/77/cancel", ["POST"], async (route) => {
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({});
     cancelCount += 1;
     canceled = true;
-    await route.fulfill({ json: transferBatch("canceled") });
+    await fulfillWorkspace(route, { json: transferBatch("canceled") });
   });
 
   await unlock(page);

@@ -2,6 +2,18 @@ import { readFileSync } from "node:fs";
 import { expect, test as base } from "@playwright/test";
 
 const data = JSON.parse(readFileSync(new URL("./mock-api-responses.json", import.meta.url), "utf8"));
+export const workspaceHeaders = {
+  "X-AIPermission-Workspace": "browser-fixture-workspace",
+  "access-control-expose-headers": "X-AIPermission-Workspace",
+};
+
+export function fulfillWorkspace(route, response) {
+  if (new URL(route.request().url()).pathname === "/api/unlock/status") return route.fulfill(response);
+  return route.fulfill({
+    ...response,
+    headers: { ...workspaceHeaders, ...response.headers },
+  });
+}
 
 export function mockResponse(name) {
   if (!Object.hasOwn(data.responses, name)) throw new Error(`Unknown mock response: ${name}`);
@@ -57,7 +69,7 @@ test.afterEach(async ({ apiIsolation }) => {
 export async function installStaticMockRoutes(page, isolation) {
   for (const [path, response] of Object.entries(structuredClone(data.staticRoutes))) {
     await isolation.route(page, `http://localhost:8080${path}`, ["GET"], async (route) => {
-      await route.fulfill(response);
+      await fulfillWorkspace(route, response);
     });
   }
 }

@@ -35,17 +35,33 @@ export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:808
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path: string, options: APIOptions = {}): Promise<unknown> {
-  const requestWorkspace = options.workspaceBinding || currentWorkspaceBinding();
+  const requestWorkspace = options.workspaceBinding ?? currentWorkspaceBinding();
+  if (options.workspaceBinding !== undefined && !requestWorkspace) throw new Error("Gateway read workspace binding is required.");
+  const discovery = path === "/api/unlock/status" && options.workspaceBinding === undefined;
   const request = boundedReadSignal(options.signal, options.timeoutMs);
   try {
     const response = await fetch(`${apiUrl}${path}`, {
       signal: request.signal,
       credentials: "include",
-      ...(options.workspaceBinding ? { headers: workspaceHeaders({}, requestWorkspace) } : {}),
+      ...(!discovery ? { headers: workspaceHeaders({}, requestWorkspace) } : {}),
     });
-    const data = await readResponse(response, { captureWorkspace: !options.workspaceBinding });
-    if (options.workspaceBinding && response.headers.get(workspaceHeaderName) !== requestWorkspace)
+    const data = await readResponse(response, { captureWorkspace: false });
+    request.signal?.throwIfAborted();
+    if (
+      discovery &&
+      requestWorkspace &&
+      response.headers.get(workspaceHeaderName) !== requestWorkspace &&
+      objectRecord(data)?.state === "unlocked"
+    ) {
+      invalidateUISession();
+      window.location.reload();
+      throw new Error("Gateway status workspace changed; reload required.");
+    }
+    if (!discovery && requestWorkspace && response.headers.get(workspaceHeaderName) !== requestWorkspace) {
+      if (options.workspaceBinding === undefined) invalidateUISession();
       throw new Error("Gateway read workspace binding mismatch.");
+    }
+    if (!requestWorkspace) captureWorkspaceBinding(response);
     if (requestWorkspace && response.headers.get(workspaceHeaderName) === requestWorkspace)
       await observeLocalActionRetryResponse(path, data, requestWorkspace);
     return data;

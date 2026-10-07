@@ -5,8 +5,10 @@ import { LocalActionRetryPanel } from "../../components/settings/local-action-re
 import { ServerRequestReconciliation } from "../../components/settings/server-request-reconciliation";
 import { useConnectorMutationOwnership } from "../../connectors/templates/_shared/use-connector-mutation-ownership";
 import { apiGet, apiPost } from "../../lib/api";
+import * as api from "../../lib/api";
 import { listLocalActionRetryEntries, localActionRetryLedgerChangedEvent } from "../../lib/local-action-retry";
 import { reconcileVerifiedServerRequest, reconciledRequests } from "../../lib/local-action-retry/reconciliations";
+import * as reconciliations from "../../lib/local-action-retry/reconciliations";
 import { connectorApprovalFixture } from "../connector-action-fixtures";
 import { mutationObservationQueue, mutationTestWorkspace, setupMutationRetryStorage } from "../connector-mutation-test-state";
 
@@ -61,13 +63,15 @@ beforeEach(async () => {
     vi.fn(async (url: string, options?: RequestInit) => {
       const path = new URL(url).pathname;
       if (options?.method === "POST") {
+        if (path === "/api/unlock") return jsonResponse({});
         if (path !== "/api/connector-actions/local-run") throw new Error("Unexpected fixture mutation");
         throw new TypeError("POST reply lost");
       }
       return gatewayResponse(url);
     }),
   );
-  await apiGet("/api/status");
+  await apiPost("/api/unlock", {});
+  vi.mocked(fetch).mockClear();
 });
 
 it("recovers a lost POST reply through explicit server identity reconciliation without guessing its ledger identity", async () => {
@@ -273,7 +277,7 @@ it("does not carry old rows or confirmation into a switched workspace", async ()
   const view = render(<ServerRequestReconciliation />);
   await user.click(await openServerConfirmation(user));
   vi.mocked(fetch).mockImplementationOnce(async () => jsonResponse({}, "other-workspace"));
-  await apiGet("/api/status");
+  await apiPost("/api/databases/switch", { database_id: "other-workspace" });
   view.rerender(<ServerRequestReconciliation />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Reconcile server request 71" })).not.toBeInTheDocument();
@@ -292,4 +296,39 @@ it("shows a server lookup error without treating it as a malformed local ledger"
   render(<ServerRequestReconciliation />);
   expect(await screen.findByText("server requests unavailable")).toBeVisible();
   expect(screen.queryByRole("button", { name: "Reset ledger" })).not.toBeInTheDocument();
+});
+
+it("refuses an exact lookup whose reply identifies a different request", async () => {
+  const user = userEvent.setup();
+  render(<ServerRequestReconciliation />);
+  await screen.findByRole("button", { name: "Reconcile server request 71" });
+  vi.spyOn(api, "apiGet").mockResolvedValueOnce({ ...remote, id: 72 });
+  await user.type(screen.getByRole("textbox", { name: "Server request ID" }), "71");
+  await user.click(screen.getByRole("button", { name: "Find server request" }));
+  expect(await screen.findByText(/Server request identity changed/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Reconcile server request/ })).not.toBeInTheDocument();
+  expect(await reconciledRequests(scope)).toEqual([]);
+});
+
+it("does not dispatch server reads without a captured workspace", async () => {
+  vi.spyOn(api, "currentWorkspaceBinding").mockReturnValue("");
+  render(<ServerRequestReconciliation />);
+  expect(await screen.findByText("Database request identity is unavailable.")).toBeVisible();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("ignores a superseded list even when the gateway read completed before its local proof read", async () => {
+  const user = userEvent.setup();
+  let finish!: (_value: Awaited<ReturnType<typeof reconciledRequests>>) => void;
+  const pending = new Promise<Awaited<ReturnType<typeof reconciledRequests>>>((resolve) => {
+    finish = resolve;
+  });
+  const proofs = vi.spyOn(reconciliations, "reconciledRequests").mockImplementationOnce(() => pending);
+  render(<ServerRequestReconciliation />);
+  await waitFor(() => expect(proofs).toHaveBeenCalledTimes(1));
+  vi.mocked(fetch).mockResolvedValue(jsonResponse([{ ...remote, id: 72 }]));
+  await user.click(screen.getByRole("button", { name: "Refresh server requests" }));
+  expect(await screen.findByRole("button", { name: "Reconcile server request 72" })).toBeVisible();
+  await act(async () => finish([]));
+  expect(screen.queryByRole("button", { name: "Reconcile server request 71" })).not.toBeInTheDocument();
 });
