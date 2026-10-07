@@ -8,6 +8,7 @@ import { BackupProviderPanel } from "../components/settings/backup-provider-pane
 import { BackupRecordDialogs } from "../components/settings/backup-record-dialogs";
 import { DatabaseSettingsPanel } from "../components/settings/database-settings-panel";
 import { DiagnosticsPanel } from "../components/settings/diagnostics-panel";
+import { ConnectorCapacityPanel } from "../components/settings/connector-capacity-panel";
 import { HistoryLabelsPanel } from "../components/settings/history-labels-panel";
 import { HistoryRetentionPanel } from "../components/settings/history-retention-panel";
 import { MaintenanceConsolePanel } from "../components/settings/maintenance-console-panel";
@@ -60,6 +61,7 @@ export function SettingsPage() {
         <LocalActionRetryPanel />
       </Suspense>
       <DiagnosticsPanel />
+      <ConnectorCapacityPanel />
       <HistoryRetentionPanel />
       <HistoryLabelsPanel />
       <DatabaseSettingsPanel databaseName={databaseName} />
