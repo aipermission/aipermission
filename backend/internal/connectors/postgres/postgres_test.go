@@ -747,6 +747,8 @@ func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
 	for _, command := range []string{
 		`\set ON_ERROR_STOP off`, `\quit`, `\include secrets.sql`,
 		`select 1 \gexec`, `select 1; \! id`,
+		"COPY (SELECT 1) TO STDOUT; -- FROM STDIN;\n\\! printf canary\n\\.",
+		"COPY (SELECT ' FROM STDIN;') TO STDOUT;\n\\! printf canary\n\\.",
 		"\\restrict `touch /tmp/aipermission-restore-rce; printf token`",
 		`\restrict token extra`, "\\restrict\ttoken", `\unrestrict token`,
 		"\\restrict token\n\\unrestrict other",
@@ -761,8 +763,11 @@ func TestRestoreRejectsUnsafePSQLMetaCommandsBeforeDispatch(t *testing.T) {
 		t.Run(command, func(t *testing.T) {
 			directory := t.TempDir()
 			started := filepath.Join(directory, "started")
-			installFakePSQL(t, directory, "printf started > "+started)
+			installFakePSQL(t, directory, "printf started > "+connectors.QuoteShellArgument(started))
 			content := "select 1;\n" + command + "\n"
+			if _, _, err := validatePostgresRestoreMetaCommands(t.Context(), strings.NewReader(content), io.Discard); err == nil {
+				t.Fatal("unsafe artifact passed pre-dispatch validation")
+			}
 			_, err := New().Restore(t.Context(), postgresRestoreTestRuntime(), connectors.RestoreRequest{
 				Filename: "restore.sql", Content: strings.NewReader(content), Size: int64(len(content)),
 			})
@@ -779,7 +784,7 @@ func TestRestoreValidatorAcceptsDollarSignsInsideUnquotedIdentifiers(t *testing.
 		"CREATE TABLE public.foo$$ (id integer);",
 		"CREATE TABLE public.şema$tag$ (id integer);",
 	} {
-		read, _, err := validatePostgresRestoreMetaCommands(t.Context(), strings.NewReader(content))
+		read, _, err := validatePostgresRestoreMetaCommands(t.Context(), strings.NewReader(content), io.Discard)
 		if err != nil || read != int64(len(content)) {
 			t.Fatalf("validate restore content=%q read=%d err=%v", content, read, err)
 		}

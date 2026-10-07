@@ -474,7 +474,11 @@ built-in Postgres connector validates the exact declared size and rejects psql
 control commands such as `\\set`, `\\quit`, `\\include`, and inline `\\gexec`
 outside quoted SQL content. Only one canonical, matching `\\restrict TOKEN` /
 `\\unrestrict TOKEN` pair with an alphanumeric or underscore token is accepted.
-It then streams the uploaded SQL to `psql` with
+Validated dump restriction markers are removed from the private staged stream;
+COPY data is preserved. The gateway enters `psql` restricted mode with its own
+unpredictable key before the staged SQL and exits it only after the complete
+stream, so the artifact cannot enable local shell or file meta-commands.
+It then streams the staged SQL to `psql` with
 `ON_ERROR_STOP` and requests `psql`'s single-transaction mode. This is not an
 atomicity guarantee for arbitrary SQL: explicit transaction control in the
 artifact can end or replace that wrapper transaction. It ignores user `psqlrc`

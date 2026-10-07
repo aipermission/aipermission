@@ -30,6 +30,7 @@ func TestPostgresRealService(t *testing.T) {
 	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
 	assertImplicitCastResolutionRejected(t, connector, runtime)
 	assertRestoreProcessBoundary(t, connector, runtime)
+	assertRestoreRestrictedArtifact(t, connector, runtime)
 }
 
 func postgresConformanceRuntime(t *testing.T) connectors.RuntimeContext {
