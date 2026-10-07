@@ -83,11 +83,11 @@ func (Store) PurgeAudit(ctx context.Context, executor sqldb.Executor, cutoff str
 	if err != nil {
 		return 0, err
 	}
-	_, err = deleteWithCutoff(ctx, executor, `
+	outboxDeleted, err := deleteWithCutoff(ctx, executor, `
 		DELETE FROM audit_outbox
 		WHERE (delivered_at IS NOT NULL AND julianday(delivered_at) < julianday('now', ?))
 			OR (dead_lettered_at IS NOT NULL AND julianday(dead_lettered_at) < julianday('now', ?))`, cutoff, cutoff)
-	return deleted, err
+	return deleted + outboxDeleted, err
 }
 
 func (Store) PurgeConsole(ctx context.Context, executor sqldb.Executor, cutoff string) (int64, error) {

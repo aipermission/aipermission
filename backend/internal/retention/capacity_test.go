@@ -18,7 +18,7 @@ func TestCapacityHandlerReturnsPrivateCurrentLimitsAndRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
-		return HTTPScope{Service: NewService(database, "workspace")}, true
+		return HTTPScope{Service: NewService(database, "workspace", nil)}, true
 	})
 	response := httptest.NewRecorder()
 	handler.Capacity(response, httptest.NewRequest(http.MethodGet, "/api/settings/connector-capacity", nil))
@@ -47,7 +47,7 @@ func TestCapacityHandlerReturnsPrivateCurrentLimitsAndRetention(t *testing.T) {
 
 func TestCapacityHandlerRejectsMissingServicesAndInvalidRuntimeConfiguration(t *testing.T) {
 	for _, handler := range []*HTTPHandlers{nil, NewHTTPHandlers(nil), NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) { return HTTPScope{}, true }), NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
-		return HTTPScope{Service: NewService(nil, "workspace")}, true
+		return HTTPScope{Service: NewService(nil, "workspace", nil)}, true
 	})} {
 		response := httptest.NewRecorder()
 		handler.Capacity(response, httptest.NewRequest(http.MethodGet, "/api/settings/connector-capacity", nil))
@@ -58,7 +58,7 @@ func TestCapacityHandlerRejectsMissingServicesAndInvalidRuntimeConfiguration(t *
 	t.Setenv("AIPERMISSION_CONNECTOR_REQUEST_STORAGE_MIB", "invalid")
 	database := openTestDatabase(t)
 	handler := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
-		return HTTPScope{Service: NewService(database, "workspace")}, true
+		return HTTPScope{Service: NewService(database, "workspace", nil)}, true
 	})
 	response := httptest.NewRecorder()
 	handler.Capacity(response, httptest.NewRequest(http.MethodGet, "/api/settings/connector-capacity", nil))
