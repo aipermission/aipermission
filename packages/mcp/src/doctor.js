@@ -129,8 +129,11 @@ function readTOMLServer(contents, name) {
 
 function validateServer(client, server) {
   const expected = adaptMCPServerConfig(client, buildMCPServerConfig({ apiUrl: "http://localhost:3210", token: "TOKEN" }));
-  if (server.command !== expected.command) throw new Error("server does not use npx");
-  if (!sameArray(server.args, expected.args)) throw new Error(`server does not use the exact ${expected.args[1]} command arguments`);
+  const windowsWrapper = ["cmd", "cmd.exe"].includes(server.command);
+  const expectedArgs = windowsWrapper ? ["/d", "/s", "/c", expected.command, ...expected.args] : expected.args;
+  if (server.command !== expected.command && !windowsWrapper)
+    throw new Error("server does not use npx or the documented Windows cmd wrapper");
+  if (!sameArray(server.args, expectedArgs)) throw new Error(`server does not use the exact ${expected.args[1]} command arguments`);
   if (server.env?.NODE_ENV !== "production") throw new Error("server NODE_ENV is not production");
   if (typeof server.env?.AIPERMISSION_API_TOKEN !== "string" || !server.env.AIPERMISSION_API_TOKEN) {
     throw new Error("server has no API token");

@@ -248,6 +248,10 @@ and restart that client. If it still reports `spawn npx ENOENT`, use `init --pri
 and adapt the server command to `cmd` with arguments beginning
 `["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@VERSION"]`.
 
+`doctor` also recognizes this exact wrapper (`cmd` or `cmd.exe`), with the
+installed package version. It does not execute it and rejects extra commands,
+altered switches, or an unpinned/different package version.
+
 Copilot CLI also accepts `.github/mcp.json`, but setup intentionally uses the
 local `.mcp.json` project target because the generated object contains a bearer
 token and must not become shared repository configuration.
