@@ -65,6 +65,9 @@ npx -y @aipermission/mcp setup \
 ```
 
 This form asks for the token through a hidden prompt. Prefer this over passing tokens as shell arguments.
+On an interactive terminal, token bytes are not echoed; Ctrl+C cancels without
+writing a config and restores the terminal input mode. For automated input,
+use `--token-stdin` rather than putting the value in command arguments.
 
 The generated MCP config contains a bearer token and pins the exact MCP package
 version that wrote it. Keep it private. For project-local config files such as

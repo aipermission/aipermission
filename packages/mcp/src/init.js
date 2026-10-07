@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import readline from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import { stdin as input, stdout as output } from "node:process";
+import { StringDecoder } from "node:string_decoder";
 import { parseCommandFlags } from "./cli-flags.js";
 import { DEFAULT_API_URL, normalizeLocalAPIURL } from "./local-url.js";
 import { adaptMCPServerConfig, getClient, MCP_PROVIDERS, resolveMCPConfigTarget, resolveMCPPrintTarget } from "./client-registry.js";
@@ -247,21 +248,32 @@ async function askSecret(rl, label) {
     return answer.trim();
   }
 
-  rl.pause();
-  output.write(`${label}: `);
+  // Closing detaches readline's keypress echo handler before raw secret input.
+  rl.close();
   input.setRawMode(true);
   input.resume();
 
   let value = "";
-  return await new Promise((resolve) => {
+  const decoder = new StringDecoder("utf8");
+  return await new Promise((resolve, reject) => {
     const cleanup = () => {
       input.off("data", onData);
+      input.off("end", onEnd);
+      input.off("error", onError);
       input.setRawMode(false);
+      input.pause();
       output.write("\n");
-      rl.resume();
+    };
+    const onEnd = () => {
+      cleanup();
+      reject(new Error("Token input ended before confirmation."));
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
     };
     const onData = (buffer) => {
-      const text = buffer.toString("utf8");
+      const text = decoder.write(buffer);
       for (const char of text) {
         if (char === "\u0003") {
           cleanup();
@@ -273,13 +285,16 @@ async function askSecret(rl, label) {
           return;
         }
         if (char === "\u007f" || char === "\b") {
-          value = value.slice(0, -1);
+          value = value.replace(/.$/u, "");
           continue;
         }
         value += char;
       }
     };
     input.on("data", onData);
+    input.once("end", onEnd);
+    input.once("error", onError);
+    output.write(`${label}: `);
   });
 }
 
