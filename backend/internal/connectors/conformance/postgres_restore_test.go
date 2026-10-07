@@ -46,15 +46,35 @@ func assertRestoreRestrictedArtifact(t *testing.T, connector connectors.Connecto
 		t.Fatalf("real restricted COPY restore result=%#v err=%v", result, err)
 	}
 	assertRestoreLiteralCopyMarkers(t, restorer, runtime)
+	conn := connectPostgresPolicyFixture(t)
+	defer conn.Close(context.Background())
+	defer conn.Exec(context.Background(), `DROP TABLE IF EXISTS public.aipermission_dump_roundtrip`)
+	if _, err := conn.Exec(t.Context(), `CREATE TABLE public.aipermission_dump_roundtrip (id int PRIMARY KEY, value text NOT NULL);
+INSERT INTO public.aipermission_dump_roundtrip VALUES (1, 'first'), (2, 'second');`); err != nil {
+		t.Fatal(err)
+	}
 	artifact, err := restorer.Backup(t.Context(), runtime, connectors.BackupRequest{})
 	if err != nil {
 		t.Fatalf("real pg_dump: %v", err)
+	}
+	if artifact.Metadata["server_major"] != 16 || artifact.Metadata["dump_major"] != 16 {
+		t.Fatalf("Postgres 16 fixture did not use a matching dump client: %#v", artifact.Metadata)
+	}
+	if _, err := conn.Exec(t.Context(), `TRUNCATE public.aipermission_dump_roundtrip`); err != nil {
+		t.Fatal(err)
 	}
 	result, err = restorer.Restore(t.Context(), runtime, connectors.RestoreRequest{
 		Filename: artifact.Filename, Content: bytes.NewReader(artifact.Data), Size: int64(len(artifact.Data)),
 	})
 	if err != nil || result.Status != connectors.ResultCompleted {
 		t.Fatalf("real pg_dump roundtrip result=%#v err=%v", result, err)
+	}
+	var rows string
+	if err := conn.QueryRow(t.Context(), `SELECT string_agg(id::text || ':' || value, ',' ORDER BY id) FROM public.aipermission_dump_roundtrip`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != "1:first,2:second" {
+		t.Fatalf("dump did not recover exact fixture rows: %q", rows)
 	}
 }
 
