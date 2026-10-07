@@ -25,6 +25,13 @@ func TestPostgresRealService(t *testing.T) {
 		"max_rows": 5,
 	})
 	assertResultContains(t, result, "postgres-conformance")
+	for _, sql := range []string{
+		"select not (false) and (true) or (false) as boolean_result",
+		"select 1 = any (array[1,2]) and (1 = all (array[1,1])) and (1 = some (array[1,2])) as boolean_result",
+	} {
+		result := executeAction(t, connector, runtime, postgresconnector.ActionQueryReadonly, map[string]any{"sql": sql, "max_rows": 5})
+		assertResultContains(t, result, "true")
+	}
 	assertPostgresBinaryResults(t, connector, runtime)
 	assertPostgresExactMetadata(t, connector, runtime)
 	assertCatalogFunctionResolutionIsolated(t, connector, runtime)
