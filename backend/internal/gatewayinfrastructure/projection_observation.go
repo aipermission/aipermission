@@ -148,6 +148,7 @@ type ObservationHTTPHandlers struct {
 }
 
 type Retention interface {
+	Capacity(http.ResponseWriter, *http.Request)
 	Get(http.ResponseWriter, *http.Request)
 	Update(http.ResponseWriter, *http.Request)
 	Purge(http.ResponseWriter, *http.Request)

@@ -178,8 +178,10 @@ func TestRouteValidationAndLockedMiddleware(t *testing.T) {
 
 	fixture := newAPITestFixture(t)
 	handler := fixture.server.Handler()
-	if response := performJSONWithoutUICookie(handler, http.MethodGet, "/api/connector-targets", "", nil); response.Code != http.StatusUnauthorized {
-		t.Fatalf("unlocked management route should require ui session, got %d", response.Code)
+	for _, path := range []string{"/api/connector-targets", "/api/settings/connector-capacity"} {
+		if response := performJSONWithoutUICookie(handler, http.MethodGet, path, "", nil); response.Code != http.StatusUnauthorized {
+			t.Fatalf("unlocked management route %s should require ui session, got %d", path, response.Code)
+		}
 	}
 	if response := performJSONWithoutUICookie(handler, http.MethodGet, "/api/unlock/status", "", nil); response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"session_required"`) {
 		t.Fatalf("unlock status should expose missing ui session state, got %d %s", response.Code, response.Body.String())
