@@ -727,6 +727,16 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 		t.Fatalf("read source retry identity: %v", err)
 	}
 	// Current-schema triggers may reference columns introduced after schema 18.
+	for _, statement := range []string{
+		`DROP TRIGGER project_connector_action_usage_insert`,
+		`DROP TRIGGER project_connector_action_usage_update`,
+		`DROP TABLE connector_action_request_usage`,
+		`DELETE FROM schema_migrations WHERE version = 43`,
+	} {
+		if _, err := sourceDB.Exec(statement); err != nil {
+			t.Fatalf("remove capacity projection from old import fixture: %v", err)
+		}
+	}
 	if _, err := sourceDB.Exec(`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`); err != nil {
 		t.Fatalf("remove current tombstone trigger from import fixture: %v", err)
 	}

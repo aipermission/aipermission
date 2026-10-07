@@ -87,6 +87,7 @@ func migrations() []migration {
 		vaultActionIdempotencyTombstoneMigration,
 		vaultFinalizationMigration,
 		migration{version: 42, description: "durable command dispatch admission", statements: []string{finality.DispatchColumn}},
+		actionCapacityProjectionMigration(),
 	)
 }
 

@@ -64,21 +64,10 @@ func Measure(ctx context.Context, executor sqldb.Executor, tokenID, incomingID i
 	var usage Usage
 	err := executor.QueryRowContext(ctx, `
 		SELECT COUNT(*), COALESCE(SUM(
-			LENGTH(CAST(title AS BLOB)) + LENGTH(CAST(summary AS BLOB)) +
-			LENGTH(CAST(preview_json AS BLOB)) + LENGTH(CAST(source AS BLOB)) +
-			LENGTH(CAST(input_json AS BLOB)) + LENGTH(CAST(encrypted_payload_json AS BLOB)) +
-			LENGTH(CAST(reason AS BLOB)) + LENGTH(CAST(status AS BLOB)) +
-			LENGTH(CAST(output_json AS BLOB)) + LENGTH(CAST(display_text AS BLOB)) +
-			LENGTH(CAST(error AS BLOB)) + LENGTH(CAST(approval_context AS BLOB)) +
-			LENGTH(CAST(approval_context_hash AS BLOB)) + LENGTH(CAST(approval_context_drift AS BLOB)) +
-			LENGTH(CAST(retry_policy_json AS BLOB)) + LENGTH(CAST(idempotency_key AS BLOB)) +
-			LENGTH(CAST(idempotency_identity_hash AS BLOB)) + LENGTH(CAST(idempotency_scope AS BLOB)) +
-			LENGTH(CAST(execution_owner AS BLOB)) + LENGTH(CAST(execution_lease_expires_at AS BLOB)) +
-			LENGTH(CAST(dispatch_started_at AS BLOB)) + LENGTH(CAST(created_at AS BLOB)) +
-			LENGTH(CAST(COALESCE(completed_at, '') AS BLOB)) +
-			CASE WHEN id = ? OR status IN ('running', 'approval_pending') THEN ? ELSE 0 END
+			stored_bytes +
+			CASE WHEN request_id = ? OR status IN ('running', 'approval_pending') THEN ? ELSE 0 END
 		), 0), COALESCE(SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END), 0)
-		FROM connector_action_requests
+		FROM connector_action_request_usage
 		WHERE token_id = ?`, incomingID, TerminalReservationBytes, tokenID).Scan(&usage.Rows, &usage.Bytes, &usage.Running)
 	return usage, err
 }

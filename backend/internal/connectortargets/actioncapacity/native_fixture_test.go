@@ -10,7 +10,7 @@ import (
 	appdb "github.com/aipermission/aipermission/backend/internal/db"
 )
 
-func capacityFixture(t *testing.T) (*sql.DB, int64, int64, map[connectors.ResultStatus]int64) {
+func capacityFixture(t testing.TB) (*sql.DB, int64, int64, map[connectors.ResultStatus]int64) {
 	t.Helper()
 	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "capacity.aipdb"), "CapacityFixturePassword123")
 	if err != nil {
@@ -51,7 +51,7 @@ func capacityFixture(t *testing.T) (*sql.DB, int64, int64, map[connectors.Result
 	return database, tokenID, foreignID, ids
 }
 
-func insertCapacityFixtureRecord(t *testing.T, database *sql.DB, query string, args ...any) int64 {
+func insertCapacityFixtureRecord(t testing.TB, database *sql.DB, query string, args ...any) int64 {
 	t.Helper()
 	result, err := database.ExecContext(t.Context(), query, args...)
 	if err != nil {
