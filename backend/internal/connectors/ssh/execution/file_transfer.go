@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/ssh/execution/remotemetadata"
@@ -56,16 +57,28 @@ func StatRemotePath(ctx context.Context, target Target, remotePath string) (Remo
 }
 
 func ListRemoteDirectory(ctx context.Context, target Target, remotePath string) ([]RemoteFileEntry, error) {
-	client, sshClient, err := sftpClient(ctx, target)
+	var budget *directoryResponseBudget
+	client, sshClient, err := startSFTPClient(ctx, target, func(connection *ssh.Client) (*sftp.Client, error) {
+		var client *sftp.Client
+		var startErr error
+		client, budget, startErr = newDirectorySFTPClient(connection)
+		return client, startErr
+	})
 	if err != nil {
+		if budget != nil && budget.failure() != nil {
+			return nil, budget.failure()
+		}
 		return nil, err
 	}
-	defer sshClient.Close()
-	defer client.Close()
 	stopContextClose := closeOnContext(ctx, sshClient)
 	defer stopContextClose()
+	defer func() { _ = sshClient.Close(); _ = client.Close() }()
 
-	return listRemoteDirectoryWithClient(client, remotePath)
+	items, err := listRemoteDirectoryWithClient(client, remotePath)
+	if failure := budget.failure(); failure != nil {
+		return nil, failure
+	}
+	return items, err
 }
 
 type remoteDirectoryClient interface {
@@ -83,11 +96,17 @@ func listRemoteDirectoryWithClient(client remoteDirectoryClient, remotePath stri
 		return nil, fmt.Errorf("read remote directory: %w", err)
 	}
 	items := make([]RemoteFileEntry, 0, len(entries))
+	metadataBytes := 0
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == "." || name == ".." {
 			continue
 		}
+		pathBytes := len(resolvedPath) + len(name) + 1
+		if pathBytes > maxDirectoryPathBytes || pathBytes > maxDirectoryWireBytes-metadataBytes {
+			return nil, fmt.Errorf("SSH directory paths exceed the bounded metadata budget; choose a smaller directory")
+		}
+		metadataBytes += pathBytes
 		entryPath := path.Join(resolvedPath, name)
 		if resolvedPath == "/" {
 			entryPath = "/" + name
@@ -136,6 +155,9 @@ func resolveRemoteDirectoryPath(client remoteDirectoryClient, remotePath string)
 	}
 	if !path.IsAbs(resolved) {
 		return "", fmt.Errorf("resolve remote directory: server returned a non-absolute path")
+	}
+	if len(resolved) > maxDirectoryPathBytes || !utf8.ValidString(resolved) {
+		return "", fmt.Errorf("resolve remote directory: canonical path must be valid UTF-8 and at most %d bytes", maxDirectoryPathBytes)
 	}
 	return path.Clean(resolved), nil
 }
@@ -633,12 +655,16 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 }
 
 func sftpClient(ctx context.Context, target Target) (*sftp.Client, *ssh.Client, error) {
+	return startSFTPClient(ctx, target, func(connection *ssh.Client) (*sftp.Client, error) { return sftp.NewClient(connection) })
+}
+
+func startSFTPClient(ctx context.Context, target Target, start func(*ssh.Client) (*sftp.Client, error)) (*sftp.Client, *ssh.Client, error) {
 	sshClient, err := DialSSH(ctx, target)
 	if err != nil {
 		return nil, nil, err
 	}
 	client, err := setupWithContext(ctx, sshClient, func() (*sftp.Client, error) {
-		return sftp.NewClient(sshClient)
+		return start(sshClient)
 	})
 	if err != nil {
 		_ = sshClient.Close()

@@ -5,6 +5,7 @@ package execution
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -31,7 +32,7 @@ func (client localMetadataCommitter) CompleteMetadata(_ context.Context, remoteP
 	return remotemetadata.Metadata{Mode: info.Mode(), UID: stat.Uid, GID: stat.Gid}, nil
 }
 
-func newSFTPFixture(t *testing.T) (*sftp.Client, string) {
+func newSFTPFixture(t *testing.T, guards ...func(io.Reader) io.Reader) (*sftp.Client, string) {
 	t.Helper()
 	root := t.TempDir()
 	serverConnection, clientConnection := net.Pipe()
@@ -40,7 +41,11 @@ func newSFTPFixture(t *testing.T) (*sftp.Client, string) {
 		t.Fatalf("create SFTP server: %v", err)
 	}
 	go func() { _ = server.Serve() }()
-	client, err := sftp.NewClientPipe(clientConnection, clientConnection)
+	var reader io.Reader = clientConnection
+	for _, guard := range guards {
+		reader = guard(reader)
+	}
+	client, err := sftp.NewClientPipe(reader, clientConnection)
 	if err != nil {
 		_ = server.Close()
 		t.Fatalf("create SFTP client: %v", err)
@@ -50,6 +55,27 @@ func newSFTPFixture(t *testing.T) (*sftp.Client, string) {
 		_ = server.Close()
 	})
 	return client, root
+}
+
+func TestDirectoryBudgetWithRealSFTPServer(t *testing.T) {
+	var budget *directoryResponseBudget
+	client, root := newSFTPFixture(t, func(reader io.Reader) io.Reader {
+		budget = &directoryResponseBudget{source: reader}
+		return budget
+	})
+	for _, name := range []string{"one.txt", "two.txt", "three.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if items, err := listRemoteDirectoryWithClient(client, "~"); err != nil || len(items) != 3 {
+		t.Fatalf("valid guarded browse: %v %v", items, err)
+	}
+	// Exhaust allowance through legitimate previous replies, not output truncation.
+	budget.entries = maxDirectoryEntries - 1
+	if items, err := listRemoteDirectoryWithClient(client, "~"); err == nil || items != nil || budget.failure() == nil {
+		t.Fatalf("exhausted guarded browse: %v %v", items, err)
+	}
 }
 
 func TestListRemoteDirectoryResolvesHomePathsAndCanonicalEntries(t *testing.T) {

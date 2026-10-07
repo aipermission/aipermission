@@ -1065,6 +1065,13 @@ For SSH remote browsing and download queues, call `call_connector_action` with
 the SSH connector actions `browse_remote_files` or `start_file_download`.
 Transfer queue state is visible in the local Transfer Center UI.
 
+Each SSH directory browse bounds the SFTP response stream to 4 MiB and 5,000
+metadata entries, including handshake/control replies and REALPATH names.
+Canonical paths are at most 4,096 bytes and constructed entry paths share a
+4 MiB budget. Exceeding a budget fails the browse without returning a partial
+listing or claiming a complete count; browse a smaller directory instead.
+Upload, download, and stat streams use their existing transfer limits.
+
 ```json
 {
   "target_ref": "ssh:3:1",
