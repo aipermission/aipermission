@@ -61,7 +61,14 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
   );
   const recentQueries = useMemo(() => recentSQLQueries(rawItems, connector), [rawItems, connector]);
   const selected = useMemo(() => selectActivity(items, selectedID), [items, selectedID]);
-  const metadata = useSQLMetadata({ activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef: target.ref });
+  const { metadata, requestTableColumns } = useSQLMetadata({
+    activeSession,
+    connector,
+    onRefreshActivity,
+    requestGuard,
+    sql,
+    targetRef: target.ref,
+  });
   const browserTables = useMemo(() => filteredTableBrowserRows(metadata.tables, browserSearch), [metadata.tables, browserSearch]);
 
   useEffect(() => {
@@ -138,8 +145,10 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     leftPanel,
     setLeftPanel,
     browserSearch,
+    browserKey: requestScope,
     setBrowserSearch,
     metadata,
+    requestTableColumns,
     browserTables,
     items,
     recentQueries,

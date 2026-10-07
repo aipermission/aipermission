@@ -33,10 +33,12 @@ export function SQLLeftPanel({ controller, styles, theme }: SQLConsoleViewProps)
       <div className="min-h-0 overflow-hidden">
         {controller.leftPanel === "browser" ? (
           <SQLSchemaBrowser
+            key={controller.browserKey}
             rows={controller.browserTables}
             search={controller.browserSearch}
             onSearch={controller.setBrowserSearch}
             onPrepareQuery={controller.prepareTableQuery}
+            onRequestColumns={controller.requestTableColumns}
             metadata={controller.metadata}
             theme={theme}
             inputClass={styles.input}
