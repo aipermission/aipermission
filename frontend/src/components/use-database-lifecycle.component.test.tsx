@@ -146,6 +146,28 @@ describe("useDatabaseLifecycle", () => {
     expect(apiPost).toHaveBeenCalledWith("/api/databases/switch", { database_id: "two", password: "wrong" });
     expect(disconnectAllConsoleSessions).not.toHaveBeenCalled();
     expect(result.current.switchDialog).toMatchObject({ open: true, state: "error", error: "invalid password" });
+    expect(invalidateUISession).not.toHaveBeenCalled();
+  });
+
+  it("revokes sibling views after switching and before reloading", async () => {
+    vi.mocked(apiGet).mockResolvedValue({ database_id: "one", databases: catalog(true, true) });
+    vi.mocked(apiPost).mockResolvedValue({});
+    const { result, disconnectAllConsoleSessions } = renderLifecycle();
+    await act(async () => result.current.loadStatus());
+    act(() => result.current.setSwitchDialog((current) => ({ ...current, database_id: "two" })));
+    const reload = vi.fn();
+    vi.stubGlobal("window", { location: { reload } });
+    try {
+      await act(async () => result.current.switchDatabase());
+      expect(invalidateUISession).toHaveBeenCalledOnce();
+      expect(reload).toHaveBeenCalledOnce();
+      expect(disconnectAllConsoleSessions.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(invalidateUISession).mock.invocationCallOrder[0],
+      );
+      expect(vi.mocked(invalidateUISession).mock.invocationCallOrder[0]).toBeLessThan(reload.mock.invocationCallOrder[0]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("shows status failures and resets abandoned switch and lock dialogs", async () => {

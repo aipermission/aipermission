@@ -3,11 +3,12 @@ import { apiGet, apiPost, currentWorkspaceBinding } from "../api";
 import { listLocalActionRetryEntries } from "../local-action-retry";
 import { allEntries } from "../local-action-retry/entries";
 import { mutationTestWorkspace as workspace, setupMutationRetryStorage } from "../../test/connector-mutation-test-state";
+import { scopedUICookieName } from "../ui-cookie";
 
 setupMutationRetryStorage();
 beforeEach(async () => {
   vi.stubGlobal("fetch", async () => reply({}, workspace));
-  await apiGet("/api/status");
+  await apiPost("/api/unlock", {});
 });
 
 function reply(value: unknown, binding: string | null, status = 200) {
@@ -89,4 +90,78 @@ it("retains ordinary unpinned POST workspace discovery", async () => {
   vi.stubGlobal("fetch", async () => reply({ ok: true }, "next-workspace"));
   await expect(apiPost("/api/unlock", {})).resolves.toEqual({ ok: true });
   expect(currentWorkspaceBinding()).toBe("next-workspace");
+});
+
+it.each([null, "", "foreign-workspace"])("rejects ordinary read data from binding %j without adopting it", async (binding) => {
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(reply({ rows: ["foreign data"] }, binding));
+  vi.stubGlobal("fetch", fetch);
+  await expect(apiGet("/api/history")).rejects.toThrow(/workspace binding mismatch/);
+  expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).get("X-AIPermission-Workspace")).toBe(workspace);
+  expect(currentWorkspaceBinding()).toBe(workspace);
+});
+
+it("allows an owned read without changing the tab binding", async () => {
+  vi.stubGlobal("fetch", async () => reply({ rows: ["owned data"] }, workspace));
+  await expect(apiGet("/api/history")).resolves.toEqual({ rows: ["owned data"] });
+  expect(currentWorkspaceBinding()).toBe(workspace);
+});
+
+it("rejects an explicitly empty read binding before dispatch", async () => {
+  const fetch = vi.fn();
+  vi.stubGlobal("fetch", fetch);
+  await expect(apiGet("/api/history", { workspaceBinding: "" })).rejects.toThrow(/read workspace binding is required/);
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("rejects a foreign pinned read without invalidating the current tab", async () => {
+  const invalidate = vi.fn();
+  window.addEventListener("aipermission:ui-session-required", invalidate);
+  try {
+    vi.stubGlobal("fetch", async () => reply({ rows: [] }, "foreign-workspace"));
+    await expect(apiGet("/api/history", { workspaceBinding: workspace })).rejects.toThrow(/workspace binding mismatch/);
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(currentWorkspaceBinding()).toBe(workspace);
+  } finally {
+    window.removeEventListener("aipermission:ui-session-required", invalidate);
+  }
+});
+
+it("keeps unlock discovery available without adopting a foreign workspace", async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(reply({ state: "session_required" }, "foreign-workspace"));
+  vi.stubGlobal("fetch", fetch);
+  await expect(apiGet("/api/unlock/status")).resolves.toEqual({ state: "session_required" });
+  expect(new Headers(fetch.mock.calls[0]?.[1]?.headers).has("X-AIPermission-Workspace")).toBe(false);
+  expect(currentWorkspaceBinding()).toBe(workspace);
+});
+
+it.each([false, true])("reloads foreign unlock discovery only while its request is current (canceled=%s)", async (cancel) => {
+  const original = window;
+  const reload = vi.fn();
+  vi.stubGlobal(
+    "window",
+    new Proxy(original, {
+      get: (target, key) => (key === "location" ? { ...original.location, reload } : Reflect.get(target, key, target)),
+    }),
+  );
+  // Capture this window's tab binding before another client changes the cookie.
+  expect(currentWorkspaceBinding()).toBe(workspace);
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=foreign-workspace; path=/`;
+  const controller = new AbortController();
+  const response = reply({ state: "unlocked", database_id: "two" }, "foreign-workspace");
+  const originalText = response.text.bind(response);
+  response.text = async () => {
+    const text = await originalText();
+    if (cancel) queueMicrotask(() => controller.abort());
+    return text;
+  };
+  vi.stubGlobal("fetch", async () => response);
+  const invalidate = vi.fn();
+  window.addEventListener("aipermission:ui-session-required", invalidate);
+  await expect(apiGet("/api/unlock/status", { signal: controller.signal })).rejects.toThrow(cancel ? /aborted/ : /reload required/);
+  expect(reload).toHaveBeenCalledTimes(cancel ? 0 : 1);
+  expect(invalidate).toHaveBeenCalledTimes(cancel ? 0 : 1);
+  window.removeEventListener("aipermission:ui-session-required", invalidate);
+  expect(currentWorkspaceBinding()).toBe(workspace);
+  vi.stubGlobal("window", original);
+  document.cookie = `${scopedUICookieName("aipermission_workspace")}=${workspace}; path=/`;
 });

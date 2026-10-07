@@ -394,3 +394,32 @@ it("coalesces focus and periodic checks, skips hidden tabs, and clears its timer
     vi.useRealTimers();
   }
 });
+
+it.each([false, true])("reloads instead of rendering another unlocked database (invalidation=%s)", async (invalidate) => {
+  get.mockResolvedValueOnce({ state: "unlocked", database_id: "one", databases: [] });
+  const hook = renderHook(useUnlockStatus);
+  await waitFor(() => expect(hook.result.current.unlock).toMatchObject({ state: "ready", data: { database_id: "one" } }));
+  const reload = vi.fn();
+  const original = window;
+  vi.stubGlobal(
+    "window",
+    new Proxy(original, { get: (target, key) => (key === "location" ? { reload } : Reflect.get(target, key, target)) }),
+  );
+  const next = deferred();
+  get.mockReturnValueOnce(next.promise);
+  if (invalidate) act(() => window.dispatchEvent(new Event("aipermission:ui-session-required")));
+  else act(() => window.dispatchEvent(new Event("focus")));
+  await act(async () => next.resolve({ state: "unlocked", database_id: "two", databases: [] }));
+  expect(reload).toHaveBeenCalledOnce();
+  expect(hook.result.current.unlock).toEqual({ state: "loading", data: null, error: null });
+  hook.unmount();
+});
+
+it("allows a same-database rename without reloading", async () => {
+  get.mockResolvedValueOnce({ state: "unlocked", database_id: "one", database_name: "Original", databases: [] });
+  const hook = renderHook(useUnlockStatus);
+  await waitFor(() => expect(hook.result.current.unlock.state).toBe("ready"));
+  get.mockResolvedValueOnce({ state: "unlocked", database_id: "one", database_name: "Renamed", databases: [] });
+  await act(async () => hook.result.current.loadUnlockStatus());
+  expect(hook.result.current.unlock).toMatchObject({ state: "ready", data: { database_name: "Renamed" } });
+});

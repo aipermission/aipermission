@@ -72,7 +72,7 @@ it("does not adopt another workspace after a stale mutation is rejected", async 
   await apiPost("/api/databases/switch", { database_id: "workspace-a" });
   document.cookie = `${scopedUICookieName("aipermission_workspace")}=workspace-b; path=/`;
 
-  await apiGet("/api/status");
+  await expect(apiGet("/api/status")).rejects.toThrow(/workspace binding mismatch/);
   await expect(apiPost("/api/settings", { retention_days: 7 })).rejects.toMatchObject({ status: 409 });
   expect(fetch.mock.calls[2][1].headers["X-AIPermission-Workspace"]).toBe("workspace-a");
 

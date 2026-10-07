@@ -1,3 +1,4 @@
+import { fulfillWorkspace } from "./mock-browser.mjs";
 import { expect } from "@playwright/test";
 import { cleanupFixture } from "../src/connectors/templates/ssh/cleanup-test-fixtures";
 
@@ -7,7 +8,7 @@ export async function verifySSHCleanupBrowser({ page, apiIsolation, testInfo, wi
   await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/1/operations/key-cleanup-status", ["POST"], async (route) => {
     expect(route.request().method()).toBe("POST");
     expect(route.request().postDataJSON()).toEqual({});
-    await route.fulfill({ json: wire });
+    await fulfillWorkspace(route, { json: wire });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/connector-targets/1/operations/key-cleanup-attest", ["POST"], async (route) => {
     mutations += 1;
@@ -29,7 +30,7 @@ export async function verifySSHCleanupBrowser({ page, apiIsolation, testInfo, wi
     );
     Object.assign(acknowledgement.entry.record.attestations.at(-1), { reason: input.reason, coverage: input.coverage });
     wire.records[0].entry = acknowledgement.entry;
-    await route.fulfill({ status: 409, json: { error: "The proof may have committed; reload current evidence." } });
+    await fulfillWorkspace(route, { status: 409, json: { error: "The proof may have committed; reload current evidence." } });
   });
   await unlock(page);
   await page.setViewportSize({ width, height: 900 });
@@ -68,7 +69,7 @@ export async function verifySSHCleanupBrowser({ page, apiIsolation, testInfo, wi
   await expectNoModerateAccessibilityViolations(page, '[role="dialog"]');
   await page.screenshot({ path: testInfo.outputPath(`ssh-cleanup-${width}.png`) });
   await apiIsolation.route(page, "http://localhost:8080/__cleanup-probe", ["GET"], (route) =>
-    route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Isolated method probe</title>" }),
+    fulfillWorkspace(route, { contentType: "text/html", body: "<!doctype html><title>Isolated method probe</title>" }),
   );
   await page.goto("http://localhost:8080/__cleanup-probe");
   const expectedBlocked = [];

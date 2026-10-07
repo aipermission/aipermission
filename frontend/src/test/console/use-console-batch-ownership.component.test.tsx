@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { apiGet, apiPost } from "../../lib/api";
+import { apiPost } from "../../lib/api";
 import { prepareLocalActionRetry, releaseLocalActionRetryAttempt, listLocalActionRetryEntries } from "../../lib/local-action-retry";
 import { useConsoleBatchOwnership } from "../../connectors/templates/_shared/use-console-batch-ownership";
 import { mutationTestWorkspace as workspace, mutationObservationQueue, setupMutationRetryStorage } from "../connector-mutation-test-state";
@@ -13,7 +13,7 @@ setupMutationRetryStorage();
 beforeEach(async () => {
   queue.clear();
   vi.stubGlobal("fetch", async () => json({}));
-  await apiGet("/api/status");
+  await apiPost("/api/unlock", {});
 });
 
 it("starts locked until discovery succeeds and never performs a mutation during discovery", async () => {
@@ -153,7 +153,7 @@ it("isolates a newly selected workspace from a late observation in the previous 
   let finish!: (_response: Response) => void;
   let signal: AbortSignal | null | undefined;
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-    if (url.endsWith("/api/status")) return json({}, "new-workspace");
+    if (url.endsWith("/api/databases/switch")) return json({}, "new-workspace");
     signal = init.signal;
     return new Promise<Response>((resolve) => {
       finish = resolve;
@@ -162,7 +162,7 @@ it("isolates a newly selected workspace from a late observation in the previous 
   const view = renderHook(() => useConsoleBatchOwnership(true, true, queue.schedule));
   await waitFor(() => expect(finish).toBeTypeOf("function"));
   await act(async () => {
-    await apiGet("/api/status");
+    await apiPost("/api/databases/switch", { database_id: "new-workspace" });
   });
   view.rerender();
   expect(signal?.aborted).toBe(true);

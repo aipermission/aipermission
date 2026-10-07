@@ -96,6 +96,7 @@ export function useDatabaseLifecycle({ disconnectAllConsoleSessions, pollIsCurre
           password: switchDialog.password,
         });
         disconnectAllConsoleSessions();
+        invalidateUISession();
         window.location.reload();
       } catch (error) {
         setSwitchDialog((current) => ({ ...current, state: "error", error: errorMessage(error, "Could not switch databases.") }));
