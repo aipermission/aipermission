@@ -568,6 +568,7 @@ func TestOpenEncryptedScrubsLegacyS3UploadProjections(t *testing.T) {
 	if _, err := database.Exec(`ALTER TABLE vault_action_requests DROP COLUMN encrypted_payload_json`); err != nil {
 		t.Fatalf("remove Vault request envelope from schema 19 fixture: %v", err)
 	}
+	removeCapacityProjection(t, database)
 	removeCommandDispatchEvidence(t, database)
 	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version >= 20`); err != nil {
 		t.Fatalf("downgrade fixture metadata to schema 19: %v", err)
@@ -946,6 +947,7 @@ func TestOpenEncryptedImportCandidateMigratesWithoutSnapshot(t *testing.T) {
 }
 
 func downgradeDatabaseToSchema18(t *testing.T, database *sql.DB) {
+	removeCapacityProjection(t, database)
 	t.Helper()
 	// Current-schema triggers may reference columns introduced after schema 18.
 	// Remove them before shaping a current test database into a legacy fixture.
