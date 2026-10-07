@@ -1,6 +1,46 @@
 {
-  "version": "0.2.68",
+  "version": "0.2.69",
   "entries": [
+    {
+      "version": "0.2.69",
+      "label": "Credential boundaries and connector reliability",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "Postgres restore artifacts stay within gateway restricted mode; backup execution selects a client matching the server major version.",
+            "MCP secret input detaches terminal echo before reading credentials, and frontend reads reject cross-workspace responses before applying data.",
+            "SSH directory metadata is bounded before accumulation, preserving finite resource limits."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Console transcript tail reconstruction follows actual UTF-8 byte boundaries.",
+            "Postgres read-only validation distinguishes boolean grouping from function calls without broadening the allowed function policy.",
+            "Postgres Console discovers tables through get_tables and lazily loads ordered columns through describe_table, including across new sessions and retained SQL drafts.",
+            "Automatic retention cleanup records its audit atomically with the cleanup transaction.",
+            "New database password length is measured in Unicode code points; existing passwords remain unchanged.",
+            "MCP doctor recognizes the exact Windows npx launcher."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Kubernetes documentation clarifies that autonomous restart grants are optional and remain explicitly operator-controlled.",
+            "Behavioral regressions cover credential input, workspace identity, transcript reconstruction, bounded metadata, SQL validation, retention and console metadata ownership."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user and developer-focused; connector permission and approval policies are unchanged.",
+            "Back up the encrypted database before upgrading. This release adds no database schema migration.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.68",
       "label": "Connector capacity visibility and storage recovery",
@@ -298,41 +338,6 @@
           "items": [
             "AIPermission remains local-only, single-user, and developer-focused.",
             "Unknown remote outcomes require reconciliation; an idempotency key does not guarantee remote exactly-once execution.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.61",
-      "label": "Complete frontend TypeScript migration",
-      "sections": [
-        {
-          "title": "Changed",
-          "items": [
-            "Every production module and colocated test in frontend/src uses strict TypeScript; source discovery rejects JavaScript migration regressions.",
-            "Connector-owned credential, editor, console presentation and runtime recovery models preserve their native types through shared captured providers.",
-            "Shared SQL, resource browser, transfer, backup and session workflows retain runtime response validation and stale-operation guards."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Audit payload previews preserve zero-valued fields."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Typed behavioral tests, import boundaries, test discovery and measured per-owner coverage protect the completed migration."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "JavaScript build and browser-test tooling outside frontend/src remains supported.",
-            "Runtime authorization and database formats are unchanged.",
-            "AIPermission remains local-only, single-user, and developer-focused.",
             "The MCP package must be published separately after the GitHub release."
           ]
         }
