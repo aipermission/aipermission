@@ -186,7 +186,8 @@ func sharedSchemas() map[string]any {
 			"connector_kind": stringSchema(), "activity_type": stringSchema(), "status": stringSchema(),
 			"category": stringSchema(), "count": integerSchema(), "latest_at": dateTimeSchema(),
 		}, []string{"connector_kind", "activity_type", "status", "category", "count"}),
-		"DiagnosticsReport": diagnosticsReportSchema(),
+		"DiagnosticsReport":       diagnosticsReportSchema(),
+		"ConnectorCapacityReport": capacityReportSchema(),
 	}
 	for name, schema := range permissionSchemas() {
 		schemas[name] = schema
@@ -264,12 +265,13 @@ func typedOperationContracts() map[Route]operationContract {
 				"400": refSchema("Error"), "404": refSchema("Error"), "409": refSchema("Error"),
 			},
 		},
-		{Method: "GET", Path: "/api/history"}:              okContract(refSchema("HistoryPage")),
-		{Method: "GET", Path: "/api/history/{id}"}:         okContract(refSchema("HistoryEntry")),
-		{Method: "GET", Path: "/api/audit-logs"}:           okContract(refSchema("AuditPage")),
-		{Method: "GET", Path: "/api/audit-logs/{id}"}:      okContract(refSchema("AuditEntry")),
-		{Method: "GET", Path: "/api/settings/diagnostics"}: okContract(refSchema("DiagnosticsReport")),
-		{Method: "GET", Path: "/api/settings/security"}:    okContract(refSchema("SecuritySettingsDocument")),
+		{Method: "GET", Path: "/api/history"}:                     okContract(refSchema("HistoryPage")),
+		{Method: "GET", Path: "/api/history/{id}"}:                okContract(refSchema("HistoryEntry")),
+		{Method: "GET", Path: "/api/audit-logs"}:                  okContract(refSchema("AuditPage")),
+		{Method: "GET", Path: "/api/audit-logs/{id}"}:             okContract(refSchema("AuditEntry")),
+		{Method: "GET", Path: "/api/settings/diagnostics"}:        okContract(refSchema("DiagnosticsReport")),
+		{Method: "GET", Path: "/api/settings/connector-capacity"}: okContract(refSchema("ConnectorCapacityReport")),
+		{Method: "GET", Path: "/api/settings/security"}:           okContract(refSchema("SecuritySettingsDocument")),
 		{Method: "PUT", Path: "/api/settings/security"}: {
 			StatusCode: "200", RequestSchema: refSchema("SecuritySettingsUpdate"), ResponseSchema: refSchema("SecuritySettingsDocument"),
 			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "409": refSchema("Error")},

@@ -42,6 +42,7 @@ type Security interface {
 	DeleteRule(http.ResponseWriter, *http.Request)
 }
 type Retention interface {
+	Capacity(http.ResponseWriter, *http.Request)
 	Get(http.ResponseWriter, *http.Request)
 	Update(http.ResponseWriter, *http.Request)
 	Purge(http.ResponseWriter, *http.Request)
@@ -301,6 +302,7 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("GET /api/settings/security", d.Security.GetSettings)
 	mux.HandleFunc("PUT /api/settings/security", d.Security.UpdateSettings)
 	mux.HandleFunc("GET /api/settings/retention", d.Retention.Get)
+	mux.HandleFunc("GET /api/settings/connector-capacity", d.Retention.Capacity)
 	mux.HandleFunc("PUT /api/settings/retention", d.Retention.Update)
 	mux.HandleFunc("POST /api/settings/retention/purge", d.Retention.Purge)
 	mux.HandleFunc("GET /api/settings/redaction-rules", d.Security.ListRules)

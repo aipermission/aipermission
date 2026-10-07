@@ -480,6 +480,7 @@
     "internal/recordcrypto": 71.5,
     "internal/restcontract": 84,
     "internal/retention": 80,
+    "internal/retention/capacityreport": 95,
     "internal/retention/sqlstore": 79,
     "internal/runtimecontrol": 72.5,
     "internal/runtimeindex": 92,

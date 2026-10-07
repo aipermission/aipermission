@@ -2,21 +2,44 @@ package actioncapacity_test
 
 import (
 	"database/sql"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
-	appdb "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets/actioncapacity"
+	"github.com/aipermission/aipermission/backend/internal/db/baselineschema"
+
+	_ "github.com/SE-I-T-Digital/go-sqlcipher"
 )
 
 func capacityFixture(t testing.TB) (*sql.DB, int64, int64, map[connectors.ResultStatus]int64) {
 	t.Helper()
-	database, err := appdb.OpenEncrypted(filepath.Join(t.TempDir(), "capacity.aipdb"), "CapacityFixturePassword123")
+	uri := url.URL{Scheme: "file", Path: filepath.Join(t.TempDir(), "capacity.aipdb"), RawQuery: url.Values{"_key": {"CapacityFixturePassword123"}, "_foreign_keys": {"ON"}}.Encode()}
+	database, err := sql.Open("sqlite3", uri.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = database.Close() })
+	database.SetMaxOpenConns(1)
+	// Exercise the canonical baseline and projection without importing the db
+	// migration owner, which consumes actioncapacity itself.
+	for _, statement := range baselineschema.Connector() {
+		if _, err := database.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, column := range []string{"retry_policy_json", "idempotency_key", "idempotency_identity_hash", "idempotency_scope", "execution_owner", "execution_lease_expires_at", "dispatch_started_at"} {
+		if _, err := database.ExecContext(t.Context(), `ALTER TABLE connector_action_requests ADD COLUMN `+column+` TEXT NOT NULL DEFAULT ''`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, statement := range actioncapacity.ProjectionStatements() {
+		if _, err := database.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
 	tokenID := int64(9007199254740993)
 	foreignTokenID := int64(9007199254740995)
 	for _, id := range []int64{tokenID, foreignTokenID} {
@@ -29,9 +52,8 @@ func capacityFixture(t testing.TB) (*sql.DB, int64, int64, map[connectors.Result
 	// Root-store admission is covered by parent integration tests. This fixture
 	// seeds storage only, without importing the owner that consumes this package.
 	targetID := insertCapacityFixtureRecord(t, database, `INSERT INTO connector_targets (
-		project_id, connector_kind, name, created_at, updated_at
-	) VALUES ((SELECT id FROM projects WHERE slug = 'ungrouped'),
-		'capacity_fixture', 'capacity target', datetime('now'), datetime('now'))`)
+		connector_kind, name, created_at, updated_at
+	) VALUES ('capacity_fixture', 'capacity target', datetime('now'), datetime('now'))`)
 	profileID := insertCapacityFixtureRecord(t, database, `INSERT INTO connector_credential_profiles (
 		target_id, connector_kind, kind, label, created_at, updated_at
 	) VALUES (?, 'capacity_fixture', 'operator', 'capacity profile', datetime('now'), datetime('now'))`, targetID)

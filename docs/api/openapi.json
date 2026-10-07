@@ -703,6 +703,96 @@
         ],
         "type": "object"
       },
+      "ConnectorCapacityReport": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "history_days": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "level": {
+                  "enum": [
+                    "ok",
+                    "warning",
+                    "critical",
+                    "exhausted"
+                  ],
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pending": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "reserved_bytes": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "rows": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "running": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "stored_bytes": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "token_id": {
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "token_id",
+                "name",
+                "rows",
+                "stored_bytes",
+                "reserved_bytes",
+                "running",
+                "pending",
+                "level"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "next_request_reservation_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "row_limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "running_limit": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "row_limit",
+          "byte_limit",
+          "running_limit",
+          "next_request_reservation_bytes",
+          "history_days"
+        ],
+        "type": "object"
+      },
       "ConnectorCredentialProfile": {
         "additionalProperties": false,
         "properties": {
@@ -6774,6 +6864,37 @@
           "projects"
         ],
         "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/settings/connector-capacity": {
+      "get": {
+        "operationId": "getApiSettingsConnectorCapacity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectorCapacityReport"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "typed-response"
       }
     },
     "/api/settings/diagnostics": {

@@ -1188,6 +1188,7 @@ PUT    /api/tokens/{id}/connector-permissions
 GET    /api/settings/security
 PUT    /api/settings/security
 GET    /api/settings/retention
+GET    /api/settings/connector-capacity
 PUT    /api/settings/retention
 POST   /api/settings/retention/purge
 GET    /api/settings/redaction-rules

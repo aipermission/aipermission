@@ -732,22 +732,14 @@ func TestMultipartDatabaseImportStreamsUploadedFile(t *testing.T) {
 		`DROP TRIGGER project_connector_action_usage_update`,
 		`DROP TABLE connector_action_request_usage`,
 		`DELETE FROM schema_migrations WHERE version = 43`,
+		`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`,
+		`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`,
+		`ALTER TABLE history_entries DROP COLUMN retry_policy_json`,
+		`DELETE FROM schema_migrations WHERE version = 19`,
 	} {
 		if _, err := sourceDB.Exec(statement); err != nil {
-			t.Fatalf("remove capacity projection from old import fixture: %v", err)
+			t.Fatalf("downgrade encrypted import fixture: %v", err)
 		}
-	}
-	if _, err := sourceDB.Exec(`DROP TRIGGER IF EXISTS retain_connector_action_idempotency_tombstone`); err != nil {
-		t.Fatalf("remove current tombstone trigger from import fixture: %v", err)
-	}
-	if _, err := sourceDB.Exec(`ALTER TABLE connector_action_requests DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove request retry policy from import fixture: %v", err)
-	}
-	if _, err := sourceDB.Exec(`ALTER TABLE history_entries DROP COLUMN retry_policy_json`); err != nil {
-		t.Fatalf("remove history retry policy from import fixture: %v", err)
-	}
-	if _, err := sourceDB.Exec(`DELETE FROM schema_migrations WHERE version = 19`); err != nil {
-		t.Fatalf("downgrade import fixture to schema 18: %v", err)
 	}
 	if err := sourceDB.Close(); err != nil {
 		t.Fatalf("close source db: %v", err)

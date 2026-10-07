@@ -32,15 +32,9 @@ func TestCapacityProjectionUpgradeBackfillsWithoutDiscardingRequests(t *testing.
 		t.Fatal(err)
 	}
 	// Recreate the prior schema boundary using the production encrypted open path.
-	for _, statement := range []string{
-		`DROP TRIGGER project_connector_action_usage_insert`,
-		`DROP TRIGGER project_connector_action_usage_update`,
-		`DROP TABLE connector_action_request_usage`,
-		`DELETE FROM schema_migrations WHERE version=43`,
-	} {
-		if _, err := database.Exec(statement); err != nil {
-			t.Fatal(err)
-		}
+	removeCapacityProjection(t, database)
+	if _, err := database.Exec(`DELETE FROM schema_migrations WHERE version=43`); err != nil {
+		t.Fatal(err)
 	}
 	if err := database.Close(); err != nil {
 		t.Fatal(err)

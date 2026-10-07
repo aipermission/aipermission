@@ -1652,6 +1652,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/connector-capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiSettingsConnectorCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/diagnostics": {
         parameters: {
             query?: never;
@@ -2413,6 +2429,34 @@ export interface components {
             status: "completed" | "failed" | "canceled" | "running" | "approval_pending" | "blocked" | "stale" | "declined" | "error" | "outcome_unknown";
             target_name?: string;
             target_ref: string;
+        };
+        ConnectorCapacityReport: {
+            /** Format: int64 */
+            byte_limit: number;
+            /** Format: int64 */
+            history_days: number;
+            items: {
+                /** @enum {string} */
+                level: "ok" | "warning" | "critical" | "exhausted";
+                name: string;
+                /** Format: int64 */
+                pending: number;
+                /** Format: int64 */
+                reserved_bytes: number;
+                /** Format: int64 */
+                rows: number;
+                /** Format: int64 */
+                running: number;
+                /** Format: int64 */
+                stored_bytes: number;
+                token_id: string;
+            }[];
+            /** Format: int64 */
+            next_request_reservation_bytes: number;
+            /** Format: int64 */
+            row_limit: number;
+            /** Format: int64 */
+            running_limit: number;
         };
         ConnectorCredentialProfile: {
             actions?: components["schemas"]["ConnectorActionDefinition"][];
@@ -5880,6 +5924,35 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApiSettingsConnectorCapacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectorCapacityReport"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {
