@@ -9,6 +9,8 @@ export type SQLConsoleConfigInput = {
   defaultDatabase?: string;
   queryAction?: string;
   describeAction?: string;
+  metadataAction?: string;
+  metadataInput?: Record<string, unknown>;
   metadataSQL?: string;
   metadataMaxRows?: number;
   metadataReason?: string;
@@ -34,13 +36,17 @@ export function normalizeSQLConsoleConfig(config: SQLConsoleConfigInput = {}) {
   const label = String(config.label || "SQL").trim() || "SQL";
   const defaultPort = Number(config.defaultPort) || 0;
   const defaultDatabase = String(config.defaultDatabase || "database");
+  const metadataSQL = String(config.metadataSQL || "");
+  const metadataMaxRows = Math.max(1, Number(config.metadataMaxRows) || 5000);
   const identifierPolicy: SQLIdentifierPolicy = config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted";
   return {
     label,
     queryAction: String(config.queryAction || "query_readonly"),
     describeAction: String(config.describeAction || "describe_table"),
-    metadataSQL: String(config.metadataSQL || ""),
-    metadataMaxRows: Math.max(1, Number(config.metadataMaxRows) || 5000),
+    metadataAction: String(config.metadataAction || config.queryAction || "query_readonly"),
+    metadataInput: config.metadataInput || { sql: metadataSQL, max_rows: metadataMaxRows },
+    metadataSQL,
+    metadataMaxRows,
     metadataReason: String(config.metadataReason || `load ${label} console autocomplete`),
     manualReason: String(config.manualReason || `manual ${label} console query`),
     browserLabel: String(config.browserLabel || "Schema"),

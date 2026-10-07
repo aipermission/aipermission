@@ -11,6 +11,7 @@ export type SQLSchemaBrowserProps = {
   search: string;
   onSearch: (_search: string) => void;
   onPrepareQuery: (_table: BrowserTable) => void;
+  onRequestColumns?: (_table: BrowserTable) => void;
   metadata: Pick<SQLMetadataState, "state" | "error">;
   theme: "dark" | "light";
   inputClass: string;
@@ -19,7 +20,7 @@ export type SQLSchemaBrowserProps = {
   namespaceLabel: string;
 };
 type SchemaGroupData = { schema: string; tables: BrowserTable[] };
-type TablePresentation = Pick<SQLSchemaBrowserProps, "theme" | "mutedClass" | "hoverClass" | "onPrepareQuery">;
+type TablePresentation = Pick<SQLSchemaBrowserProps, "theme" | "mutedClass" | "hoverClass" | "onPrepareQuery" | "onRequestColumns">;
 type ExpandedTables = Record<string, boolean>;
 
 export function SQLSchemaBrowser({
@@ -27,6 +28,7 @@ export function SQLSchemaBrowser({
   search,
   onSearch,
   onPrepareQuery,
+  onRequestColumns,
   metadata,
   theme,
   inputClass,
@@ -66,6 +68,7 @@ export function SQLSchemaBrowser({
             mutedClass={mutedClass}
             hoverClass={hoverClass}
             onPrepareQuery={onPrepareQuery}
+            onRequestColumns={onRequestColumns}
           />
         ))}
       </div>
@@ -81,6 +84,7 @@ function SchemaGroup({
   mutedClass,
   hoverClass,
   onPrepareQuery,
+  onRequestColumns,
 }: TablePresentation & {
   group: SchemaGroupData;
   expandedTables: ExpandedTables;
@@ -95,7 +99,11 @@ function SchemaGroup({
             key={tableBrowserKey(table)}
             table={table}
             expanded={Boolean(expandedTables[tableBrowserKey(table)])}
-            onToggle={() => setExpandedTables((current) => ({ ...current, [tableBrowserKey(table)]: !current[tableBrowserKey(table)] }))}
+            onToggle={() => {
+              const key = tableBrowserKey(table);
+              if (!expandedTables[key] && table.columnCount === 0) onRequestColumns?.(table);
+              setExpandedTables((current) => ({ ...current, [key]: !current[key] }));
+            }}
             theme={theme}
             mutedClass={mutedClass}
             hoverClass={hoverClass}

@@ -429,6 +429,12 @@ still important: the connector guard is not a substitute for database grants.
 Field-level masking is not currently provided by this action; configure
 database views or grants when sensitive columns must remain hidden.
 
+The Postgres console loads its schema browser through `get_tables` when a
+session starts. Expanding a table or referencing it in SQL loads its columns
+through `describe_table`. These metadata requests use the same connector
+action pipeline, not a bypass of the `query_readonly` policy. Expanding a table
+does not modify or execute the editor's SQL.
+
 ## Core Value
 
 `aipermission` lets the developer say:
