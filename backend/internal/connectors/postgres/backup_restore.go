@@ -29,6 +29,10 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 		return connectors.BackupArtifact{}, err
 	}
 	defer invocation.Cleanup()
+	dumpCommand, serverMajor, err := postgresBackupCommand(ctx, invocation)
+	if err != nil {
+		return connectors.BackupArtifact{}, err
+	}
 	args := invocation.Args
 	args = append(args,
 		"--format=plain",
@@ -41,7 +45,7 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 	stdout.Limit = maxBackupBytes
 	var stderr limitedBuffer
 	stderr.Limit = maxRestoreLog
-	cmd := exec.CommandContext(ctx, "pg_dump", args...)
+	cmd := exec.CommandContext(ctx, dumpCommand, args...)
 	cmd.Env = invocation.Env
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -59,6 +63,8 @@ func (Connector) Backup(ctx context.Context, runtime connectors.RuntimeContext, 
 			"database":       database,
 			"format":         "plain_sql",
 			"clean":          true,
+			"server_major":   serverMajor,
+			"dump_major":     serverMajor,
 		},
 	}, nil
 }
