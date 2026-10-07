@@ -19,6 +19,43 @@ async function setupDoctor(t, client = "vscode", token = "SECRET") {
   return { options, config, written };
 }
 
+for (const command of ["cmd", "cmd.exe"]) {
+  test(`doctor accepts the exact documented ${command} wrapper without launching it`, async (t) => {
+    const { options, config, written } = await setupDoctor(t, "vscode", "WRAPPER_CANARY_SECRET");
+    config.command = command;
+    config.args = ["/d", "/s", "/c", "npx", ...config.args];
+    const source = JSON.stringify({ servers: { aipermission: { ...config, type: "stdio" } } });
+    await fs.writeFile(written.path, source, { mode: 0o600 });
+    const result = await inspectClientSetup(options);
+    assert.equal(result.ok, true);
+    assert.equal(await fs.readFile(written.path, "utf8"), source);
+    assert.doesNotMatch(JSON.stringify(result), /CANARY|SECRET/);
+  });
+}
+
+for (const args of [
+  ["/d", "/s", "/k", "npx", "-y", "CURRENT"],
+  ["/s", "/c", "npx", "-y", "CURRENT"],
+  ["/d", "/s", "/c", "npx -y @aipermission/mcp"],
+  ["/d", "/s", "/c", "node", "-y", "CURRENT"],
+  ["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@0.0.0"],
+  ["/d", "/s", "/c", "npx", "-y", "CURRENT", "&&", "echo", "CANARY"],
+]) {
+  test(`doctor rejects an altered Windows wrapper: ${JSON.stringify(args)}`, async (t) => {
+    const { options, config, written } = await setupDoctor(t, "vscode", "WRAPPER_CANARY_SECRET");
+    const source = JSON.stringify({
+      servers: {
+        aipermission: { ...config, type: "stdio", command: "cmd", args: args.map((arg) => (arg === "CURRENT" ? config.args[1] : arg)) },
+      },
+    });
+    await fs.writeFile(written.path, source, { mode: 0o600 });
+    const result = await inspectClientSetup(options);
+    assert.equal(result.ok, false);
+    assert.equal(await fs.readFile(written.path, "utf8"), source);
+    assert.doesNotMatch(JSON.stringify(result), /CANARY|SECRET/);
+  });
+}
+
 for (const marker of ["?", "#", "?#", "/#"]) {
   test(`doctor rejects a gateway origin containing the bare ${marker} marker`, async (t) => {
     const { options, config, written } = await setupDoctor(t);
