@@ -9,6 +9,45 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.69] - 2026-10-08
+
+### Security
+
+- Postgres restore artifacts stay within gateway restricted mode; backup execution
+  selects a client matching the server major version.
+- MCP secret input detaches terminal echo before reading credentials, and frontend reads
+  reject cross-workspace responses before applying data.
+- SSH directory metadata is bounded before accumulation, preserving finite resource
+  limits.
+
+### Fixed
+
+- Console transcript tail reconstruction follows actual UTF-8 byte boundaries.
+- Postgres read-only validation distinguishes boolean grouping from function calls
+  without broadening the allowed function policy.
+- Postgres Console discovers tables through get_tables and lazily loads ordered columns
+  through describe_table, including across new sessions and retained SQL drafts.
+- Automatic retention cleanup records its audit atomically with the cleanup transaction.
+- New database password length is measured in Unicode code points; existing passwords
+  remain unchanged.
+- MCP doctor recognizes the exact Windows npx launcher.
+
+### Maintenance
+
+- Kubernetes documentation clarifies that autonomous restart grants are optional and
+  remain explicitly operator-controlled.
+- Behavioral regressions cover credential input, workspace identity, transcript
+  reconstruction, bounded metadata, SQL validation, retention and console metadata
+  ownership.
+
+### Notes
+
+- AIPermission remains local-only, single-user and developer-focused; connector
+  permission and approval policies are unchanged.
+- Back up the encrypted database before upgrading. This release adds no database schema
+  migration.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.68] - 2026-10-07
 
 ### Added
