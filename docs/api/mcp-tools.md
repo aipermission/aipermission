@@ -471,8 +471,13 @@ decoded file size. The idempotent request
 transaction atomically backpressures new work when the projected record would
 exceed 20,000 rows or 256 MiB of persisted request data for that token; active
 records reserve their bounded terminal-output capacity. Capacity rejection
-returns HTTP `429`, code `connector_action_backpressure`, and `Retry-After`;
-clients must wait instead of spinning. An exact idempotent replay remains
+returns HTTP `429` and code `connector_action_backpressure`. Persisted capacity
+errors identify the limiting axis and show only that token's projected numeric
+usage. Running-work and transport admission limits include `Retry-After`;
+clients must wait instead of spinning. Stored row or byte exhaustion does not
+include `Retry-After`: completed records still occupy capacity until retention
+removes them, so waiting one minute does not promise recovery. Review retention
+and the reported token usage in the local gateway. An exact idempotent replay remains
 available and does not allocate another persisted request.
 
 Target and profile discovery is resolved inside the token's active project

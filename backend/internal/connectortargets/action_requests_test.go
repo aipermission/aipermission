@@ -195,6 +195,11 @@ func TestEnforcedActionRequestCapacityRollsBackExcessRunningRequest(t *testing.T
 	if !errors.Is(err, ErrActionRequestCapacity) {
 		t.Fatalf("fifth running request error = %v", err)
 	}
+	var capacityErr *ActionRequestCapacityError
+	if !errors.As(err, &capacityErr) || capacityErr.Usage.Rows != actioncapacity.MaxRunning+1 ||
+		capacityErr.Usage.Running != actioncapacity.MaxRunning+1 || capacityErr.Limits != actioncapacity.DefaultLimits() {
+		t.Fatalf("missing projected token capacity diagnostics: %v", err)
+	}
 	var count int64
 	if err := database.QueryRowContext(ctx, `SELECT COUNT(*) FROM connector_action_requests WHERE token_id = ?`, tokenID).Scan(&count); err != nil {
 		t.Fatal(err)
