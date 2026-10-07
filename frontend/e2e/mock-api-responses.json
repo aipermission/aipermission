@@ -156,6 +156,16 @@
     }
   },
   "staticRoutes": {
+    "/api/settings/connector-capacity": {
+      "json": {
+        "items": [],
+        "row_limit": 20000,
+        "byte_limit": 268435456,
+        "running_limit": 4,
+        "next_request_reservation_bytes": 6291456,
+        "history_days": 7
+      }
+    },
     "/api/status": {
       "json": {
         "service": "aipermission",

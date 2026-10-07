@@ -411,6 +411,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/components/settings/connector-capacity-panel.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/components/settings/database-settings-panel.tsx": {
       "statements": 87.8,
       "branches": 84.37,
@@ -468,6 +474,12 @@
     "src/components/settings/use-backup-record-state.ts": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/settings/use-connector-capacity.ts": {
+      "statements": 100,
+      "branches": 90,
       "functions": 100,
       "lines": 100
     },
@@ -2458,6 +2470,12 @@
       "lines": 100
     },
     "src/lib/gateway-contracts/connector-action-contract.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/gateway-contracts/connector-capacity-contract.ts": {
       "statements": 100,
       "branches": 100,
       "functions": 100,

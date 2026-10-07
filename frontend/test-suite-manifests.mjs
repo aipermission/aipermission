@@ -58,6 +58,7 @@ export const asyncStateOwnerTests = {
     "src/components/settings/password-settings-panel.component.test.tsx",
   ],
   "src/components/settings/use-backup-provider-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
+  "src/components/settings/use-connector-capacity.ts": ["src/components/settings/connector-capacity-panel.component.test.tsx"],
   "src/components/settings/use-backup-record-state.ts": ["src/components/settings/use-backup-provider-state.component.test.tsx"],
   "src/components/tokens/connector-permission-dialog.tsx": ["src/components/tokens/connector-permission-dialog.component.test.tsx"],
   "src/components/tokens/use-vault-permission-editor.ts": [
