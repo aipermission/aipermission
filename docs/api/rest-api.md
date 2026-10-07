@@ -1289,6 +1289,8 @@ one-time manual purge:
 
 Valid targets are `history`, `audit`, `console`, and `messages`.
 
+### Connector Capacity And Retention
+
 `GET /api/settings/connector-capacity` is an authenticated local UI read, not
 an MCP action. It returns unrevoked token names and lossless decimal-string
 `token_id` values, plus `rows`, `stored_bytes`, `reserved_bytes`, `running`,

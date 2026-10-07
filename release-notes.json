@@ -3,6 +3,43 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.68",
+      "date": "2026-10-07",
+      "label": "Connector capacity visibility and storage recovery",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Settings displays per-token retained request bytes, records, result reservations, running requests and pending approvals, with storage warnings at 80% and 90% and explicit exhaustion guidance.",
+            "An authenticated local-only capacity report exposes configured limits and history retention without returning token values, credentials, commands or request payloads.",
+            "The operator-owned AIPERMISSION_CONNECTOR_REQUEST_STORAGE_MIB setting accepts integer budgets from 256 to 4096 MiB; the default remains 256 MiB and invalid configuration prevents startup."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Persisted request storage exhaustion reports a stable limit reason and safe token-scoped usage instead of suggesting that waiting 60 seconds always restores capacity; concurrency exhaustion retains retry guidance.",
+            "Capacity polling has a bounded deadline, ignores stale completions, clears cached token identities after UI session invalidation and explicitly marks failed refreshes as stale."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Schema migration 43 installs a compact numeric request-usage projection maintained atomically by canonical writes, rollback and retention, avoiding repeated aggregation of retained request payloads without duplicating secret content.",
+            "Storage accounting preserves UTF-8 byte sizes, active result reservations, atomic admission, idempotent replay and existing row and concurrency limits."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "Back up the encrypted database before upgrading. Migration runs on unlock; rolling back to an older binary requires restoring the pre-upgrade database rather than opening schema 43 with that binary.",
+            "Larger finite budgets can still fill. Review retention and disk capacity; this release does not silently erase recent history, increase limits automatically or change connector permissions.",
+            "AIPermission remains local-only, single-user and developer-focused. The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.67",
       "date": "2026-10-06",
       "label": "Connector qualification and maintenance hardening",

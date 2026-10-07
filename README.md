@@ -50,6 +50,12 @@ active database. They are not an immutable external audit archive: configured
 retention can delete them, and deleting or replacing the local database removes
 its records.
 
+Settings shows per-token connector request storage usage, result reservations,
+running work, and warnings before capacity is exhausted. Retained output counts
+toward storage limits even when no action is running. Review
+[capacity and retention guidance](docs/api/rest-api.md#connector-capacity-and-retention) rather than
+assuming that waiting alone frees retained records.
+
 > **Local-only security boundary:** run AIPermission on your own machine and
 > keep its published Docker port bound to `127.0.0.1`. It is not a remote
 > multi-user service, LAN gateway, hosted control plane, or team RBAC system.
