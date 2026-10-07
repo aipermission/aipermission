@@ -11,23 +11,26 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	"github.com/aipermission/aipermission/backend/internal/retention/sqlstore"
 	"github.com/aipermission/aipermission/backend/internal/sqldb"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 var ErrMutationRunnerRequired = errors.New("retention mutation runner is required")
+var errNoRetainedRecords = errors.New("no retained records removed")
 
 type Service struct {
-	database    *sql.DB
-	repository  repository
-	workspaceID string
-	interval    time.Duration
-	operationMu sync.Mutex
-	lifecycleMu sync.Mutex
-	cancel      context.CancelFunc
-	done        chan struct{}
+	database       *sql.DB
+	repository     repository
+	workspaceID    string
+	interval       time.Duration
+	operationMu    sync.Mutex
+	lifecycleMu    sync.Mutex
+	cancel         context.CancelFunc
+	done           chan struct{}
+	automaticAudit auditedmutation.Runner
 }
 
-func NewService(database *sql.DB, workspaceID string) *Service {
-	return &Service{database: database, repository: sqlstore.Store{}, workspaceID: workspaceID, interval: defaultCleanupInterval}
+func NewService(database *sql.DB, workspaceID string, automaticAudit auditedmutation.Runner) *Service {
+	return &Service{database: database, repository: sqlstore.Store{}, workspaceID: workspaceID, interval: defaultCleanupInterval, automaticAudit: automaticAudit}
 }
 
 func (s *Service) Read(ctx context.Context) (Settings, error) {
@@ -120,21 +123,35 @@ func (s *Service) purgeInTransaction(ctx context.Context, target string, days in
 }
 
 func (s *Service) applyConfigured(ctx context.Context) (map[string]int64, error) {
+	if s.automaticAudit == nil {
+		return nil, ErrMutationRunnerRequired
+	}
 	settings, err := readSettings(ctx, s.database, s.repository)
 	if err != nil {
 		return nil, err
 	}
-	executor, commit, rollback, err := sqldb.Transaction(ctx, s.database, nil, "retention settings")
+	var deleted map[string]int64
+	err = s.automaticAudit(ctx, "settings.retention.automatic_cleanup", func() any {
+		return map[string]any{"deleted": deleted, "history_days": settings.HistoryDays, "audit_days": settings.AuditDays, "console_days": settings.ConsoleDays, "message_days": settings.MessageDays}
+	}, func(tx *sql.Tx) error {
+		var err error
+		deleted, err = applySettings(ctx, tx, s.repository, settings)
+		if err != nil {
+			return err
+		}
+		for _, count := range deleted {
+			if count > 0 {
+				return nil
+			}
+		}
+		// Abort this no-op transaction so the audit runner does not append an event.
+		return errNoRetainedRecords
+	})
+	if errors.Is(err, errNoRetainedRecords) && transactionstate.IsNotCommitted(err) {
+		return deleted, nil
+	}
 	if err != nil {
 		return nil, err
-	}
-	defer rollback()
-	deleted, err := applySettings(ctx, executor, s.repository, settings)
-	if err != nil {
-		return nil, err
-	}
-	if err := commit(); err != nil {
-		return nil, fmt.Errorf("commit retention settings: %w", err)
 	}
 	return deleted, nil
 }

@@ -60,7 +60,7 @@ func TestComposeRuntimePublishesNarrowCapabilitiesWithoutExposingConcreteOwner(t
 	if observation.AuditDispatcher() != dispatcher {
 		t.Fatal("observation capability did not preserve dispatcher ownership")
 	}
-	retentionService := retention.NewService(database, "workspace-one")
+	retentionService := retention.NewService(database, "workspace-one", nil)
 	observation.SetRetentionService(retentionService)
 	if observation.RetentionService() != retentionService {
 		t.Fatal("observation capability did not preserve retention ownership")

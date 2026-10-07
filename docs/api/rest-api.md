@@ -2068,6 +2068,12 @@ payload preview. `GET /api/audit-logs/{id}` returns the full payload.
 
 Token create/revoke, permission changes, security settings changes, retention cleanup, maintenance console lifecycle, connector console lifecycle/input, MCP execution states, and approval decisions are written.
 
+Automatic startup/hourly retention cleanup appends one gateway-owned
+`settings.retention.automatic_cleanup` summary in the same transaction as the
+deletions. The payload contains policy days and counts, never deleted content.
+No-op cleanup emits no event; audit failure rolls back cleanup. Audit deletion
+counts include removed delivered/dead-lettered outbox rows as well as log rows.
+
 Secret payloads, SSH private keys, and token values must not be written to audit logs.
 
 Command text is stored in audit/history records. Users should avoid putting secret values directly in command strings and should be cautious when printing files or environment output that may contain secrets.

@@ -57,7 +57,10 @@ func (component *Component) InitializeRetention(runtime Runtime, startActions St
 		return
 	}
 	if runtime.RetentionService() == nil {
-		runtime.SetRetentionService(retention.NewService(runtime.Database, runtime.DatabaseID))
+		runtime.SetRetentionService(retention.NewService(runtime.Database, runtime.DatabaseID,
+			func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
+				return component.WithMutation(ctx, runtime, "gateway", nil, 0, action, payload, mutate)
+			}))
 	}
 	runtime.RetentionService().Start()
 	if startActions != nil {

@@ -16,12 +16,13 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/auditedmutation"
 	gatewaydb "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 func TestUpdateCommitsSettingsCleanupAndAuditAtomically(t *testing.T) {
 	database := openTestDatabase(t)
 	insertHistory(t, database, "old", time.Now().AddDate(0, 0, -10))
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 
 	deleted, err := service.Update(t.Context(), Settings{HistoryDays: 7}, auditRunner(database, nil))
 	if err != nil {
@@ -75,8 +76,8 @@ func TestAuditPurgeNeverDeletesPendingOutboxEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	deleted, err := NewService(database, "workspace").purge(t.Context(), "audit", 30)
-	if err != nil || deleted != 1 {
+	deleted, err := NewService(database, "workspace", auditRunner(database, nil)).purge(t.Context(), "audit", 30)
+	if err != nil || deleted != 3 {
 		t.Fatalf("purge = %d, %v", deleted, err)
 	}
 	assertCountWhere(t, database, "audit_outbox", "event_id = 'pending'", 1)
@@ -86,7 +87,7 @@ func TestAuditPurgeNeverDeletesPendingOutboxEvents(t *testing.T) {
 func TestConfiguredCleanupPrunesExpiredIdempotencyWhenRetentionIsDisabled(t *testing.T) {
 	database := openTestDatabase(t)
 	insertExpiredIdempotency(t, database)
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 	service.interval = 0
 	service.Start()
 	service.Stop()
@@ -96,7 +97,7 @@ func TestConfiguredCleanupPrunesExpiredIdempotencyWhenRetentionIsDisabled(t *tes
 
 func TestWorkerAppliesChangedSettingsAndStopsSynchronously(t *testing.T) {
 	database := openTestDatabase(t)
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 	service.interval = 5 * time.Millisecond
 	service.Start()
 	t.Cleanup(service.Stop)
@@ -122,7 +123,7 @@ func TestWorkerAppliesChangedSettingsAndStopsSynchronously(t *testing.T) {
 			t.Fatal(err)
 		}
 		var auditCount int
-		if err := database.QueryRow(`SELECT COUNT(*) FROM audit_logs`).Scan(&auditCount); err != nil {
+		if err := database.QueryRow(`SELECT COUNT(*) FROM audit_logs WHERE action != 'settings.retention.automatic_cleanup'`).Scan(&auditCount); err != nil {
 			t.Fatal(err)
 		}
 		if count == 1 && auditCount == 1 {
@@ -146,7 +147,7 @@ func TestWorkerAppliesChangedSettingsAndStopsSynchronously(t *testing.T) {
 
 func TestStartReappliesConfiguredRetentionWithoutDuplicatingWorker(t *testing.T) {
 	database := openTestDatabase(t)
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 	service.Start()
 	t.Cleanup(service.Stop)
 	firstDone := service.done
@@ -164,7 +165,7 @@ func TestStartReappliesConfiguredRetentionWithoutDuplicatingWorker(t *testing.T)
 
 func TestConcurrentLifecycleKeepsOneWorkerGeneration(t *testing.T) {
 	database := openTestDatabase(t)
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 	service.interval = time.Hour
 	service.Start()
 
@@ -221,7 +222,7 @@ func TestConcurrentLifecycleKeepsOneWorkerGeneration(t *testing.T) {
 
 func TestHTTPHandlersPreserveStrictRetentionContract(t *testing.T) {
 	database := openTestDatabase(t)
-	service := NewService(database, "workspace")
+	service := NewService(database, "workspace", auditRunner(database, nil))
 	handlers := NewHTTPHandlers(func(http.ResponseWriter) (HTTPScope, bool) {
 		return HTTPScope{Service: service, Mutate: auditRunner(database, nil)}, true
 	})
@@ -270,25 +271,22 @@ func TestHTTPHandlersPreserveStrictRetentionContract(t *testing.T) {
 
 func auditRunner(database *sql.DB, failAfterMutation error) auditedmutation.Runner {
 	return func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
-		tx, err := database.BeginTx(ctx, nil)
-		if err != nil {
-			return err
-		}
-		defer tx.Rollback()
-		if err := mutate(tx); err != nil {
-			return err
-		}
-		if failAfterMutation != nil {
-			return failAfterMutation
-		}
-		encoded, err := json.Marshal(payload())
-		if err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO audit_logs (actor_type, action, payload_json, created_at) VALUES ('user', ?, ?, ?)`, action, string(encoded), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-			return err
-		}
-		return tx.Commit()
+		return transactionstate.Run(ctx, database, func(tx *sql.Tx) error {
+			if err := mutate(tx); err != nil {
+				return err
+			}
+			if failAfterMutation != nil {
+				return failAfterMutation
+			}
+			encoded, err := json.Marshal(payload())
+			if err != nil {
+				return err
+			}
+			if _, err := tx.ExecContext(ctx, `INSERT INTO audit_logs (actor_type, action, payload_json, created_at) VALUES ('user', ?, ?, ?)`, action, string(encoded), time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+				return err
+			}
+			return nil
+		})
 	}
 }
 
