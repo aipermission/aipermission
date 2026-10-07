@@ -490,6 +490,14 @@ encrypted data to accumulate; check disk capacity and keep retention enabled.
 Invalid configuration prevents gateway startup. MCP actions cannot set this
 operator-owned process configuration.
 
+The local Settings **Connector capacity** panel shows per-token stored records,
+reserved result bytes, running work, pending approvals, and configured limits.
+Warnings at 80% and 90% help the operator act before new requests are refused.
+This report is local UI-only, not a new agent tool. Usage is measured from a
+compact numeric projection maintained in the same SQL transaction as each
+request write; retention and rollback update it atomically too. It does not
+duplicate request payloads or weaken admission and idempotency checks.
+
 Target and profile discovery is resolved inside the token's active project
 scope. A missing reference and a reference hidden from that token both produce
 the same not-found response. If delivery authorization is lost while an action

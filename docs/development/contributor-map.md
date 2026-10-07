@@ -38,12 +38,18 @@ alone is not enough after switching away and back.
 limits. Call it with the admission transaction's executor: counts include the
 uncommitted incoming request, and each incoming/running/pending row reserves
 terminal output space once. Byte accounting uses stored UTF-8 bytes, not text
-character counts. Production admission uses `WithinDefault`; configurable
-`Within` only measures against supplied limits and does not authorize an action.
+character counts. Production admission uses `Within` with validated
+`RuntimeLimits`; neither measurement nor supplied limits authorize an action.
 The caller still owns token validation, permission checks, request publication,
 history projection and commit/rollback. This owner cannot open transactions,
 dispatch connectors or decide that a mutation succeeded. Run its native tests
 and the complete target/action suites when changing the query or its caller.
+
+Migration 43 installs the numeric usage projection and its write triggers from
+this owner. Canonical writes, backfill and tests share one byte-field expression;
+do not maintain a second manually updated counter in connector implementations.
+`retention/capacityreport` owns the local usage report and warning classification,
+and the retention HTTP owner exposes it to the authenticated operator only.
 
 Released baseline SQL belongs to `internal/db/baselineschema`; it returns
 caller-owned ordered statement slices, never a shared mutable plan. Add schema
