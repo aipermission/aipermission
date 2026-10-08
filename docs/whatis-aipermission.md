@@ -221,9 +221,18 @@ Rules:
 - Project Vault values and generated previews are not returned to the AI
   assistant, although a permitted session application gives the selected
   remote process access to them
-- credentials are never embedded in prompts
-- credentials are used only by the gateway while executing approved or permitted actions
+- the gateway does not deliberately return connector-profile credentials as
+  REST or MCP credential data or embed them in prompts
+- registered credential forms cross the mandatory execution boundary;
+  arbitrary target output can still contain unrelated or transformed sensitive
+  data, so pattern redaction is best effort, not a data-loss-prevention guarantee
+- stored credentials are used by the gateway during approved or permitted
+  actions; explicit Vault environment delivery also makes selected values
+  available to the permitted remote process
 - private key passphrases are used only during import and are not stored
+
+See the [credential boundary guarantee matrix](security/credential-boundary.md#secret-classes-and-response-behavior)
+for the separate contracts for credentials, Vault values, tokens and raw artifacts.
 
 aipermission should not ask the user for a VPS SSH password. The preferred model is Dokploy-style:
 
