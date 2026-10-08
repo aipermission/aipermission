@@ -236,6 +236,12 @@ func testFailure(err error) connectors.TestResult {
 	return connectors.TestResult{Status: status, Message: message}
 }
 
+// Consumer group names are opaque broker identities, not trimmed form text.
+func consumerGroup(values map[string]any) string {
+	group, _ := values["group"].(string)
+	return group
+}
+
 func stringValue(values map[string]any, key, fallback string) string {
 	value, ok := values[key]
 	if !ok || value == nil {

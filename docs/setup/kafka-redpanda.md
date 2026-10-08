@@ -65,6 +65,10 @@ retrying manually. Approval previews contain byte counts rather than raw
 message content, and displayed request input redacts the raw key, value, and
 headers.
 
+Consumer group names are opaque identities. Leading/trailing whitespace is
+preserved in preparation, execution, guards and readback; `" workers "` and
+`"workers"` identify different groups. Use the exact name from group discovery.
+
 `set_consumer_group_offset` changes one committed offset only. It checks that
 the consumer group has no active members immediately before committing,
 validates the requested offset against the partition's earliest and end
