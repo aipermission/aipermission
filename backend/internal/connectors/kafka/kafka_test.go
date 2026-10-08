@@ -383,6 +383,19 @@ func TestReadMessageResultDoesNotTruncateAtSnapshotBoundary(t *testing.T) {
 	}
 }
 
+func TestReadMessageByteCountExcludesRowsBeyondSerializedBudget(t *testing.T) {
+	value := bytes.Repeat([]byte{255}, maxMessageOutputBytes/2)
+	req := readMessagesRequest{Topic: "events", MaxRecords: 10, MaxBytes: len(value)*2 + 10}
+	record := func(offset int64) *kgo.Record {
+		return &kgo.Record{Topic: "events", Offset: offset, Key: []byte("key"), Value: value, Headers: []kgo.RecordHeader{{Key: "h", Value: []byte("v")}}}
+	}
+	result := buildReadMessagesResult(req, 0, 2, []*kgo.Record{record(0), record(1)})
+	output := result.Output.(map[string]any)
+	if result.Status != connectors.ResultCompleted || output["count"] != 1 || output["bytes"] != len(value)+5 || output["continuation_offset"] != "1" {
+		t.Fatalf("bounded count=%v bytes=%v continuation=%v", output["count"], output["bytes"], output["continuation_offset"])
+	}
+}
+
 func TestReadMessageResultFailsWhenOneRecordCannotAdvanceByteBound(t *testing.T) {
 	req := readMessagesRequest{Topic: "events", Partition: 0, MaxRecords: 10, MaxBytes: 3}
 	result := buildReadMessagesResult(req, 0, 1, []*kgo.Record{

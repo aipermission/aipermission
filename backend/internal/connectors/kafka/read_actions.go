@@ -351,7 +351,6 @@ func buildReadMessagesResult(req readMessagesRequest, startOffset, endOffset int
 			truncated = true
 			break
 		}
-		totalBytes += recordBytes
 		headers := make([]map[string]any, 0, len(record.Headers))
 		for _, header := range record.Headers {
 			value, encoding := displayBytes(header.Value)
@@ -382,6 +381,7 @@ func buildReadMessagesResult(req readMessagesRequest, startOffset, endOffset int
 			break
 		}
 		serializedBytes += len(encoded) + 1
+		totalBytes += recordBytes
 		rows = append(rows, row)
 		nextOffset = record.Offset + 1
 	}
