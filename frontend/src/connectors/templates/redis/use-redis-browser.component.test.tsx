@@ -52,6 +52,94 @@ function renderBrowser({ active = false } = {}) {
 }
 
 describe("useRedisBrowser", () => {
+  it.each(["query", "refresh"])("retires an open destructive confirmation after a %s change", async (change) => {
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+    act(() => result.current.toggleSelection("alpha"));
+    act(() => result.current.deleteSelected());
+    expect(result.current.confirmDialog.open).toBe(true);
+    if (change === "query") act(() => result.current.setPattern("new:*"));
+    else await act(async () => result.current.scanKeys({ reset: true }));
+    expect(result.current.confirmDialog.open).toBe(false);
+    vi.mocked(runGuardedConnectorAction).mockClear();
+    await act(async () => result.current.confirmPendingAction());
+    expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+  });
+
+  it("does not repopulate a changed query after an already dispatched write completes", async () => {
+    let finish: ActionResolver = () => {
+      throw new Error("Write not dispatched");
+    };
+    actionImplementation = ({ actionName, input }) =>
+      actionName === "set_string"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(completed(actionName, responseFor(actionName, input)));
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.keys).toEqual(["alpha", "beta"]));
+    await act(async () => result.current.loadKey("alpha"));
+    act(() => result.current.saveStringValue());
+    act(() => void result.current.confirmPendingAction());
+    await waitFor(() => expect(result.current.confirmDialog.pending).toBe(true));
+    act(() => result.current.setPattern("new:*"));
+    vi.mocked(runGuardedConnectorAction).mockClear();
+    await act(async () => finish(completed("set_string", { key: "alpha" })));
+    expect(result.current.keys).toEqual([]);
+    expect(result.current.activeKey).toBe("");
+    expect(result.current.confirmDialog.open).toBe(false);
+    expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse another query's cursor or destructive selection", async () => {
+    actionImplementation = async ({ actionName, input }) =>
+      completed(
+        actionName,
+        actionName === "scan_keys" ? { keys: [String(input.pattern)], next_cursor: "17" } : responseFor(actionName, input),
+      );
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.cursor).toBe("17"));
+    act(() => result.current.toggleSelection(result.current.keys[0]));
+    await act(async () => result.current.loadKey(result.current.keys[0]));
+    act(() => result.current.setPattern("new:*"));
+    expect(result.current.selectedKeys).toEqual([]);
+    expect(result.current.activeKey).toBe("");
+    expect(result.current.canScanMore).toBe(false);
+    vi.mocked(runGuardedConnectorAction).mockClear();
+    await act(async () => result.current.scanKeys());
+    expect(runGuardedConnectorAction).not.toHaveBeenCalled();
+    await act(async () => result.current.scanKeys({ reset: true }));
+    expect(result.current.keys).toEqual(["new:*"]);
+    expect(vi.mocked(runGuardedConnectorAction).mock.calls[0][0].input).toMatchObject({ pattern: "new:*", cursor: "0" });
+    await act(async () => result.current.scanKeys());
+    expect(vi.mocked(runGuardedConnectorAction).mock.calls[1][0].input).toMatchObject({ pattern: "new:*", cursor: "17" });
+    act(() => result.current.toggleSelection("new:*"));
+    await act(async () => result.current.scanKeys({ reset: true }));
+    expect(result.current.selectedKeys).toEqual([]);
+  });
+
+  it.each(["resolve", "reject"])("discards a previous query's late scan %s", async (settlement) => {
+    let finish: () => void = () => {
+      throw new Error("Scan not dispatched");
+    };
+    actionImplementation = () =>
+      new Promise((resolve, reject) => {
+        finish =
+          settlement === "resolve"
+            ? () => resolve(completed("scan_keys", { keys: ["old"], next_cursor: "99" }))
+            : () => reject(new Error("old query failed"));
+      });
+    const { result } = renderBrowser({ active: true });
+    await waitFor(() => expect(result.current.state.state).toBe("scanning"));
+    act(() => result.current.setPattern("current:*"));
+    await act(async () => finish());
+    expect(result.current.keys).toEqual([]);
+    expect(result.current.cursor).toBe("0");
+    expect(result.current.state.state).toBe("idle");
+  });
+});
+
+describe("useRedisBrowser key and mutation ownership", () => {
   it("drops pending writes and stale status when the target changes", async () => {
     const hook = renderBrowser();
     await waitFor(() => expect(hook.result.current.mutationLocked).toBe(false));
