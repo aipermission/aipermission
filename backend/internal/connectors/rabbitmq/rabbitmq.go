@@ -259,9 +259,8 @@ func executePeekMessages(ctx context.Context, client *rabbitClient, input map[st
 		)
 	}
 	for _, row := range rows {
-		if payload, ok := row["payload"].(string); ok && len(payload) > maxBytes {
-			row["payload"] = truncateString(payload, maxBytes)
-			row["payload_truncated_by_gateway"] = true
+		if err := boundMessagePreview(row, maxBytes); err != nil {
+			return connectors.ActionResult{}, connectors.ClassifyOutcomeUnknown("response_validation", nil, err)
 		}
 	}
 	return connectors.ActionResult{

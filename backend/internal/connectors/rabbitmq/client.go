@@ -317,8 +317,29 @@ func copyMap(input map[string]any) map[string]any {
 	return out
 }
 
-func truncateString(value string, maxBytes int) string {
-	return boundedtext.TruncateUTF8(value, maxBytes, "...[truncated]")
+func boundMessagePreview(row map[string]any, maxBytes int) error {
+	payload, ok := row["payload"].(string)
+	if !ok {
+		return fmt.Errorf("message payload must be a string")
+	}
+	var raw []byte
+	if row["payload_encoding"] == "base64" {
+		var err error
+		raw, err = base64.StdEncoding.DecodeString(payload)
+		if err != nil {
+			return fmt.Errorf("invalid Base64 message preview")
+		}
+		if len(raw) > maxBytes {
+			row["payload"] = base64.StdEncoding.EncodeToString(raw[:maxBytes])
+		}
+	} else {
+		raw = []byte(payload)
+		if len(raw) > maxBytes {
+			row["payload"] = boundedtext.TruncateUTF8(payload, maxBytes, "")
+		}
+	}
+	row["payload_truncated_by_gateway"] = len(raw) > maxBytes
+	return nil
 }
 
 func min(left int, right int) int {
