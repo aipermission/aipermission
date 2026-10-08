@@ -9,6 +9,48 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.70] - 2026-10-08
+
+### Security
+
+- MCP config updates retain private recovery snapshots, detect conflicting writers and
+  reject tracked recovery paths, including case variants; filesystem limitations remain
+  explicit.
+- MCP structural dispatch identifiers are canonicalized while exact response identity
+  checks and opaque action inputs remain unchanged.
+- Redis query changes and refresh retire stale confirmations and UI results without
+  canceling an already dispatched mutation.
+
+### Fixed
+
+- Kafka preserves exact consumer group identities, including whitespace, and reports
+  payload bytes only for returned records.
+- Redis scan cursors, results and selections belong to their applied query; backup
+  provider collections reject stale replies across refresh and workspace changes.
+- RabbitMQ binary previews enforce decoded-byte limits and preserve valid Base64; text
+  previews retain valid UTF-8 boundaries.
+- Unknown SMTP submission outcomes use the canonical dispatch-stage and reconciliation
+  metadata without automatic retry.
+
+### Maintenance
+
+- The npm placeholder ships the AGPL license with package-content verification.
+- Packaged MCP stdio behavior is exercised on the minimum Node.js 20.0.0 runtime on
+  Linux x64; maintained Node.js releases remain recommended.
+- Credential documentation distinguishes mandatory registered-secret masking from
+  best-effort handling of unrelated or transformed data.
+
+### Notes
+
+- AIPermission remains local-only, single-user and developer-focused; permissions,
+  Always grants and finite resource limits are unchanged.
+- Back up the encrypted database before upgrading. No new database schema migration is
+  introduced.
+- Config recovery is not a portable filesystem compare-and-swap guarantee; review
+  retained snapshots before removing them. Windows filesystems without hard links reject
+  first-time credential config creation with recovery guidance.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.69] - 2026-10-08
 
 ### Security
