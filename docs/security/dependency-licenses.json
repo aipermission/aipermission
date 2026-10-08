@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "7dc535735c98e8c6accbf20611d597a131351c641afcd455f8cef5800abb3f1c"
+      "sha256": "c8adaca8dac3d2bd09d6884028202fce33a474861f7b6ad717ab55c96f0d77e9"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "e19b51bc28283a8ed0e064c304a7f864424fabfa6bbbdb41a48f75e7def8ac43"
+      "sha256": "c971478adbc9cc12135cbf7ab5ffae0474b1301e413b07a5288d790844ae42aa"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "ebe687b979432147b62784a5bf24db85fc5591a9418e7c993d1a9d9e941675af"
+      "sha256": "1cf080d283a237a947b530b429b97a44182f186c5de441341285819fff12c2c0"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "a358bf8ae5133d0b7948108311a069849624b81c399bea161e2ffb0e8563349e"
+      "sha256": "d71db3b72dc04ba99579ba67a4ab0c8b39321fb092cddfdc24c0a0feac732733"
     },
     {
       "path": "scripts/package.json",
@@ -51,11 +51,11 @@
       "source": "frontend/package-lock.json",
       "location": "",
       "name": "aipermission-frontend",
-      "version": "0.2.69",
+      "version": "0.2.70",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "fdc3b7e439b907c0bd53be37e175e3e188170806e9e9862f8d5e45d889a45c0c"
+      "metadata_sha256": "05ceed832dc34d947994adb326ec8f5898d6ea0976683bd25b564211988ebaaa"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4371,11 +4371,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "",
       "name": "@aipermission/mcp",
-      "version": "0.2.69",
+      "version": "0.2.70",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "48f05a528fdf88e4faf5ba694c965c286c11b13a843d781a4e5ebeec067aa51e"
+      "metadata_sha256": "3b9ee100e0db89b28c9621d4c3f104a0350fe0a07a9a8b3c270104e8410f5718"
     },
     {
       "source": "packages/mcp/package-lock.json",
