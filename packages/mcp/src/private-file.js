@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { assertPrivateFileUnchanged } from "./private-file-snapshot.js";
+import { retainPrivateFile } from "./private-file-recovery.js";
 import { privateLockOwner } from "./private-lock-diagnostics.js";
 
 const execFileAsync = promisify(execFile);
@@ -36,15 +37,79 @@ export async function atomicWritePrivateFile(filePath, contents, options = {}) {
     await handle.close();
     handle = undefined;
     await validatePrivateDestination(destination, options);
-    if (options.expectedSnapshot) await assertPrivateFileUnchanged(destination, options.expectedSnapshot);
-    await rename(temporaryPath, destination);
+    let snapshot = options.expectedSnapshot;
+    let recovery = {};
+    if (snapshot) {
+      await assertPrivateFileUnchanged(destination, snapshot);
+      if (snapshot.bytes !== null) {
+        recovery = await retainPrivateFile(destination, snapshot, options, {
+          prepareDirectory: async (recoveryDirectory) => {
+            await ensurePrivateDirectory(recoveryDirectory, { ...options, trustedRoot: directory });
+            await enforcePrivateDirectoryPermissions(recoveryDirectory, options);
+          },
+          validate: (target) => validatePrivateDestination(target, { ...options, trustedRoot: directory }),
+          writeCopy: (target, bytes) =>
+            atomicWritePrivateFile(target, bytes, { ...options, expectedSnapshot: undefined, rename: undefined }),
+          syncDirectory: options.syncDirectory || syncParentDirectory,
+        });
+        snapshot = recovery.snapshot;
+        await assertPrivateFileUnchanged(destination, snapshot);
+      }
+    }
+    if (snapshot?.bytes === null) {
+      try {
+        await publishNewPrivateFile(temporaryPath, destination, contents, options);
+      } catch (error) {
+        if (error.code === "EEXIST") await assertPrivateFileUnchanged(destination, snapshot);
+        throw error;
+      }
+      await fs.unlink(temporaryPath);
+    } else {
+      await rename(temporaryPath, destination);
+    }
     await (options.syncDirectory || syncParentDirectory)(directory);
+    return { recoveryPath: recovery.recoveryPath };
   } catch (error) {
     await handle?.close().catch(() => {});
     await fs.unlink(temporaryPath).catch(() => {});
     throw error;
   } finally {
     if (stagingDirectory) await fs.rm(stagingDirectory, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+async function publishNewPrivateFile(source, destination, contents, options) {
+  try {
+    await (options.link || fs.link)(source, destination);
+    return;
+  } catch (error) {
+    if (!["EPERM", "EOPNOTSUPP", "ENOTSUP", "EXDEV", "ENOSYS"].includes(error.code)) throw error;
+    if (operatingSystem(options) === "win32") {
+      throw Object.assign(
+        new Error(
+          `Private no-clobber config creation is unavailable: ${destination}. Create an empty config file without secrets, then retry setup, or use --print.`,
+        ),
+        {
+          code: "AIPERMISSION_CONFIG_CREATION_UNSUPPORTED",
+          cause: error,
+        },
+      );
+    }
+  }
+  const handle = await fs.open(destination, "wx", 0o600);
+  try {
+    await handle.writeFile(contents, { encoding: "utf8" });
+    await handle.sync();
+  } catch (error) {
+    throw Object.assign(
+      new Error(`Config creation was interrupted: ${destination}. A private partial file may remain; review it before retrying.`),
+      {
+        code: "AIPERMISSION_CONFIG_CREATION_INCOMPLETE",
+        cause: error,
+      },
+    );
+  } finally {
+    await handle.close();
   }
 }
 

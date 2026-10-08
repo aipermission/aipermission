@@ -3,7 +3,7 @@ import { atomicWritePrivateFile, withPrivateFileLock } from "./private-file.js";
 import { readPrivateFileSnapshot } from "./private-file-snapshot.js";
 
 export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
-  await withPrivateFileLock(
+  return withPrivateFileLock(
     filePath,
     async () => {
       await options.beforeWrite?.();
@@ -14,7 +14,7 @@ export async function writeTOMLMCPConfig(filePath, name, config, options = {}) {
       const outputContent = `${next ? `${next}\n\n` : ""}${block}\n`;
       parseTOMLDocument(outputContent, filePath);
       await options.beforeWrite?.();
-      await atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
+      return atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
     },
     options,
   );

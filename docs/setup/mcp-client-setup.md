@@ -89,6 +89,30 @@ files and locks are cleaned up without changing the outside edit. This is
 optimistic conflict detection, not an atomic compare-and-swap guarantee against
 writers that ignore the lock; an outside writer can still race the final
 comparison and rename. Close other config editors while running setup.
+New snapshot-backed config files are published without clobbering a file created
+by another writer. POSIX filesystems without hard links use an exclusive mode
+`0600` creation instead; interrupted writes may leave a private partial file to
+review before retrying. Windows first-time creation requires hard-link support
+to publish the already protected ACL without a readable-content window. If
+unsupported, setup writes no destination and asks you to create an empty config
+without secrets and retry, or use `--print`; it never falls back to an unprotected
+write. Existing updates retain one private previous config at
+`.<config-name>.aipermission-recovery/previous`; setup prints only that path,
+never its contents. Project-local recovery paths are verified as Git-ignored
+and cannot be tracked, even with `--force`. Tracked-path checks conservatively
+reject case variants as well, including on case-sensitive hosts. On POSIX
+filesystems supporting hard links, an owned original inode is retained and
+tightened to mode `0600`, so late
+in-place/open-descriptor writes to that inode survive in recovery. Windows,
+foreign-owned originals and filesystems without hard links use a private
+snapshot copy instead, retaining only the captured bytes. An external writer
+installing a different inode after recovery capture can still race replacement;
+this is not CAS or a complete external-edit preservation guarantee.
+Recovery may contain bearer tokens: compare it locally, manually merge needed
+entries, and never upload or commit it. It is not restored automatically. The
+next successful recovery capture rotates the previous slot; failed replacement
+retains that slot. Review it before retrying after a conflict or crash. Do not
+remove an unexplained `candidate` file until all setup processes are stopped.
 A lock is never stolen automatically. `doctor` reports an existing config or
 skill setup lock using bounded PID, host and timestamp metadata, never its
 ownership token. Legacy or malformed records may lack that information.

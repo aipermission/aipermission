@@ -72,7 +72,9 @@ by the MCP bridge: opaque keys and resource names retain their exact value.
 For config updates, setup detects outside edits observed before atomic replacement
 and stops rather than knowingly overwriting them. Review the current file and
 retry after closing other editors. This does not provide atomic compare-and-swap
-against writers ignoring the setup lock; see the
+against writers ignoring the setup lock. Existing updates retain one private,
+Git-protected previous config and report its path for local recovery; this file
+can contain tokens and must not be shared. See the
 [setup conflict and recovery guidance](../../docs/setup/mcp-client-setup.md).
 
 For project-local configs such as `.mcp.json`, `.cursor/mcp.json`, and
