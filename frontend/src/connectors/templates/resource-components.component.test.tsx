@@ -151,6 +151,7 @@ it("drives the split Redis key and value surfaces", async () => {
     selectedCount: 0,
     activeKey: "user:1",
     cursor: "0",
+    canScanMore: false,
     pattern: "*",
     latestAction: null,
     state: { state: "idle", error: "", message: "" },

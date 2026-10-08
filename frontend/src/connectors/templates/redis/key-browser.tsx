@@ -87,7 +87,7 @@ export function RedisKeyBrowser({ browser, styles }: { browser: RedisBrowser; st
           type="button"
           variant="outline"
           className="h-8 px-3 text-xs"
-          disabled={browser.cursor === "0" || connectorActionBusy(browser.state)}
+          disabled={!browser.canScanMore || connectorActionBusy(browser.state)}
           onClick={() => browser.scanKeys({ reset: false })}
         >
           More

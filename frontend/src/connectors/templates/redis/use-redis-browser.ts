@@ -15,10 +15,12 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
   const activeSession = session || { active: false, startedAt: "" };
   const resetKey = `${currentWorkspaceBinding()}:${target.ref}:${activeSession.startedAt || "inactive"}`;
   const product = serverProductLabel(target);
-  const [pattern, setPattern] = useState(defaultRedisPattern);
+  const [pattern, setPatternDraft] = useState(defaultRedisPattern);
+  const [appliedPattern, setAppliedPattern] = useState("");
   const [cursor, setCursor] = useState("0");
   const [keys, setKeys] = useState<string[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [selectionEpoch, setSelectionEpoch] = useState(0);
   const [activeKey, setActiveKey] = useState("");
   const [keyResult, setKeyResult] = useState<RedisKeyResult | null>(null);
   const [valueDraft, setValueDraft] = useState("");
@@ -36,6 +38,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
   const scanKeysForEffect = useEffectEvent((options: { reset?: boolean }) => scanKeys(options));
 
   useEffect(() => {
+    setAppliedPattern("");
     setCursor("0");
     setKeys([]);
     setSelectedKeys([]);
@@ -74,11 +77,19 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
 
   async function scanKeys({ reset = false } = {}) {
     if (!activeSession.active) return;
+    const query = redisScanPattern(pattern);
+    if (!reset && (query !== appliedPattern || cursor === "0")) return;
+    if (reset) {
+      setAppliedPattern(query);
+      setCursor("0");
+      setKeys([]);
+      clearKeySelection();
+    }
     let item;
     try {
       item = await runRedisAction({
         actionName: "scan_keys",
-        input: { pattern: redisScanPattern(pattern), cursor: reset ? "0" : cursor || "0", limit: defaultRedisLimit },
+        input: { pattern: query, cursor: reset ? "0" : cursor, limit: defaultRedisLimit },
         reason: `manual ${product} browser key scan`,
         busy: "scanning",
       });
@@ -89,6 +100,27 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     const output = readRedisScan(item.output);
     setCursor(output.nextCursor);
     setKeys((current) => uniqueRedisKeys(reset ? output.keys : [...current, ...output.keys]));
+  }
+
+  function clearKeySelection() {
+    setSelectionEpoch((current) => current + 1);
+    requestGuard.invalidate("get_key");
+    setSelectedKeys([]);
+    setActiveKey("");
+    setKeyResult(null);
+    setValueDraft("");
+    setTTLDraft("");
+  }
+
+  function setPattern(value: string) {
+    setPatternDraft(value);
+    if (redisScanPattern(value) === redisScanPattern(pattern)) return;
+    requestGuard.invalidate("scan_keys");
+    setAppliedPattern("");
+    setCursor("0");
+    setKeys([]);
+    clearKeySelection();
+    if (state.state === "reading" || state.state === "scanning") setState({ state: "idle", error: "", message: "" });
   }
 
   function startNewKey() {
@@ -138,7 +170,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
   }
 
   const mutations = useRedisMutations({
-    resetKey,
+    resetKey: `${resetKey}:${selectionEpoch}`,
     mutationLocked: mutationsOwner.locked,
     product,
     activeKey,
@@ -168,6 +200,7 @@ export function useRedisBrowser({ target, approvals, session, onRefreshActivity 
     pattern,
     setPattern,
     cursor,
+    canScanMore: cursor !== "0" && appliedPattern === redisScanPattern(pattern),
     keys,
     selectedKeys,
     setSelectedKeys,
