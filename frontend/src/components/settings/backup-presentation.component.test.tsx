@@ -8,7 +8,14 @@ import { BackupRecordDialogs } from "./backup-record-dialogs";
 import { useBackupProviderState } from "./use-backup-provider-state";
 import { isBackupProvider, isBackupRecord } from "./backup-contracts";
 
-vi.mock("../../lib/api", () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiPut: vi.fn(), apiDelete: vi.fn(), apiDownload: vi.fn() }));
+vi.mock("../../lib/api", () => ({
+  currentWorkspaceBinding: () => "workspace-a",
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
+  apiPut: vi.fn(),
+  apiDelete: vi.fn(),
+  apiDownload: vi.fn(),
+}));
 const database = { data: { database_name: "My database", database_size_bytes: 1024 } };
 const provider = {
   id: 1,
