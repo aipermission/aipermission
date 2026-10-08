@@ -57,6 +57,11 @@ npx -y @aipermission/mcp doctor --client codex --scope user
 
 The generated MCP config contains a bearer token. Keep it private.
 
+Connector target references and action names are trimmed before HTTP dispatch;
+the same canonical identities are used for exact response validation. Empty
+identities are rejected before dispatch. Connector-specific input is not trimmed
+by the MCP bridge: opaque keys and resource names retain their exact value.
+
 For config updates, setup detects outside edits observed before atomic replacement
 and stops rather than knowingly overwriting them. Review the current file and
 retry after closing other editors. This does not provide atomic compare-and-swap

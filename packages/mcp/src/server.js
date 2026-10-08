@@ -31,6 +31,7 @@ try {
 }
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = parseHTTPTimeout(process.env.AIPERMISSION_HTTP_TIMEOUT_MS);
+const connectorIdentifierSchema = z.string().trim().min(1);
 
 const server = new McpServer(
   {
@@ -57,7 +58,7 @@ server.tool(
   "get_connector_help",
   "Read AI-facing help for one connector target/profile. Use this before calling connector actions for the first time.",
   {
-    target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
+    target_ref: connectorIdentifierSchema.describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
   localReadAnnotations,
   async ({ target_ref }, { signal }) => {
@@ -75,7 +76,7 @@ server.tool(
   "get_connector_actions",
   "List actions exposed by one connector target/profile. Action execution is still checked against token permissions.",
   {
-    target_ref: z.string().min(1).describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
+    target_ref: connectorIdentifierSchema.describe("Target ref from list_connector_targets in connector:target_id:profile_id format."),
   },
   localReadAnnotations,
   async ({ target_ref }, { signal }) => {
@@ -93,8 +94,8 @@ server.tool(
   "call_connector_action",
   "Call one connector action through AIPermission. If status is approval_pending or running, follow assistant_hint and poll get_connector_action_request.",
   {
-    target_ref: z.string().min(1).describe("Target ref from list_connector_targets."),
-    action_name: z.string().min(1).describe("Action name from get_connector_actions."),
+    target_ref: connectorIdentifierSchema.describe("Target ref from list_connector_targets."),
+    action_name: connectorIdentifierSchema.describe("Action name from get_connector_actions."),
     input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
     reason: z.string().optional().describe("Why this connector action is needed."),
     idempotency_key: idempotencyKeySchema,
