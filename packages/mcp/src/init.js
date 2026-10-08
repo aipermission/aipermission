@@ -101,6 +101,8 @@ async function runConfiguration(command, argv) {
     console.log(`${color.green}Configured ${provider.label}${color.reset}`);
     console.log(`${color.dim}Name:${color.reset} ${name}`);
     console.log(`${color.dim}Path:${color.reset} ${result.path}`);
+    if (result.recoveryPath)
+      console.log(`${color.dim}Previous config recovery (may contain secrets):${color.reset} ${result.recoveryPath}`);
     console.log(`${color.dim}Scope:${color.reset} ${result.scope}`);
     if (result.gitExcluded) {
       console.log(`${color.dim}Git:${color.reset} added ${result.gitExcludeEntry} to .git/info/exclude`);

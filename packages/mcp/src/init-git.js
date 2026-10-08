@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { readPrivateFileSnapshot } from "./private-file-snapshot.js";
+import { privateRecoveryDirectory } from "./private-file-recovery.js";
 import {
   atomicWritePrivateFile,
   privateLockPath,
@@ -43,11 +44,14 @@ export async function protectGitIgnoredConfig(filePath, startDir = process.cwd()
   const temporaryRelativePath = path.relative(repository.workTree, privateTemporaryIgnorePath(filePath)).split(path.sep).join("/");
   const stagingRelativePath = path.relative(repository.workTree, privateStagingIgnorePath(filePath)).split(path.sep).join("/");
   const lockRelativePath = path.relative(repository.workTree, privateLockPath(filePath)).split(path.sep).join("/");
+  const recoveryRelativePath = path.relative(repository.workTree, privateRecoveryDirectory(filePath)).split(path.sep).join("/");
+  if (await gitTrackedPath(privateRecoveryDirectory(filePath), startDir)) throw new Error("Refusing tracked MCP config recovery files");
   const ignoreEntries = [
     gitIgnoreLiteral(relativePath),
     gitIgnoreWildcardPath(temporaryRelativePath),
     gitIgnoreWildcardPath(stagingRelativePath),
     gitIgnoreLiteral(lockRelativePath),
+    gitIgnoreLiteral(recoveryRelativePath),
   ];
   try {
     await withPrivateFileLock(
@@ -72,6 +76,8 @@ export async function protectGitIgnoredConfig(filePath, startDir = process.cwd()
       privateTemporaryCheckPath(filePath, repository.workTree),
       privateStagingCheckPath(filePath, repository.workTree),
       lockRelativePath,
+      `${recoveryRelativePath}/previous`,
+      `${recoveryRelativePath}/candidate`,
     ]);
   } catch (error) {
     throw new Error(`Could not protect MCP config with local Git excludes: ${error.message}`, { cause: error });
@@ -82,6 +88,7 @@ export async function protectGitIgnoredConfig(filePath, startDir = process.cwd()
     gitExcludeTemporaryEntry: temporaryRelativePath,
     gitExcludeStagingEntry: stagingRelativePath,
     gitExcludeLockEntry: lockRelativePath,
+    gitExcludeRecoveryEntry: recoveryRelativePath,
   };
 }
 
@@ -92,11 +99,20 @@ export async function inspectProjectConfigProtection(filePath, startDir = proces
   if (relativePath.startsWith("../") || path.isAbsolute(relativePath)) return { repository: false };
   const tracked = await gitTrackedPath(filePath, startDir);
   if (tracked) throw new Error(`MCP config is tracked by Git: ${tracked}`);
+  if (await gitTrackedPath(privateRecoveryDirectory(filePath), startDir)) throw new Error("MCP config recovery files are tracked by Git");
   await assertGitIgnored(repository, [
     relativePath,
     privateTemporaryCheckPath(filePath, repository.workTree),
     privateStagingCheckPath(filePath, repository.workTree),
     path.relative(repository.workTree, privateLockPath(filePath)).split(path.sep).join("/"),
+    path
+      .relative(repository.workTree, path.join(privateRecoveryDirectory(filePath), "previous"))
+      .split(path.sep)
+      .join("/"),
+    path
+      .relative(repository.workTree, path.join(privateRecoveryDirectory(filePath), "candidate"))
+      .split(path.sep)
+      .join("/"),
   ]);
   return { repository: true, relativePath };
 }
@@ -111,7 +127,7 @@ async function gitTrackedPath(filePath, startDir = process.cwd()) {
     return "";
   }
   try {
-    await execFileAsync("git", ["-C", repository.workTree, "ls-files", "--error-unmatch", "--", relativePath], {
+    await execFileAsync("git", ["-C", repository.workTree, "ls-files", "--error-unmatch", "--", `:(literal,icase)${relativePath}`], {
       windowsHide: true,
     });
     return relativePath;

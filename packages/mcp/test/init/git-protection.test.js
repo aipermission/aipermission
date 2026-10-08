@@ -44,8 +44,28 @@ test("forced tracked config writes keep temporary paths protected and remain det
     "..mcp.json.aipermission-crash.tmp",
     "..mcp.json.aipermission-stage-crash/.mcp.json",
     ".mcp.json.aipermission.lock",
+    "..mcp.json.aipermission-recovery/previous",
+    "..mcp.json.aipermission-recovery/candidate",
   ]) {
     assert.equal(await git(dir, "check-ignore", "--", relativePath), relativePath);
   }
   await assert.rejects(() => init.inspectProjectConfigProtection(filePath, dir), /MCP config is tracked by Git/);
 });
+
+for (const recoveryName of ["..mcp.json.aipermission-recovery", "..mcp.json.AIPERMISSION-RECOVERY"]) {
+  test(`setup refuses tracked recovery path ${recoveryName} even with force`, async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "aipermission-tracked-recovery-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    await initGitRepository(dir);
+    const recovery = path.join(dir, recoveryName);
+    await fs.mkdir(recovery);
+    await fs.writeFile(path.join(recovery, "previous"), "private previous");
+    await git(dir, "add", `${recoveryName}/previous`);
+    await git(dir, "config", "core.ignorecase", "true");
+    await assert.rejects(
+      () => writeProviderConfig("claude", "aipermission", {}, { projectDir: dir, force: true }),
+      /tracked MCP config recovery/,
+    );
+    await assert.rejects(() => init.inspectProjectConfigProtection(path.join(dir, ".mcp.json"), dir), /recovery files are tracked/);
+  });
+}

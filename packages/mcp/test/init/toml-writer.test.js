@@ -19,7 +19,7 @@ test("TOML writer serializes concurrent updates and leaves private permissions",
     assert.equal(server.env.AIPERMISSION_API_TOKEN, "CONCURRENT_CANARY");
   }
   if (process.platform !== "win32") assert.equal((await fs.stat(filePath)).mode & 0o777, 0o600);
-  assert.deepEqual(await fs.readdir(dir), ["config.toml"]);
+  assert.deepEqual(await fs.readdir(dir), [".config.toml.aipermission-recovery", "config.toml"]);
 });
 
 test("TOML preview never renders a supplied bearer token", () => {

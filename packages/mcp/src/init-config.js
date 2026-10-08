@@ -30,16 +30,15 @@ export async function writeProviderConfig(providerID, name, config, options = {}
         }
       : options.beforeWrite,
   };
-  if (target.format === "toml") {
-    await writeTOMLMCPConfig(target.path, name, providerConfig, writeOptions);
-  } else {
-    await writeJSONMCPConfig(target.path, name, providerConfig, target.rootKey, writeOptions);
-  }
-  return { path: target.path, scope: target.scope, ...protection };
+  const written =
+    target.format === "toml"
+      ? await writeTOMLMCPConfig(target.path, name, providerConfig, writeOptions)
+      : await writeJSONMCPConfig(target.path, name, providerConfig, target.rootKey, writeOptions);
+  return { path: target.path, scope: target.scope, ...protection, ...written };
 }
 
 export async function writeJSONMCPConfig(filePath, name, config, rootKey, options = {}) {
-  await withPrivateFileLock(
+  return withPrivateFileLock(
     filePath,
     async () => {
       await options.beforeWrite?.();
@@ -72,7 +71,7 @@ export async function writeJSONMCPConfig(filePath, name, config, rootKey, option
         outputContent = `${JSON.stringify(root, null, 2)}\n`;
       }
       await options.beforeWrite?.();
-      await atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
+      return atomicWritePrivateFile(filePath, outputContent, { ...options, expectedSnapshot: snapshot });
     },
     options,
   );
