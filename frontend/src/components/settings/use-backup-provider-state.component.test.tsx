@@ -3,7 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { apiDownload, apiGet, apiPost } from "../../lib/api";
 import { useBackupProviderState } from "./use-backup-provider-state";
 
+const workspace = vi.hoisted(() => ({ current: "workspace-a" }));
 vi.mock("../../lib/api", () => ({
+  currentWorkspaceBinding: () => workspace.current,
   apiDelete: vi.fn(),
   apiDownload: vi.fn(),
   apiGet: vi.fn(),
@@ -24,7 +26,57 @@ function renderBackupState() {
 }
 
 describe("useBackupProviderState", () => {
+  it.each(["success", "error"])("ignores old catalog and provider GET %s after a workspace change", async (settlement) => {
+    const pending = new Map<string, { finish: () => void; signal?: AbortSignal }>();
+    vi.mocked(apiGet).mockImplementation((path, options) => {
+      const items = path.endsWith("/catalog") ? [{ provider_type: "custom", label: "Current" }] : [{ id: 4, name: "Current" }];
+      if (pending.has(path)) return Promise.resolve({ items });
+      return new Promise((resolve, reject) => {
+        pending.set(path, {
+          signal: options?.signal,
+          finish: settlement === "success" ? () => resolve({ items: [] }) : () => reject(new Error("Old workspace offline")),
+        });
+      });
+    });
+    const hook = renderBackupState();
+    await waitFor(() => expect(pending.size).toBe(2));
+    workspace.current = "workspace-b";
+    hook.rerender();
+    await waitFor(() => expect(hook.result.current.backupProviderCatalog.state).toBe("ready"));
+    await act(async () => {
+      for (const request of pending.values()) request.finish();
+    });
+    expect([...pending.values()].every((request) => request.signal?.aborted)).toBe(true);
+    expect(hook.result.current.backupProviderCatalog).toEqual({
+      state: "ready",
+      data: [{ provider_type: "custom", label: "Current" }],
+      error: null,
+    });
+    expect(hook.result.current.backupProviders).toEqual({ state: "ready", data: [{ id: 4, name: "Current" }], error: null });
+  });
+
+  it.each(["success", "error"])("does not let an older provider GET %s overwrite the post-save list", async (settlement) => {
+    let finish: () => void = () => {
+      throw new Error("Initial GET not dispatched");
+    };
+    let calls = 0;
+    vi.mocked(apiGet).mockImplementation((path) => {
+      if (path === "/api/backup/providers/catalog") return Promise.resolve({ items: [] });
+      if (++calls > 1) return Promise.resolve({ items: [{ id: 4, name: "Current" }] });
+      return new Promise((resolve, reject) => {
+        finish = settlement === "success" ? () => resolve({ items: [{ id: 1, name: "Old" }] }) : () => reject(new Error("old failure"));
+      });
+    });
+    vi.mocked(apiPost).mockResolvedValue({ id: 4 });
+    const { result } = renderBackupState();
+    await waitFor(() => expect(calls).toBe(1));
+    await act(async () => result.current.saveBackupProvider({ preventDefault() {} }));
+    expect(result.current.backupProviders.data).toEqual([{ id: 4, name: "Current" }]);
+    await act(async () => finish());
+    expect(result.current.backupProviders).toEqual({ state: "ready", data: [{ id: 4, name: "Current" }], error: null });
+  });
   beforeEach(() => {
+    workspace.current = "workspace-a";
     vi.mocked(apiDownload).mockReset();
     vi.mocked(apiGet).mockImplementation(async (path) => {
       if (path === "/api/backup/providers/catalog")

@@ -6,6 +6,7 @@ import { backupProviderLabel, useBackupProviderState } from "./use-backup-provid
 import type { BackupProvider } from "./backup-contracts";
 
 vi.mock("../../lib/api", () => ({
+  currentWorkspaceBinding: () => "workspace-a",
   apiDelete: vi.fn(),
   apiDownload: vi.fn(),
   apiGet: vi.fn(),

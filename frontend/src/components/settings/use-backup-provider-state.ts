@@ -1,6 +1,7 @@
 import { uploadedBackupRecordResponse } from "./backup-contracts";
-import { useEffect, useState, type FormEvent } from "react";
-import { apiDelete, apiDownload, apiGet, apiPost, apiPut } from "../../lib/api";
+import { useEffect, useEffectEvent, useState, type FormEvent } from "react";
+import { apiDelete, apiDownload, apiGet, apiPost, apiPut, currentWorkspaceBinding } from "../../lib/api";
+import { useRequestGuard } from "../../lib/request-guard";
 import { errorMessage } from "../../lib/errors";
 import { useAsyncAction } from "../../lib/use-async-action";
 import { useBackupRecordState } from "./use-backup-record-state";
@@ -22,6 +23,8 @@ type BackupProviderForm = { provider_type: string; name: string; base_url: strin
 type ProviderPayload = { provider_type: string; name: string; public: { base_url: string }; secret?: { token: string } };
 
 export function useBackupProviderState(database: DatabaseState) {
+  const workspace = currentWorkspaceBinding();
+  const requestGuard = useRequestGuard(workspace);
   const { actionState: backupState, runAction: runBackupAction } = useAsyncAction(emptyState);
   const {
     actionState: backupProviderState,
@@ -43,27 +46,42 @@ export function useBackupProviderState(database: DatabaseState) {
   const [backupProviderForm, setBackupProviderForm] = useState<BackupProviderForm>(emptyBackupProviderForm);
 
   async function loadBackupProviderCatalog() {
+    const request = requestGuard.begin("catalog");
     try {
-      const data = await apiGet("/api/backup/providers/catalog");
+      const data = await apiGet("/api/backup/providers/catalog", { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBackupProviderCatalog({ state: "ready", data: backupItems(data, isBackupCatalogItem), error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setBackupProviderCatalog({ state: "error", data: [], error: errorMessage(error, "Unable to load backup catalog.") });
+    } finally {
+      request.complete();
     }
   }
 
   async function loadBackupProviders() {
+    const request = requestGuard.begin("providers");
     try {
-      const data = await apiGet("/api/backup/providers");
+      const data = await apiGet("/api/backup/providers", { signal: request.signal });
+      if (!request.isCurrent()) return;
       setBackupProviders({ state: "ready", data: backupItems(data, isBackupProvider), error: null });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setBackupProviders({ state: "error", data: [], error: errorMessage(error, "Unable to load backup providers.") });
+    } finally {
+      request.complete();
     }
   }
 
-  useEffect(() => {
+  const loadCollections = useEffectEvent(() => {
     void loadBackupProviderCatalog();
     void loadBackupProviders();
-  }, []);
+  });
+  useEffect(() => {
+    setBackupProviders({ state: "loading", data: [], error: null });
+    setBackupProviderCatalog({ state: "loading", data: [], error: null });
+    loadCollections();
+  }, [workspace]);
 
   const databaseName = database.data?.database_name || "Unknown";
   const backupRecordState = useBackupRecordState({ backupProviderState, runBackupProviderAction, resetBackupProviderAction });
