@@ -81,5 +81,5 @@ test("source-archive mode cannot weaken tests inside a Git checkout", (t) => {
   fs.writeFileSync(path.join(archive, ".git"), "gitdir: elsewhere");
   assert.throws(() => assertSourceArchiveMode(archive), /cannot bypass the historical manifest ratchet/);
   const packageMetadata = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(packageMetadata.scripts.test, "npm run build && node scripts/run-tests.js");
+  assert.equal(packageMetadata.scripts.test, "npm run build && node scripts/run-tests.js && node scripts/minimum-runtime.js");
 });

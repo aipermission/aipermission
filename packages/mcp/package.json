@@ -32,7 +32,7 @@
     "format:check": "prettier --check \"src/**/*.js\" \"test/**/*.js\" \"scripts/**/*.js\"",
     "lint": "eslint src test scripts",
     "prepack": "npm run build",
-    "test": "npm run build && node scripts/run-tests.js",
+    "test": "npm run build && node scripts/run-tests.js && node scripts/minimum-runtime.js",
     "test:source-archive": "npm run build && node scripts/run-tests.js --current-only",
     "test:windows-acl": "node scripts/run-windows-acl-tests.js",
     "start": "node dist/cli.js",

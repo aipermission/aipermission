@@ -57,6 +57,13 @@ npx -y @aipermission/mcp doctor --client codex --scope user
 
 The generated MCP config contains a bearer token. Keep it private.
 
+Repository builds use the pinned Node.js toolchain. The published MCP runtime
+supports Node.js 20 and newer; `npm test` also exercises the packaged stdio
+bridge on exactly Node.js 20.0.0 in Linux x64 CI using a checksum-pinned official
+archive. This smoke verifies protocol dispatch and withheld-response handling,
+not every operating system or Node minor version. Use a maintained Node release
+for normal operation.
+
 Connector target references and action names are trimmed before HTTP dispatch;
 the same canonical identities are used for exact response validation. Empty
 identities are rejected before dispatch. Connector-specific input is not trimmed
