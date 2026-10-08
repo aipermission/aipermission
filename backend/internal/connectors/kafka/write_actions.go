@@ -157,7 +157,7 @@ func isDefiniteKafkaBrokerRejection(err error) bool {
 }
 
 func executeSetConsumerGroupOffset(ctx context.Context, client *kgo.Client, payload map[string]any) (connectors.ActionResult, error) {
-	group := stringValue(payload, "group", "")
+	group := consumerGroup(payload)
 	topic := stringValue(payload, "topic", "")
 	partition, err := exactInt32(payload["partition"], "partition")
 	if err != nil {

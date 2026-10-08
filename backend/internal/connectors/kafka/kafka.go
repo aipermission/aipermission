@@ -115,13 +115,13 @@ func (*Connector) PrepareAction(_ context.Context, req connectors.ActionRequest)
 	case ActionDescribeTopic:
 		summary = "Describe topic " + stringValue(input, "topic", "")
 	case ActionDescribeConsumerGroup:
-		summary = "Describe consumer group " + stringValue(input, "group", "")
+		summary = "Describe consumer group " + consumerGroup(input)
 	case ActionReadMessages:
 		summary = fmt.Sprintf("Read up to %d messages from %s partition %d", intValue(input, "max_records", 20), stringValue(input, "topic", ""), intValue(input, "partition", 0))
 	case ActionPublishMessage:
 		summary = fmt.Sprintf("Publish one message to %s partition %d", stringValue(input, "topic", ""), intValue(input, "partition", 0))
 	case ActionSetConsumerGroupOffset:
-		summary = fmt.Sprintf("Set %s/%s partition %d offset to %s", stringValue(input, "group", ""), stringValue(input, "topic", ""), intValue(input, "partition", 0), stringValue(input, "offset", ""))
+		summary = fmt.Sprintf("Set %s/%s partition %d offset to %s", consumerGroup(input), stringValue(input, "topic", ""), intValue(input, "partition", 0), stringValue(input, "offset", ""))
 	}
 	preview := copyMap(input)
 	if req.ActionName == ActionPublishMessage {
@@ -210,7 +210,7 @@ func (c *Connector) ExecuteAction(ctx context.Context, runtime connectors.Runtim
 	case ActionListConsumerGroups:
 		return executeListConsumerGroups(ctx, client)
 	case ActionDescribeConsumerGroup:
-		return executeDescribeConsumerGroup(ctx, client, stringValue(action.Payload, "group", ""))
+		return executeDescribeConsumerGroup(ctx, client, consumerGroup(action.Payload))
 	case ActionSetConsumerGroupOffset:
 		return executeSetConsumerGroupOffset(ctx, client, action.Payload)
 	}
@@ -245,7 +245,7 @@ func actionDefinitions() []connectors.ActionDefinition {
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 1000, MaxBytes: 524288}},
 		{Name: ActionListConsumerGroups, Label: "List consumer groups", Description: "List visible consumer groups and their current states.", Category: "consumer_groups", Risk: connectors.RiskRead, InputSchema: connectors.Schema{}, OutputHint: connectors.OutputHint{Format: "table", MaxRows: 1000, MaxBytes: 524288}},
 		{Name: ActionDescribeConsumerGroup, Label: "Describe consumer group", Description: "Read group members, assignments, committed offsets, and bounded lag details.", Category: "consumer_groups", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{
-			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true},
+			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true, PreserveWhitespace: true},
 		}}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 2000, MaxBytes: 1048576}},
 		{Name: ActionReadMessages, Label: "Read messages", Description: "Read a bounded sample from one explicit topic partition without joining a group or committing offsets.", Category: "messages", Risk: connectors.RiskRead, InputSchema: connectors.Schema{Fields: []connectors.Field{
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
@@ -276,7 +276,7 @@ func actionDefinitions() []connectors.ActionDefinition {
 			{Name: "headers", Label: "Headers", Type: connectors.FieldJSON, Default: []any{}, Description: "Optional array of {key, value, encoding}; encoding is utf8 or base64."},
 		}}, SensitiveInputFields: []string{"key", "value", "headers"}, OutputHint: connectors.OutputHint{Format: "json", MaxBytes: 65536}},
 		{Name: ActionSetConsumerGroupOffset, Label: "Set consumer group offset", Description: "Change one inactive consumer group's committed offset for one explicit topic partition.", Category: "consumer_groups", Risk: connectors.RiskDestructive, InputSchema: connectors.Schema{Fields: []connectors.Field{
-			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true},
+			{Name: "group", Label: "Consumer group", Type: connectors.FieldString, Required: true, PreserveWhitespace: true},
 			{Name: "topic", Label: "Topic", Type: connectors.FieldString, Required: true},
 			{Name: "partition", Label: "Partition", Type: connectors.FieldInteger, Required: true, Default: 0},
 			{Name: "offset", Label: "New offset", Type: connectors.FieldString, Required: true},
@@ -300,11 +300,11 @@ func validateActionInput(action string, input map[string]any) error {
 			return fmt.Errorf("topic is required")
 		}
 	case ActionDescribeConsumerGroup:
-		if strings.TrimSpace(stringValue(input, "group", "")) == "" {
+		if consumerGroup(input) == "" {
 			return fmt.Errorf("group is required")
 		}
 	case ActionSetConsumerGroupOffset:
-		if strings.TrimSpace(stringValue(input, "group", "")) == "" {
+		if consumerGroup(input) == "" {
 			return fmt.Errorf("group is required")
 		}
 		if strings.TrimSpace(stringValue(input, "topic", "")) == "" {
@@ -342,10 +342,8 @@ func validateActionInput(action string, input map[string]any) error {
 }
 
 func canonicalizeActionInput(action string, input map[string]any) error {
-	for _, field := range []string{"topic", "group"} {
-		if value, ok := input[field]; ok {
-			input[field] = strings.TrimSpace(fmt.Sprint(value))
-		}
+	if value, ok := input["topic"]; ok {
+		input["topic"] = strings.TrimSpace(fmt.Sprint(value))
 	}
 	integerFields := []string{}
 	switch action {
