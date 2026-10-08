@@ -250,7 +250,8 @@ func TestSubmitSMTPMessageClassifiesUnknownFinalResponseWithoutRetryHint(t *test
 		t.Fatalf("result = %#v", result)
 	}
 	output := result.Output.(map[string]any)
-	if output["submission_status"] != "submission_unknown" || output["retry_safe"] != false {
+	if output["submission_status"] != "submission_unknown" || output["retry_safe"] != false ||
+		output["dispatch_stage"] != "smtp_final_submission" || output["message_id"] != "<id@example.com>" || output["message_content_transmitted"] != true {
 		t.Fatalf("output = %#v", output)
 	}
 }
