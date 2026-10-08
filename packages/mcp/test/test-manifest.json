@@ -8,6 +8,7 @@
     "test/doctor/config-format.test.js",
     "test/doctor/lock-diagnostics.test.js",
     "test/docs/executable-examples.test.js",
+    "test/docs/package-artifacts.test.js",
     "test/init/cli-setup.test.js",
     "test/init/config-writer.test.js",
     "test/init/git-protection.test.js",
@@ -26,7 +27,7 @@
     "test/transport/origin.test.js",
     "test/transport/withheld-output.test.js"
   ],
-  "minimumTests": 236,
+  "minimumTests": 237,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",
