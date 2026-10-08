@@ -19,7 +19,7 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "c4e40d72d3cd54ca65313882a7d61258f957bd29f4d519c1080fe8ddd1b12dc5"
+      "sha256": "ebe687b979432147b62784a5bf24db85fc5591a9418e7c993d1a9d9e941675af"
     },
     {
       "path": "packages/mcp/package-lock.json",
