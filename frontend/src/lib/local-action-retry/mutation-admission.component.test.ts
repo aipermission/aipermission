@@ -23,6 +23,21 @@ beforeEach(async () => {
   await apiGet("/api/status");
 });
 
+it("reports unavailable retry storage as not dispatched", async () => {
+  const storage = indexedDB;
+  vi.stubGlobal("indexedDB", undefined);
+  const fetcher = vi.fn();
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await expect(apiPost("/api/connector-actions/local-run", body, { exclusiveMutationActions: actions })).rejects.toMatchObject({
+      code: "local_mutation_not_sent",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  } finally {
+    vi.stubGlobal("indexedDB", storage);
+  }
+});
+
 for (const adapter of ["indexedDB", "memory"] as const) {
   it(`atomically isolates edited mutations while allowing same-key replays and other profiles through ${adapter}`, async () => {
     await withAdapter(adapter, async () => {

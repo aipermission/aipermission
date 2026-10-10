@@ -5,6 +5,8 @@ import { connectorActionCode, connectorActionError, connectorActionPending, conn
 import { mailActionResolution, mailActionSummary } from "./helpers";
 import { errorMessage } from "../../../lib/errors";
 import { connectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
+import { useConnectorMutationOwnership } from "../_shared/use-connector-mutation-ownership";
+import type { ConnectorActionResponse } from "../../../lib/gateway-contracts/security-contracts";
 import type { Dispatch, SetStateAction } from "react";
 import type { createRequestGuard } from "../../../lib/request-guard";
 import type { MailActionResult } from "./action-result-dialog";
@@ -12,7 +14,7 @@ import type { MailActionItem, MailActionResolution, MailPendingAction, MailPendi
 
 interface MailActionRunnerProps {
   target: { ref: string };
-  approvals?: { data: MailActionItem[] } | null;
+  approvals?: { data: MailActionItem[]; state?: string } | null;
   scopeKey: string;
   onRefreshActivity?: () => unknown;
   onResolution?: (_pending: MailPendingAction, _resolution: MailActionResolution, _ownsRunner: boolean) => unknown;
@@ -20,6 +22,7 @@ interface MailActionRunnerProps {
 type Request = ReturnType<ReturnType<typeof createRequestGuard>["begin"]>;
 
 const browserActions = new Set(["list_folders", "search_messages", "get_message"]);
+const outboundActions = ["send_message", "reply_message"];
 
 export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution }: MailActionRunnerProps) {
   const [state, setState] = useState<MailRunnerState>({ state: "idle", error: "", message: "" });
@@ -33,6 +36,7 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
   const requestGeneration = useRef(0);
   const currentScope = useRef(scopeKey);
   const requests = useRequestGuard(`mail-actions:${scopeKey}`);
+  const outboundOwner = useConnectorMutationOwnership(target.ref, outboundActions, approvals?.state);
   const resolveForEffect = useEffectEvent((pending: MailPendingAction, resolution: MailActionResolution, ownsRunner: boolean) =>
     onResolution?.(pending, resolution, ownsRunner),
   );
@@ -102,12 +106,13 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     }
   }
 
-  async function runMailAction(
+  async function executeMailAction(
     actionName: string,
     input: Record<string, unknown>,
     reason: string,
     busyState = "running",
     pendingContext: MailPendingContext = {},
+    onPending?: (_item: ConnectorActionResponse) => void,
   ) {
     const generation = ++requestGeneration.current;
     const actionScope = scopeKey;
@@ -122,13 +127,14 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
           input,
           reason,
         },
-        { signal: request.signal },
+        { signal: request.signal, ...(outboundActions.includes(actionName) ? { exclusiveMutationActions: outboundActions } : {}) },
       );
       if (!request.isCurrent() || generation !== requestGeneration.current || actionScope !== currentScope.current) return null;
       const item = connectorActionResponse(response, { targetRef: target.ref, actionName });
       const actionError = connectorActionError(item);
       if (actionError) throw actionFailure(actionName, actionError, item, setState, setResultDialog);
       if (connectorActionPending(item)) {
+        onPending?.(item);
         const requestID = connectorActionRequestID(item);
         setPendingActions((current) => ({
           ...current,
@@ -158,6 +164,18 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     }
   }
 
+  function runMailAction(
+    actionName: string,
+    input: Record<string, unknown>,
+    reason: string,
+    busyState = "running",
+    context: MailPendingContext = {},
+  ) {
+    const execute = (onPending?: (_item: ConnectorActionResponse) => void) =>
+      executeMailAction(actionName, input, reason, busyState, context, onPending);
+    return outboundActions.includes(actionName) ? outboundOwner.run(execute) : execute();
+  }
+
   return {
     state,
     setState,
@@ -168,6 +186,7 @@ export function useMailActionRunner({ target, approvals, scopeKey, onRefreshActi
     openResultDialog: (result: MailActionResult) => setResultDialog({ open: true, ...result }),
     closeResultDialog: () => setResultDialog({ open: false, actionName: "", summary: "", item: null }),
     runMailAction,
+    outboundLocked: outboundOwner.locked,
   };
 }
 

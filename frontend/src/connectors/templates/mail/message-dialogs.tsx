@@ -116,7 +116,8 @@ export function RetryUnknownSubmissionDialog({ value, busy, onClose, onConfirm }
     >
       <div className="grid gap-4">
         <Notice tone="bad">
-          Inspect the Sent folder or server state first. Retrying can deliver a duplicate message.
+          Inspect the Sent folder or server state first and reconcile the protected request in Settings before retrying. Retrying can
+          deliver a duplicate message.
           {value?.draftChanged ? (
             <span className="mt-2 block">
               The draft changed after the unknown result, but the earlier message may still have been delivered.

@@ -173,6 +173,14 @@ retains the structured failure result and Message-ID when available, and asks
 for a second explicit confirmation before any retry from that unknown result,
 even if the operator changes the open draft first.
 
+The local UI also checks retained retry state and active server requests before
+another send or reply, including after navigation or remount. Reopening a draft
+does not clear an unresolved submission. Reconcile the exact request in Settings
+before deliberately starting another attempt; retry confirmation is an additional
+safeguard, not reconciliation. A subsequent uncertain attempt keeps its own
+Message-ID and draft identity. Definitive validation or local pre-dispatch
+failures do not imply that SMTP accepted a message.
+
 After move, archive, or delete, the source message reference is stale. The MVP
 does not guess a destination UID even when the server advertises UIDPLUS;
 search the destination folder before a follow-up mutation or reply.

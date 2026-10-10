@@ -8,9 +8,10 @@ import {
   submissionDraftFingerprint,
   unknownSubmissionRetryDecision,
 } from "./helpers";
-import { errorMessage } from "../../../lib/errors";
+import { APIError, errorMessage } from "../../../lib/errors";
 import { MailActionFailure } from "./use-mail-action-runner";
 import { readMailSubmissionUnknown } from "./message-output";
+import { connectorActionUnknownOutcome } from "../_shared/action-runner";
 import type { MailComposeDraft, MailMessage, MailSubmittedFields } from "./message-types";
 import type { MailRetryDialog } from "./message-dialogs";
 import type { MailActionItem, MailActionResolution, MailPendingAction, MailPendingContext, RunMailAction } from "./action-types";
@@ -47,6 +48,10 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
 
   function openCompose() {
     if (outboundPending) return;
+    if (compose.submissionUnknown) {
+      setCompose((current) => ({ ...current, open: true }));
+      return;
+    }
     submissionOwner.current = null;
     setOutcome(null);
     setCompose({ open: true, reply: false, form: {} });
@@ -54,6 +59,10 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
 
   function openReply() {
     if (outboundPending || !selectedMessage) return;
+    if (compose.submissionUnknown) {
+      setCompose((current) => ({ ...current, open: true }));
+      return;
+    }
     submissionOwner.current = null;
     setOutcome(null);
     setCompose({
@@ -70,6 +79,7 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
   }
 
   async function submitMessage(fields: MailSubmittedFields, retryConfirmed = false) {
+    if (outboundPending || compose.pendingRequestID) return;
     const actionName = compose.reply ? "reply_message" : "send_message";
     const draftFingerprint = submissionDraftFingerprint(fields);
     const retryDecision = unknownSubmissionRetryDecision(compose.submissionUnknown, fields);
@@ -92,7 +102,13 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       );
       if (!item || submissionOwner.current !== context) return;
       if (connectorActionPending(item)) {
-        setCompose((current) => ({ ...current, form: fields, pendingRequestID: connectorActionRequestID(item) }));
+        setCompose((current) => ({
+          ...current,
+          reply: context.reply,
+          messageRef: context.messageRef,
+          form: fields,
+          pendingRequestID: connectorActionRequestID(item),
+        }));
         return;
       }
       showOutcome(actionName, item);
@@ -100,11 +116,13 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
     } catch (error) {
       if (submissionOwner.current !== context) return;
       showOutcome(actionName, error instanceof MailActionFailure ? error.actionItem : null, errorMessage(error, "Mail action failed."));
-      const submissionUnknown =
-        error instanceof MailActionFailure ? readMailSubmissionUnknown(error.actionItem.output, draftFingerprint) : null;
+      const submissionUnknown = unknownSubmission(error, draftFingerprint);
       if (submissionUnknown) {
         setCompose((current) => ({
           ...current,
+          reply: context.reply,
+          messageRef: context.messageRef,
+          form: fields,
           submissionUnknown,
         }));
       }
@@ -120,7 +138,10 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
       closeAfterSuccess();
       return;
     }
-    const submissionUnknown = readMailSubmissionUnknown(resolution.item.output, context.draftFingerprint || "");
+    const fingerprint = context.draftFingerprint || "";
+    const submissionUnknown =
+      readMailSubmissionUnknown(resolution.item.output, fingerprint) ||
+      (resolution.item.status === "outcome_unknown" ? { messageID: "", fingerprint } : null);
     setCompose({
       open: true,
       reply: Boolean(context.reply),
@@ -147,8 +168,18 @@ export function useMailCompose({ scopeKey, selectedMessage, outboundPending, run
     openReply,
     submitMessage,
     resolvePending,
-    closeCompose: () => setCompose((current) => (current.pendingRequestID ? { ...current, open: false } : emptyCompose)),
+    closeCompose: () =>
+      setCompose((current) => (current.pendingRequestID || current.submissionUnknown ? { ...current, open: false } : emptyCompose)),
     closeRetry: () => setRetryDialog(emptyRetry),
     confirmRetry: () => retryDialog.fields && submitMessage(retryDialog.fields, true),
   };
+}
+
+function unknownSubmission(error: unknown, fingerprint: string): MailComposeDraft["submissionUnknown"] {
+  const unknown = { messageID: "", fingerprint };
+  if (error instanceof MailActionFailure)
+    return readMailSubmissionUnknown(error.actionItem.output, fingerprint) || (connectorActionUnknownOutcome(error) ? unknown : null);
+  if (connectorActionUnknownOutcome(error)) return unknown;
+  if (error instanceof APIError && (error.code === "local_mutation_not_sent" || (error.status >= 400 && error.status < 500))) return null;
+  return unknown;
 }

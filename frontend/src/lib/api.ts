@@ -6,7 +6,7 @@ import {
   releaseLocalActionRetryAttempt,
   retireLocalActionRetryAttempt,
 } from "./local-action-retry.ts";
-import { APIError } from "./errors.ts";
+import { APIError, errorMessage } from "./errors.ts";
 import { assertConnectorActionResponse, isPendingConnectorActionStatus } from "./gateway-contracts/connector-action-contract.ts";
 import { scopedUICookieName } from "./ui-cookie.ts";
 import { readBufferedDownload } from "./downloads/download-buffer.ts";
@@ -77,7 +77,12 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
   const pinnedWorkspace = options.workspaceBinding !== undefined;
   const requestWorkspace = options.workspaceBinding ?? currentWorkspaceBinding();
   if (pinnedWorkspace && !requestWorkspace) throw new Error("Gateway POST workspace binding is required.");
-  const prepared = await preparePostBody(path, body, requestWorkspace, options);
+  let prepared: PreparedPost;
+  try {
+    prepared = await preparePostBody(path, body, requestWorkspace, options);
+  } catch (error) {
+    throw new APIError(errorMessage(error, "Gateway mutation was not sent."), { code: "local_mutation_not_sent" });
+  }
   let finalized = false;
   try {
     const response = await fetch(`${apiUrl}${path}`, {

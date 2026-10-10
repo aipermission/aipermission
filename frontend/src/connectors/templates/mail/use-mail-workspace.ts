@@ -13,7 +13,7 @@ export interface MailWorkspaceTarget {
 }
 export interface MailWorkspaceProps {
   target: MailWorkspaceTarget;
-  approvals?: { data: MailActionItem[] } | null;
+  approvals?: { data: MailActionItem[]; state?: string } | null;
   session?: { active: boolean; startedAt?: string } | null;
   onRefreshActivity?: () => unknown;
 }
@@ -34,6 +34,7 @@ export function useMailWorkspace({ target, approvals, session, onRefreshActivity
   const runner = useMailActionRunner({ target, approvals, scopeKey, onRefreshActivity, onResolution: resolvePending });
   const busy = connectorActionBusy(runner.state);
   const outboundPending =
+    runner.outboundLocked ||
     Object.values(runner.pendingActions).some((pending) => outboundActions.has(pending.actionName)) ||
     runner.activeItems.some((item) => outboundActions.has(item.action_name) && ["approval_pending", "running"].includes(item.status));
   const capabilities = mailProtocolCapabilities(target.public);
