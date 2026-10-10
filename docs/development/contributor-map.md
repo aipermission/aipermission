@@ -146,12 +146,14 @@ image digests and native dependency limitations are recorded in
 [Native Dependencies](../security/native-dependencies.md).
 
 For contributors without a compatible host toolchain, the backend Docker
-builder owns Go, CGO and OpenSSL. From the repository root:
+test image owns Go, CGO, OpenSSL and checksum-pinned kubectl. The `test` target
+currently supports Linux amd64; the production image does not include this
+contributor-only CLI. From the repository root:
 
 ```bash
-docker build --target build -t aipermission-backend-dev ./backend
+docker build --target test -t aipermission-backend-dev ./backend
 docker run --rm --mount type=bind,src="$PWD",dst=/repository,readonly \
-  --workdir /repository/backend aipermission-backend-dev go test ./...
+  --workdir /repository/backend aipermission-backend-dev sh -c 'umask 0022; go test ./...'
 ```
 
 This is a native unit-test entry point, not the complete release gate. Initial

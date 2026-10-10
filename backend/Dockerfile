@@ -15,6 +15,20 @@ COPY internal ./internal
 
 RUN go build -o /out/aipermission ./cmd/aipermission
 
+FROM build AS test
+
+# Contributor-only CLI dependency; the production runtime does not inherit it.
+ARG TARGETARCH
+RUN test "$TARGETARCH" = amd64 \
+	&& apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates curl \
+	&& curl --fail --location --silent --show-error --max-time 120 \
+		-o /tmp/kubectl https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl \
+	&& echo '6129359f4e1f3848a5572ccb0b26cf28b8ca08cef38c95a765b2f64a2c961a2f  /tmp/kubectl' | sha256sum --check \
+	&& install -m 755 /tmp/kubectl /usr/local/bin/kubectl \
+	&& rm /tmp/kubectl \
+	&& rm -rf /var/lib/apt/lists/*
+
 FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171
 
 WORKDIR /app

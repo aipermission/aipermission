@@ -9,7 +9,10 @@ same native dependency itself. CI uses the shared
 `.github/actions/setup-backend-native` action so all Go jobs stay aligned.
 
 Linux backend tests also require `kubectl` on `PATH`. The shared CI setup
-checks that dependency explicitly. Connector probe regressions execute the real
+checks that dependency explicitly. The documented Docker `test` target supplies
+checksum-pinned kubectl for
+Linux amd64 contributors without a host installation. Production images do not
+inherit this test-only tool. Connector probe regressions execute the real
 CLI with an isolated HOME and kubeconfig, never the developer's cluster config.
 The grammar test uses `--help` without network access; separate HTTP fixtures
 verify one namespaced pod API page, including empty lists and permission errors.
