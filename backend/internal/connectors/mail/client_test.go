@@ -275,7 +275,7 @@ func (capabilities fixedSMTPAuthCapabilities) SupportsAuth(mechanism string) boo
 }
 
 func TestSMTPPasswordAuthPrefersPlainAndSupportsLoginFallback(t *testing.T) {
-	auth, err := smtpPasswordAuth(fixedSMTPAuthCapabilities{"PLAIN": true, "LOGIN": true}, "user", "password")
+	auth, err := smtpPasswordAuth(fixedSMTPAuthCapabilities{"PLAIN": true, "LOGIN": true}, "user", "password", nil)
 	if err != nil {
 		t.Fatalf("plain auth: %v", err)
 	}
@@ -283,7 +283,7 @@ func TestSMTPPasswordAuthPrefersPlainAndSupportsLoginFallback(t *testing.T) {
 	if err != nil || mechanism != "PLAIN" {
 		t.Fatalf("plain mechanism=%q err=%v", mechanism, err)
 	}
-	auth, err = smtpPasswordAuth(fixedSMTPAuthCapabilities{"LOGIN": true}, "user", "password")
+	auth, err = smtpPasswordAuth(fixedSMTPAuthCapabilities{"LOGIN": true}, "user", "password", nil)
 	if err != nil {
 		t.Fatalf("login auth: %v", err)
 	}
@@ -291,7 +291,7 @@ func TestSMTPPasswordAuthPrefersPlainAndSupportsLoginFallback(t *testing.T) {
 	if err != nil || mechanism != "LOGIN" {
 		t.Fatalf("login mechanism=%q err=%v", mechanism, err)
 	}
-	if _, err := smtpPasswordAuth(fixedSMTPAuthCapabilities{}, "user", "password"); err == nil {
+	if _, err := smtpPasswordAuth(fixedSMTPAuthCapabilities{}, "user", "password", nil); err == nil {
 		t.Fatal("expected unsupported auth error")
 	}
 }
