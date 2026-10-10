@@ -15,6 +15,10 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// Bound allocation before pgx decodes a row, notice, error or metadata message.
+// This is separate from the smaller limits applied to projected action output.
+const maxProtocolMessageBytes = 4 << 20
+
 func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
 	if username == "" {
@@ -55,6 +59,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres connection config: %w", err)
 	}
+	config.Config.MaxProtocolMessageBodyLen = maxProtocolMessageBytes
 	transport, err := postgresNetworkTransport(runtime)
 	if err != nil {
 		return nil, err
