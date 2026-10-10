@@ -8,15 +8,27 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
 
+type maintenanceProcessTreeReader func(int) (map[int]int, map[int]string, error)
+
 func runMaintenanceConsoleSupervisor(shell string, arguments []string) int {
+	return runMaintenanceSupervisor(shell, arguments, maintenanceSupervisorProcessTree)
+}
+
+func runMaintenanceSupervisor(shell string, arguments []string, read maintenanceProcessTreeReader) int {
+	if _, _, err := read(os.Getpid()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if err := maintenancePIDHandlesAvailable(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0); err != nil {
 		fmt.Fprintf(os.Stderr, "maintenance console supervisor unavailable: %v\n", err)
 		return 1
@@ -47,61 +59,104 @@ func runMaintenanceConsoleSupervisor(shell string, arguments []string) int {
 	for {
 		select {
 		case err := <-done:
-			terminateMaintenanceSupervisorDescendants(os.Getpid())
-			reapMaintenanceSupervisorChildren(shellPID)
+			if err := terminateMaintenanceSupervisorDescendants(os.Getpid(), read); err != nil {
+				return 1
+			}
+			if err := reapMaintenanceSupervisorChildren(shellPID, read); err != nil {
+				return 1
+			}
 			return maintenanceSupervisorExitCode(err)
 		case received := <-signals:
 			signalValue := received.(syscall.Signal)
 			if signalValue == syscall.SIGCHLD {
-				reapMaintenanceSupervisorChildren(shellPID)
+				if err := reapMaintenanceSupervisorChildren(shellPID, read); err != nil {
+					_ = terminateMaintenanceSupervisorDescendants(os.Getpid(), read)
+					_ = command.Process.Kill()
+					<-done
+					return 1
+				}
 				continue
 			}
-			terminateMaintenanceSupervisorDescendants(os.Getpid())
-			select {
-			case <-done:
-			case <-time.After(maintenanceSupervisorKillPeriod):
-				_ = command.Process.Kill()
-				<-done
+			cleanupErr := terminateMaintenanceSupervisorDescendants(os.Getpid(), read)
+			// Cleanup already consumed the shared grace; do not start a second wait.
+			_ = command.Process.Kill()
+			<-done
+			if err := reapMaintenanceSupervisorChildren(shellPID, read); err != nil || cleanupErr != nil {
+				return 1
 			}
-			reapMaintenanceSupervisorChildren(shellPID)
 			return 128 + int(signalValue)
 		}
 	}
 }
 
-func terminateMaintenanceSupervisorDescendants(rootPID int) {
-	signalMaintenanceSupervisorDescendants(rootPID, syscall.SIGHUP)
-	if waitForMaintenanceSupervisorDescendants(rootPID, maintenanceSupervisorGracePeriod) {
-		return
-	}
+func terminateMaintenanceSupervisorDescendants(rootPID int, read maintenanceProcessTreeReader) error {
+	return terminateMaintenanceDescendants(
+		func() ([]int, error) { return maintenanceSupervisorDescendants(rootPID, read) },
+		func(pids []int, grace, deadline time.Time) error {
+			return signalMaintenanceDescendants(rootPID, pids, grace, deadline, read)
+		},
+	)
+}
+
+func terminateMaintenanceDescendants(read func() ([]int, error), signal func([]int, time.Time, time.Time) error) error {
+	var failure error
+	grace := time.Now().Add(maintenanceSupervisorGracePeriod)
 	deadline := time.Now().Add(maintenanceSupervisorKillPeriod)
 	for {
-		signalMaintenanceSupervisorDescendants(rootPID, syscall.SIGKILL)
-		if waitForMaintenanceSupervisorDescendants(rootPID, 10*time.Millisecond) || time.Now().After(deadline) {
-			return
+		pids, err := read()
+		if err != nil {
+			failure = errors.Join(failure, err)
+		} else if len(pids) == 0 {
+			return failure
 		}
-	}
-}
-
-func signalMaintenanceSupervisorDescendants(rootPID int, signal syscall.Signal) {
-	for _, pid := range maintenanceSupervisorDescendants(rootPID) {
-		_ = syscall.Kill(pid, signal)
-	}
-}
-
-func waitForMaintenanceSupervisorDescendants(rootPID int, timeout time.Duration) bool {
-	deadline := time.Now().Add(timeout)
-	for len(maintenanceSupervisorDescendants(rootPID)) > 0 {
+		// Only the current verified inventory may authorize a signal, never a cached PID.
+		failure = errors.Join(failure, signal(pids, grace, deadline))
 		if time.Now().After(deadline) {
-			return false
+			return errors.Join(failure, fmt.Errorf("maintenance console descendant cleanup could not be verified"))
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return true
 }
 
-func maintenanceSupervisorDescendants(rootPID int) []int {
-	parents, states := maintenanceSupervisorProcessTree(rootPID)
+func signalMaintenanceDescendants(rootPID int, pids []int, grace, deadline time.Time, read maintenanceProcessTreeReader) error {
+	handles := make(map[int]int, len(pids))
+	var failure error
+	for _, pid := range pids {
+		fd, err := unix.PidfdOpen(pid, 0)
+		if err != nil {
+			if !errors.Is(err, syscall.ESRCH) {
+				failure = errors.Join(failure, err)
+			}
+			continue
+		}
+		handles[pid] = fd
+		defer unix.Close(fd)
+	}
+	// One fresh inventory validates the entire bound batch, not one scan per PID.
+	validated, scanErr := maintenanceSupervisorDescendants(rootPID, read)
+	failure = errors.Join(failure, scanErr)
+	for _, pid := range validated {
+		fd, bound := handles[pid]
+		if !bound {
+			continue
+		}
+		// A slow validation must not skip the final signal to bound descendants.
+		signal := syscall.SIGHUP
+		if time.Now().After(grace) || time.Now().After(deadline) {
+			signal = syscall.SIGKILL
+		}
+		if err := unix.PidfdSendSignal(fd, signal, nil, 0); err != nil && !errors.Is(err, syscall.ESRCH) {
+			failure = errors.Join(failure, err)
+		}
+	}
+	if time.Now().After(deadline) {
+		failure = errors.Join(failure, errors.New("maintenance console signal deadline exceeded"))
+	}
+	return failure
+}
+
+func maintenanceSupervisorDescendants(rootPID int, read maintenanceProcessTreeReader) ([]int, error) {
+	parents, states, err := read(rootPID)
 	descendants := map[int]struct{}{rootPID: {}}
 	result := make([]int, 0, 4)
 	for changed := true; changed; {
@@ -119,44 +174,11 @@ func maintenanceSupervisorDescendants(rootPID int) []int {
 			}
 		}
 	}
-	return result
+	return result, err
 }
 
-func maintenanceSupervisorProcessTree(rootPID int) (map[int]int, map[int]string) {
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		return nil, nil
-	}
-	parents := make(map[int]int, len(entries))
-	states := make(map[int]string, len(entries))
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid < 1 || pid == rootPID {
-			continue
-		}
-		stat, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-		if err != nil {
-			continue
-		}
-		closingParen := strings.LastIndexByte(string(stat), ')')
-		if closingParen < 0 {
-			continue
-		}
-		fields := strings.Fields(string(stat[closingParen+1:]))
-		if len(fields) < 2 {
-			continue
-		}
-		parentPID, err := strconv.Atoi(fields[1])
-		if err == nil {
-			parents[pid] = parentPID
-			states[pid] = fields[0]
-		}
-	}
-	return parents, states
-}
-
-func reapMaintenanceSupervisorChildren(shellPID int) {
-	parents, _ := maintenanceSupervisorProcessTree(os.Getpid())
+func reapMaintenanceSupervisorChildren(shellPID int, read maintenanceProcessTreeReader) error {
+	parents, _, err := read(os.Getpid())
 	for pid, parentPID := range parents {
 		if parentPID != os.Getpid() || pid == shellPID {
 			continue
@@ -164,6 +186,7 @@ func reapMaintenanceSupervisorChildren(shellPID int) {
 		var status syscall.WaitStatus
 		_, _ = syscall.Wait4(pid, &status, syscall.WNOHANG, nil)
 	}
+	return err
 }
 
 func maintenanceSupervisorExitCode(err error) int {

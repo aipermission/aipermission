@@ -1360,6 +1360,18 @@ not inherited. This is a trusted local-operator diagnostic shell inside the
 gateway container, not a sandbox boundary against the gateway process or its
 local filesystem.
 
+Maintenance-console supervision requires Linux procfs to expose the gateway's
+current PID namespace and a readable process inventory. An incompatible mount
+or missing process visibility makes the capability unavailable and session
+startup fail closed. Inventory failures are not treated as successful empty
+child cleanup; disappearing non-root processes are tolerated as normal races.
+Linux pidfd process handles must also be available. Teardown signals only
+currently validated descendants through stable handles after rechecking ancestry,
+so PID reuse cannot redirect a cleanup signal. Partial inventories can still
+clean readable descendants, but do not count as verified complete cleanup.
+The explicitly owned shell is killed within the supervisor's single grace
+period rather than waiting through another grace after descendant cleanup.
+
 A maintenance session admits at most eight simultaneous browser websocket
 clients. Excess attachments receive an `error` frame with `client_limit` status
 and are closed without replacing existing clients. Disconnecting a client or
