@@ -18,6 +18,15 @@ type fakeConnector struct {
 	reverseActions    bool
 }
 
+func TestAllowEmptyChangesActionContract(t *testing.T) {
+	left := ActionDefinition{InputSchema: Schema{Fields: []Field{{Name: "content", Type: FieldString}}}}
+	right := left
+	right.InputSchema = Schema{Fields: []Field{{Name: "content", Type: FieldString, AllowEmpty: true}}}
+	if equalActionDefinition(left, right) {
+		t.Fatal("empty-value normalization drift did not change the action contract")
+	}
+}
+
 func (f fakeConnector) Kind() string { return f.kind }
 func (f fakeConnector) Label() string {
 	if f.label == "__empty__" {

@@ -80,6 +80,7 @@ const fieldSchema = z
     type: z.string(),
     required: z.boolean().optional(),
     preserve_whitespace: z.boolean().optional(),
+    allow_empty: z.boolean().optional(),
     secret: z.boolean().optional(),
     description: z.string().optional(),
     default: z.unknown().optional(),

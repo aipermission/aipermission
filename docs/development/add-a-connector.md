@@ -740,6 +740,13 @@ flag for supported string and multiline fields. Changing it changes the action
 catalog and approval-context hash. Test the generic action/API path, not only
 connector preparation, when adding it.
 
+Optional string and multiline payloads may set `Field.AllowEmpty`
+(`allow_empty: true`) when an explicitly supplied empty string is meaningful.
+Omitted and null values still follow default/absence rules; this flag cannot be
+used for required or secret fields. `PreserveWhitespace` controls trimming
+independently. Exercise schema normalization through the action service and
+publish the flag in the MCP action catalog when changing this contract.
+
 Remote transfer identities need not be filesystem paths. An adapter can implement
 `connectorapi.FileTransferPathPolicy` to own locator validation, upload joining,
 parent navigation, and ZIP preflight. Shared handlers and transfer storage must

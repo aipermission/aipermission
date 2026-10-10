@@ -20,6 +20,19 @@ test("action catalogs preserve bounded published input limits", () => {
   }
 });
 
+test("action catalogs preserve explicit empty payload metadata", () => {
+  const field = { name: "content", label: "Content", type: "multiline", allow_empty: true };
+  const response = { items: [{ ...action, input_schema: { fields: [field] } }] };
+  assert.deepEqual(projectGatewaySuccess(responseContracts.connectorActions, response), response);
+  assert.throws(
+    () =>
+      projectGatewaySuccess(responseContracts.connectorActions, {
+        items: [{ ...action, input_schema: { fields: [{ ...field, allow_empty: "yes" }] } }],
+      }),
+    /contract validation/,
+  );
+});
+
 test("action catalogs reject missing or out-of-contract input limits", () => {
   for (const max_input_bytes of [undefined, 0, -1, 1.5, "1024", null, NaN, Infinity, connectorActionMaximumInputBytes + 1]) {
     assert.throws(

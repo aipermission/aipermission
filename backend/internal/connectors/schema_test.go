@@ -26,6 +26,29 @@ func TestValidateNonSecretSchemaAllowsPublicTargetFields(t *testing.T) {
 	}
 }
 
+func TestSchemaAllowsExplicitEmptyOptionalStrings(t *testing.T) {
+	schema := Schema{Fields: []Field{{Name: "content", Type: FieldMultiline, AllowEmpty: true, PreserveWhitespace: true}}}
+	for _, input := range []map[string]any{nil, {"content": ""}, {"content": " "}, {"content": nil}} {
+		normalized, err := NormalizeSchemaValues(schema, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, present := normalized["content"]
+		if _, isString := input["content"].(string); present != isString || (present && normalized["content"] != input["content"]) {
+			t.Fatalf("input=%#v normalized=%#v", input, normalized)
+		}
+	}
+	for _, field := range []Field{
+		{Name: "content", Type: FieldString, AllowEmpty: true, Required: true},
+		{Name: "content", Type: FieldInteger, AllowEmpty: true},
+		{Name: "content", Type: FieldSecret, AllowEmpty: true, Secret: true},
+	} {
+		if err := validateFieldDefinition(field, "test"); err == nil {
+			t.Fatalf("invalid allow_empty field accepted: %#v", field)
+		}
+	}
+}
+
 func TestNormalizeSchemaValuesCanonicalizesNumericStrings(t *testing.T) {
 	normalized, err := NormalizeSchemaValues(Schema{Fields: []Field{
 		{Name: "host", Type: FieldString, Required: true},
