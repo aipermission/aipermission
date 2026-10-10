@@ -340,7 +340,7 @@ func openSMTPWithTLSConfig(ctx context.Context, runtime connectors.RuntimeContex
 		_ = smtpClient.Close()
 		return nil, fmt.Errorf("SMTP authentication refused because verified TLS is not active")
 	}
-	auth, err := smtpPasswordAuth(smtpClient, secrets.SMTPUsername, secrets.SMTPPassword)
+	auth, err := smtpPasswordAuth(smtpClient, secrets.SMTPUsername, secrets.SMTPPassword, runtime.Secrets)
 	if err != nil {
 		_ = smtpClient.Close()
 		return nil, err
@@ -362,8 +362,9 @@ type smtpAuthCapabilities interface {
 	SupportsAuth(mechanism string) bool
 }
 
-func smtpPasswordAuth(capabilities smtpAuthCapabilities, username, password string) (sasl.Client, error) {
+func smtpPasswordAuth(capabilities smtpAuthCapabilities, username, password string, accessor connectors.SecretAccessor) (sasl.Client, error) {
 	if capabilities.SupportsAuth(sasl.Plain) {
+		connectors.RegisterSensitiveValue(accessor, "\x00"+username+"\x00"+password)
 		return sasl.NewPlainClient("", username, password), nil
 	}
 	if capabilities.SupportsAuth(sasl.Login) {
