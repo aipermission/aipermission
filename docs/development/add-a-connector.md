@@ -66,8 +66,15 @@ These rules are part of the connector contract:
   input. Use `connectortest.AssertPrepareActionDeterministic` in connector
   tests so approval-context hashes cannot drift because of timestamps, random
   defaults, map iteration, or hidden runtime state.
-- `ExecuteAction` is the only connector method that receives raw secrets, and
-  only after the gateway has allowed the action.
+- In the token-action lifecycle, `ExecuteAction` receives the runtime secret
+  accessor only after the gateway has allowed the action. Discovery and
+  preparation must never resolve secrets.
+- Authorized local management paths are separate: credential validation may
+  receive submitted secret fields, and connection tests, provisioning, cleanup,
+  backup and restore may receive a scoped runtime accessor through their
+  reviewed capability contracts. These methods are not public secret retrieval
+  APIs and must not bypass their gateway authorization or credential projection.
+  See [Credential Boundary](../security/credential-boundary.md).
 - Action input schemas must not contain secret fields. Put passwords, API keys,
   tokens, private keys, tenant ids that must remain secret, and similar material
   in credential profile schemas.
