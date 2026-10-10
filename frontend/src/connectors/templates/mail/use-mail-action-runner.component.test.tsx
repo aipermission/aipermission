@@ -10,6 +10,12 @@ import type { MailWorkspaceProps } from "./use-mail-workspace";
 import type { MailActionItem } from "./action-types";
 
 vi.mock("../../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../_shared/use-connector-mutation-ownership", () => ({
+  useConnectorMutationOwnership: () => ({
+    locked: false,
+    run: (operation: (_onPending: () => void) => Promise<unknown>) => operation(() => {}),
+  }),
+}));
 
 function deferred<T = void>() {
   let resolve: (_value: T) => void = () => {

@@ -1631,7 +1631,7 @@
     },
     "src/connectors/templates/mail/message-dialogs.tsx": {
       "statements": 100,
-      "branches": 81.25,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },
@@ -1660,20 +1660,20 @@
       "lines": 94.73
     },
     "src/connectors/templates/mail/use-mail-action-runner.ts": {
-      "statements": 95.09,
-      "branches": 81.48,
-      "functions": 95.23,
-      "lines": 96.62
+      "statements": 95.37,
+      "branches": 83.33,
+      "functions": 95.65,
+      "lines": 96.84
     },
     "src/connectors/templates/mail/use-mail-compose.ts": {
       "statements": 94.28,
-      "branches": 83.63,
+      "branches": 89.15,
       "functions": 100,
       "lines": 100
     },
     "src/connectors/templates/mail/use-mail-workspace.ts": {
       "statements": 100,
-      "branches": 93.75,
+      "branches": 94.11,
       "functions": 100,
       "lines": 100
     },
@@ -2392,10 +2392,10 @@
       "lines": 100
     },
     "src/lib/api.ts": {
-      "statements": 96.56,
-      "branches": 90,
+      "statements": 96.73,
+      "branches": 90.71,
       "functions": 100,
-      "lines": 97.91
+      "lines": 98
     },
     "src/lib/async-resource.ts": {
       "statements": 100,

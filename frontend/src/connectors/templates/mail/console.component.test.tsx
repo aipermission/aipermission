@@ -7,6 +7,12 @@ import { gatewayTargetFixture } from "../../../test/connector-inventory-fixtures
 
 const api = vi.hoisted(() => ({ post: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ apiPost: api.post, apiPut: vi.fn(), apiDelete: vi.fn() }));
+vi.mock("../_shared/use-connector-mutation-ownership", () => ({
+  useConnectorMutationOwnership: () => ({
+    locked: false,
+    run: (operation: (_onPending: () => void) => Promise<unknown>) => operation(() => {}),
+  }),
+}));
 const props: ComponentProps<typeof MailConnectorConsoleTemplate> = {
   target: gatewayTargetFixture({
     connector_kind: "mail",
