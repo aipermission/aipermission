@@ -4,17 +4,36 @@ package maintenanceconsole
 
 import (
 	"errors"
+	"os"
 	"os/exec"
 	"syscall"
+
+	"golang.org/x/sys/unix"
 )
 
 func configureMaintenanceConsoleProcess(command *exec.Cmd) error {
+	if _, _, err := maintenanceSupervisorProcessTree(os.Getpid()); err != nil {
+		return err
+	}
+	if err := maintenancePIDHandlesAvailable(); err != nil {
+		return err
+	}
 	command.SysProcAttr = &syscall.SysProcAttr{Setctty: true, Setsid: true, Pdeathsig: syscall.SIGTERM}
 	return nil
 }
 
 func Supported() bool {
-	return true
+	_, _, err := maintenanceSupervisorProcessTree(os.Getpid())
+	return err == nil && maintenancePIDHandlesAvailable() == nil
+}
+
+func maintenancePIDHandlesAvailable() error {
+	fd, err := unix.PidfdOpen(os.Getpid(), 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	return unix.PidfdSendSignal(fd, 0, nil, 0)
 }
 
 func signalMaintenanceConsoleProcess(pid int, signal syscall.Signal) error {
