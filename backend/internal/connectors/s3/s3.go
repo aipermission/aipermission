@@ -244,14 +244,20 @@ func prepareUploadInput(input map[string]any) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("key is required")
 	}
-	contentText := stringValue(input, "content_text")
-	contentBase64 := strings.TrimSpace(stringValue(input, "content_base64"))
-	if contentText == "" && contentBase64 == "" {
+	textValue, hasText := input["content_text"]
+	base64Value, hasBase64 := input["content_base64"]
+	if !hasText && !hasBase64 {
 		return "", fmt.Errorf("content_text or content_base64 is required")
 	}
-	if contentText != "" && contentBase64 != "" {
+	if hasText && hasBase64 {
 		return "", fmt.Errorf("provide content_text or content_base64, not both")
 	}
+	contentText, textOK := textValue.(string)
+	contentBase64, base64OK := base64Value.(string)
+	if (hasText && !textOK) || (hasBase64 && !base64OK) {
+		return "", fmt.Errorf("object content must be a string")
+	}
+	contentBase64 = strings.TrimSpace(contentBase64)
 	contentBytes, err := uploadBytes(contentText, contentBase64)
 	if err != nil {
 		return "", err

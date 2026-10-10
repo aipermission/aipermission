@@ -221,8 +221,8 @@ func objectActions() []connectors.ActionDefinition {
 			MaxInputBytes: connectors.MaximumActionInputBytes,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{Name: "key", Label: "Key", Type: connectors.FieldString, PreserveWhitespace: true, Required: true, Description: "Destination object key."},
-				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, PreserveWhitespace: true, Description: "Text payload for small text objects. Use this or content_base64, not both."},
-				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, Description: "Base64 payload for binary objects. Use this or content_text, not both."},
+				{Name: "content_text", Label: "Text content", Type: connectors.FieldMultiline, PreserveWhitespace: true, AllowEmpty: true, Description: "Text payload for small text objects, including an explicitly empty object. Use this or content_base64, not both."},
+				{Name: "content_base64", Label: "Base64 content", Type: connectors.FieldMultiline, AllowEmpty: true, Description: "Base64 payload for binary objects, including an explicitly empty object. Use this or content_text, not both."},
 				{Name: "content_type", Label: "Content type", Type: connectors.FieldString, Default: "application/octet-stream", Description: "Object content type to send with the upload."},
 				{Name: "overwrite", Label: "Overwrite existing object", Type: connectors.FieldBoolean, Default: false, Description: "Leave false unless the operator explicitly approved replacing an existing object."},
 				{Name: "expected_etag", Label: "Expected ETag", Type: connectors.FieldString, Description: "Optional current ETag. When set, overwrite succeeds only if the object still has this ETag."},

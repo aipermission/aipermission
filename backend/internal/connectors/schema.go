@@ -38,6 +38,7 @@ type Field struct {
 	Type               FieldType     `json:"type"`
 	Required           bool          `json:"required,omitempty"`
 	PreserveWhitespace bool          `json:"preserve_whitespace,omitempty"`
+	AllowEmpty         bool          `json:"allow_empty,omitempty"`
 	Secret             bool          `json:"secret,omitempty"`
 	Description        string        `json:"description,omitempty"`
 	Default            any           `json:"default,omitempty"`
@@ -278,6 +279,9 @@ func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) er
 }
 
 func validateFieldDefinition(field Field, usage string) error {
+	if field.AllowEmpty && (field.Required || (field.Type != FieldString && field.Type != FieldMultiline)) {
+		return fmt.Errorf("%s schema field %q can allow empty values only for optional string or multiline fields", usage, field.Name)
+	}
 	if field.PreserveWhitespace && field.Type != FieldString && field.Type != FieldMultiline {
 		return fmt.Errorf("%s schema field %q can preserve whitespace only for string or multiline fields", usage, field.Name)
 	}
@@ -424,6 +428,11 @@ func emptySchemaValue(value any) bool {
 
 // Opaque string identities and payloads distinguish whitespace from absence.
 func emptyFieldValue(field Field, value any) bool {
+	if field.AllowEmpty && (field.Type == FieldString || field.Type == FieldMultiline) {
+		if _, ok := value.(string); ok {
+			return false
+		}
+	}
 	if field.PreserveWhitespace && (field.Type == FieldString || field.Type == FieldMultiline) {
 		if text, ok := value.(string); ok {
 			return text == ""
