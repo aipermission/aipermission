@@ -9,6 +9,35 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Security
+
+- SMTP PLAIN authentication registers its reusable wire credential for mandatory
+  masking, including reflected authentication errors and optional-redaction-off mode.
+- Postgres bounds incoming protocol message bodies to 4 MiB during startup and query
+  execution, independently of the returned-output budget.
+- Maintenance console startup requires procfs in the current PID namespace; teardown
+  continues cleaning validated descendants when unrelated process metadata is
+  unavailable and reports incomplete verification.
+
+### Fixed
+
+- Mail outbound actions retain uncertain and pending request ownership across drafts and
+  remounts until exact reconciliation; subsequent uncertain sends retain their own
+  message identity.
+- Definitive local mail dispatch failures are distinguished from uncertain remote
+  outcomes without enabling automatic resend.
+- S3 uploads accept explicitly empty text or Base64 content through the generic action
+  schema while preserving single-content-field validation and overwrite preconditions.
+
+### Maintenance
+
+- Date conversion tests exercise UTC, Istanbul and Los Angeles without relying on the
+  contributor's timezone.
+- The documented Linux amd64 backend test image includes checksum-pinned kubectl without
+  adding it to the production image.
+- Contributor documentation distinguishes authorized action execution from scoped
+  credential management capabilities.
+
 ## [0.2.70] - 2026-10-08
 
 ### Security
