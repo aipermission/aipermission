@@ -40,6 +40,64 @@ repository. At minimum, periodically verify:
 Never commit account recovery codes, npm tokens, signing material, database
 passwords, or registry credentials to this repository or its issue tracker.
 
+## Repository Security Settings
+
+GitHub settings are separate from workflow source. CI cannot prove these
+administrator-controlled settings are enabled; audit their live values after
+workflow changes and before publication. Apply changes to this repository,
+not to every organization repository by default.
+
+| Setting | Required state |
+| --- | --- |
+| Default branch ruleset | Active; PR required; deletion and force pushes blocked; no bypass actors. |
+| Required status checks | Every `required_checks[].name` in `scripts/verification-policy.json`, bound to the GitHub Actions app; require the PR branch to be up to date. |
+| Secret scanning | Enabled, including push protection. This does not detect every secret format. |
+| Private vulnerability reporting | Enabled; keep the report link in `SECURITY.md` usable. |
+| Dependabot security updates | Enabled to open security PRs, not to merge them automatically. |
+| Actions policy | Selected reviewed action paths only; full-length SHA pinning required; no blanket allowance for GitHub-owned or verified Marketplace actions. |
+| Default workflow token | Read-only; approving PR reviews disabled. Workflows request additional permissions explicitly only where needed. |
+| Auto-merge | Disabled. Never merge bot-authored dependency commits directly. |
+
+Read-only checks from an authenticated maintainer terminal:
+
+```bash
+gh api repos/aipermission/aipermission/rules/branches/main
+gh api repos/aipermission/aipermission/rules/branches/main --paginate --jq '.[].ruleset_id' |
+  sort -u |
+  while read -r ruleset_id
+  do
+    gh api "repos/aipermission/aipermission/rulesets/$ruleset_id"
+  done
+gh api repos/aipermission/aipermission/actions/permissions
+gh api repos/aipermission/aipermission/actions/permissions/selected-actions
+gh api repos/aipermission/aipermission/actions/permissions/workflow
+gh api repos/aipermission/aipermission/private-vulnerability-reporting
+gh api repos/aipermission/aipermission/automated-security-fixes
+gh api repos/aipermission/aipermission --jq '{security_and_analysis, allow_auto_merge}'
+node -p 'require("./scripts/verification-policy.json").required_checks.map(check => check.name).join("\n")'
+```
+
+Keep the required check names and their GitHub Actions integration binding
+aligned with the policy and successful check runs on the exact source commit.
+Inspect each ruleset's `bypass_actors`, `enforcement`, and `conditions` in the
+detail responses; the effective-rules endpoint alone does not expose bypasses.
+When changing check identities, plan the ruleset migration before merging;
+never remove a required check merely because a PR is red. Preserve the
+existing PR, deletion, force-push and bypass settings during updates.
+
+Review every external `uses:` reference in `.github/workflows/` and local
+composite actions against the selected-action allowlist before introducing a
+new action. Allowlist patterns may use `@*` for a reviewed action path so
+maintainer-authored version updates remain possible; SHA enforcement still
+rejects tag and branch references. Inspect bot PRs as patch references,
+reproduce accepted changes in maintainer-authored commits, and close the bot
+PRs as superseded only after the replacement is delivered.
+
+Verify the private report form with a non-owner account periodically. API
+readback alone does not prove a reporter can submit a report or that a second
+human will triage it. Hardware-backed MFA, account recovery and independent
+backup ownership remain separate operator responsibilities.
+
 ## Emergency Security Release
 
 Use this path only for a confirmed vulnerability that risks credential
