@@ -28,7 +28,10 @@ Please do not open a public issue for vulnerabilities that could expose
 credentials or enable unintended command execution. If you are unsure whether
 a report is security-sensitive, use the private channel.
 
-For now, report privately through GitHub Security Advisories on the repository, or contact the repository owner through GitHub if advisories are unavailable.
+Use [GitHub private vulnerability reporting](https://github.com/aipermission/aipermission/security/advisories/new)
+to send a confidential report to the maintainer. A GitHub account is required.
+If the form is unavailable, contact the repository owner to arrange a private
+channel; do not include exploit details or secrets in a public issue.
 
 Expected response targets:
 

@@ -65,6 +65,9 @@ npm pack --dry-run
 
 ## Supply Chain
 
+- Read back the live [repository security settings](docs/maintainers/operations.md#repository-security-settings):
+  required checks, push protection, private reporting, Dependabot security PRs,
+  and the selected-action/SHA policy. Workflow YAML alone does not enable them.
 - Confirm `CHANGELOG.md` includes the release notes for the tag being published.
 - Confirm `release-manifest.json`, frontend metadata, MCP metadata, and the
   latest changelog entries pass `npm run version:check`.
