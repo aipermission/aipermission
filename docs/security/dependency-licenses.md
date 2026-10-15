@@ -75,7 +75,7 @@ JSON to stdout. Both CLIs accept `--root` for disposable fixtures.
 
 Generation is deterministic for identical inputs, Go parser output, and cache
 evidence; there are no timestamps or absolute cache paths. Use the reviewed
-contributor Go 1.26.6 toolchain for byte-for-byte regeneration because parser
+contributor Go 1.26.9 toolchain for byte-for-byte regeneration because parser
 JSON fields can vary between Go versions. Every newly generated candidate has
 `review.status=pending-owner-review`, so copying generated output alone cannot
 pass the gate. Compare the candidate with the baseline, review changed
