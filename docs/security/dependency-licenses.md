@@ -95,6 +95,15 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The 0.2.71 refresh aligns the compiler/parser capture and native builder image
+with Go 1.26.9, and records x/net 0.61.0 with the coordinated crypto/sys/text
+requirements and updated sync/term checksum evidence. New LICENSE and PATENTS
+hashes match the prior Go BSD evidence. The MCP SDK 1.32.1, smol-toml 1.9.1,
+frontend Radix/Lucide updates, Playwright 1.64.0, Vite 6.4.4 and lint/duplication
+tooling retain their recorded license declarations. Unchanged Go identities
+retain their previously reviewed evidence and all 38 acknowledged historical
+gaps remain explicit. This is metadata review, not a legal determination.
+
 The local sanitizer update changes only the frontend root metadata and
 DOMPurify identity to 3.4.16; its `(MPL-2.0 OR Apache-2.0)` declaration is
 unchanged. All Go records, evidence, and 38 acknowledged gaps are preserved.

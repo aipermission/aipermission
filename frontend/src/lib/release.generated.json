@@ -1,6 +1,48 @@
 {
-  "version": "0.2.70",
+  "version": "0.2.71",
   "entries": [
+    {
+      "version": "0.2.71",
+      "label": "Mail ownership and dependency security hardening",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "SMTP PLAIN authentication registers its reusable wire credential for mandatory masking, including reflected authentication errors and optional-redaction-off mode.",
+            "Postgres bounds incoming protocol message bodies to 4 MiB during startup and query execution, independently of the returned-output budget.",
+            "Maintenance console startup requires procfs in the current PID namespace; teardown continues cleaning validated descendants when unrelated process metadata is unavailable, sends final signals after slow validation and reports incomplete verification.",
+            "Coordinated Go 1.26.9 compiler, CI and container pins with golang.org/x/net 0.61.0 and its required crypto, sys and text updates address newly reported standard-library and HTTP/2 advisories.",
+            "The frontend runtime requires TIFF 4.7.2-r0 or later to address CVE-2026-4775 while retaining the patched PCRE2 minimum and unprivileged runtime user."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Mail outbound actions retain uncertain and pending request ownership across drafts and remounts until exact reconciliation; canceled in-flight replies retain their source message and subsequent uncertain sends retain their own message identity.",
+            "Definitive local mail dispatch failures are distinguished from uncertain remote outcomes without enabling automatic resend.",
+            "S3 uploads accept explicitly empty text or Base64 content through the generic action schema while preserving single-content-field validation and overwrite preconditions."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Date conversion tests exercise UTC, Istanbul and Los Angeles without relying on the contributor's timezone.",
+            "The documented Linux amd64 backend test image includes checksum-pinned kubectl without adding it to the production image.",
+            "Contributor documentation distinguishes authorized action execution from scoped credential management capabilities.",
+            "Updated MCP SDK to 1.32.1, smol-toml to 1.9.1, frontend dialog/icon dependencies, Playwright to 1.64.0, Vite to 6.4.4 and related lint/duplication tooling with reviewed license metadata.",
+            "Updated immutable GitHub Actions pins for setup-node 7.1.0 and CodeQL 4.38.3."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user and developer-focused; token permissions, Always grants and finite resource limits are unchanged.",
+            "Back up the encrypted database before upgrading. No new database schema migration is introduced.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.70",
       "label": "Connector identity and request ownership hardening",
@@ -284,55 +326,6 @@
           "items": [
             "AIPermission remains local-only, single-user, and developer-focused.",
             "Measured coverage floors and license metadata do not assert complete security coverage or legal compliance; platform and provenance limitations remain explicit.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.63",
-      "label": "Durable connector cleanup and bounded execution",
-      "sections": [
-        {
-          "title": "Fixed",
-          "items": [
-            "Managed SSH key and PostgreSQL role cleanup records durable intent before remote changes and requires exact historical evidence to reconcile uncertain outcomes without blind replay.",
-            "PostgreSQL role cleanup uses catalog fences, exact grant identities and observation-only reconciliation after lost COMMIT replies; confirmed historical cleanup can retire a local credential without its original admin secret.",
-            "SSH cleanup inspection and external attestation remain available after the last profile is removed, while remote deletion retains its saved-profile preflight.",
-            "PostgreSQL bytea query values use bounded hexadecimal output, and schema/table/column identities survive metadata and managed-grant dispatch unchanged.",
-            "Redis and RabbitMQ reject lossy Unicode resource identities; RabbitMQ binding discovery handles bounded array responses without repeated fetching or claiming an incomplete scan is complete.",
-            "Console output preserves transcript order and recipient snapshots, bounds websocket writes, and drains admitted manual work before finalizing late history.",
-            "Credential publication and resource transactions distinguish acknowledged rollback from uncertain commits and retire unsafe physical connections before readback.",
-            "Transfers enforce cumulative byte budgets and reconcile shutdown summaries; batch pages load their children in one bounded query.",
-            "Imports initialize token project scopes atomically, backup uploads distinguish artifact limits from multipart envelopes, and storage move rollback markers are synchronized before restoration.",
-            "Browser mutations verify pinned workspace ownership before accepting successful, failed or uncertain gateway replies."
-          ]
-        },
-        {
-          "title": "Changed",
-          "items": [
-            "Connector-owned PostgreSQL role history exposes exact operation, cluster, admin and generation evidence with explicit operator decisions and mandatory fresh readback after uncertain acknowledgements.",
-            "Read-only cleanup evidence, protected runtime capabilities and authenticated local operator decisions have separate authority contracts; connector-specific operations remain inside their connector owners.",
-            "Redis collection previews, Kubernetes namespace probes, host ping completion and S3 lifecycle-policy errors preserve their bounded protocol and cancellation semantics."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Regression fixtures cover encrypted restart recovery, wire-level COMMIT reply loss, concurrent ownership changes, exact resource selection, transaction finality and bounded transport output.",
-            "Capability and credential cleanup owners retain 100 percent measured coverage; PostgreSQL lifecycle owners enforce explicit coverage floors without budget or isolation exceptions.",
-            "Native service conformance, recovery and fuzz inventories require the new cases, and contributor/security documentation describes the canonical evidence and retry boundaries.",
-            "Review MCP SDK 1.31.0 issuer binding and frontend Node types, TypeScript parser and jscpd updates in maintainer-authored commits; preserve local-only tooling and existing duplication limits.",
-            "Separate deep PostgreSQL role-history cursor regressions from repeated full-page rendering while preserving wire-valid pagination, UI navigation assertions and unchanged coverage thresholds.",
-            "Isolate workspace snapshot lock tests from encrypted runtime startup latency, with deterministic snapshot and staging lock probes and unchanged timeout limits.",
-            "Exercise real TCP backpressure with a larger bounded payload without coupling socket deadline checks to thousands of display-filter calls; retain client eviction, healthy output, pong traffic and command completion assertions."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "External absence attestations are explicit operator assertions, not automatic proof of remote state; unknown outcomes require reconciliation.",
             "The MCP package must be published separately after the GitHub release."
           ]
         }
