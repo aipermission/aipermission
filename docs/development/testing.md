@@ -18,6 +18,14 @@ The grammar test uses `--help` without network access; separate HTTP fixtures
 verify one namespaced pod API page, including empty lists and permission errors.
 These protocol fixtures do not replace real-cluster or SSH transport tests.
 
+Linux CI and publication jobs use `ubuntu-24.04`, not the moving
+`ubuntu-latest` label. Repository tooling tests check every workflow's runner
+label; Windows and macOS runtime jobs retain their native hosted runners.
+Before changing the Linux image, qualify native SQLCipher/OpenSSL builds,
+kubectl fixtures, browser tests, and the contained-service matrix on the new
+image. Pinning the OS label does not freeze installed packages or prove Ubuntu
+26 compatibility; that migration needs separate evidence.
+
 ## Quick Checks
 
 ```bash
