@@ -92,9 +92,9 @@ test("backend runtime enforces its patched PCRE2 inventory minimum", () => {
   assert.match(read("backend/Dockerfile"), /dpkg --compare-versions[^\n]+libpcre2-8-0[^\n]+ge "10\.42-1\+deb12u2"/);
 });
 
-test("frontend runtime installs patched PCRE2 before dropping root", () => {
+test("frontend runtime installs patched PCRE2 and TIFF before dropping root", () => {
   assert.match(
     read("frontend/Dockerfile"),
-    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0'\s+USER 101/,
+    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0' 'tiff>=4\.7\.2-r0'\s+USER 101/,
   );
 });
