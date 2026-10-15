@@ -15,7 +15,7 @@ concurrency:
 jobs:
   analyze-go:
     name: Analyze (go)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       security-events: write
@@ -55,7 +55,7 @@ jobs:
 
   analyze-javascript:
     name: Analyze (javascript-typescript)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       security-events: write

@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
 const { parse } = require("yaml");
+const { workflowManifestFiles } = require("../workflow-files");
 const root = path.resolve(__dirname, "../..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const [workflow, makefile] = [
@@ -11,6 +12,18 @@ const [workflow, makefile] = [
 ];
 const policy = require("../../maintenance-policy.json");
 const rootPackage = require("../../package.json");
+test("all workflow jobs use reviewed hosted runner labels", () => {
+  const runners = new Set(["ubuntu-24.04", "windows-latest", "macos-latest"]);
+  for (const file of workflowManifestFiles(root)) {
+    const jobs = parse(fs.readFileSync(file, "utf8")).jobs;
+    for (const [id, job] of Object.entries(jobs)) {
+      assert.ok(
+        runners.has(job["runs-on"]),
+        `${path.relative(root, file)} ${id}: runner requires review`,
+      );
+    }
+  }
+});
 test("CI and local release checks preserve every required gate", () => {
   assert.match(workflow, /node scripts\/connector-catalog\.js --check/);
   assert.match(workflow, /node scripts\/mcp-client-catalog\.mjs --check/);
