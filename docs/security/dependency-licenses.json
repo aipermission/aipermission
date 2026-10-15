@@ -19,11 +19,11 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "1cf080d283a237a947b530b429b97a44182f186c5de441341285819fff12c2c0"
+      "sha256": "feac991dcab73117dd8db85d43a0e49419ae022a6b9c465a1c3fae9b93582a16"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "d71db3b72dc04ba99579ba67a4ab0c8b39321fb092cddfdc24c0a0feac732733"
+      "sha256": "bf6bc9ae514f10e6fe57d7a715b985a9cc1d95a9c8ba9926e5a7c3068b2e2c6d"
     },
     {
       "path": "scripts/package.json",
@@ -4375,7 +4375,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "3b9ee100e0db89b28c9621d4c3f104a0350fe0a07a9a8b3c270104e8410f5718"
+      "metadata_sha256": "3dcda6acd2b05b7a36895459a0a5038f5e3653a6876dfa0ec38c7cfd569a54c0"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4571,11 +4571,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/@modelcontextprotocol/sdk",
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.31.0",
+      "version": "1.32.1",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.31.0.tgz",
-      "integrity": "sha512-UvTMgnNlnIBO/22ob2RcVGDlcvOslQs8T59+FTGdA0L27a39fdGF/EDETNtDVK4DZGpwomlsYpRdA8UXcVL/pw==",
-      "metadata_sha256": "c679444c0bea075c7ef5908a83bcbc423132907a8bbeafe34fe5a524bac8e6f5"
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.32.1.tgz",
+      "integrity": "sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==",
+      "metadata_sha256": "3f749eff99d923f8f32d2db933ba3f7325052c018598a283db491742f97e6868"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4911,11 +4911,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.11.0",
+      "version": "10.12.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.11.0.tgz",
-      "integrity": "sha512-P7a6UEEqb9G95MYAtqkmsTbVXIYyzIfl6NGOIJk162PaahFxFyeGcrlXYFSiagECg4sEm8IseJdZBKR3rx6MsQ==",
-      "metadata_sha256": "6538c027e79a0fbbcefdc85aa778ee68127e588bf6a61021c08e4f29d359d305"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.12.0.tgz",
+      "integrity": "sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==",
+      "metadata_sha256": "fb39d52146a84ca41063b844d5f72a2dbb361465f14ee813395553d2d56ae8a1"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -5891,11 +5891,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/smol-toml",
       "name": "smol-toml",
-      "version": "1.9.0",
+      "version": "1.9.1",
       "declared_license": "BSD-3-Clause",
-      "resolved": "https://registry.npmjs.org/smol-toml/-/smol-toml-1.9.0.tgz",
-      "integrity": "sha512-hpd+HLON7HdZXqYchMM/+LaTTbdK0AU3NngIJ4KVyWbY9bfQqdL9cD+4yf6dUoU2Ap4VsU0JkQi6FxAI1B2mXQ==",
-      "metadata_sha256": "f68049ea5680db409df2707d5eac89e9585bb6b26f5eec9eb208a1227163c8bf"
+      "resolved": "https://registry.npmjs.org/smol-toml/-/smol-toml-1.9.1.tgz",
+      "integrity": "sha512-j7WyPdf0CJoutMzMoPLF/bVXHtKZIT9Rb4eGeEbWw8X2t5oirjPgpL+OpaENZrILYaXqYwnVH+qgUwVbl+pUJQ==",
+      "metadata_sha256": "f305a0795bd94ce5fd8ec03cdc56210dae206464128270fa22dd3efa765bfdd0"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -7789,7 +7789,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed Go 1.26.9 parser/toolchain and x/net 0.61.0 with crypto/sys/text upgrades; new Go LICENSE/PATENTS hashes match the prior BSD evidence; unchanged identities retain reviewed evidence and 38 acknowledged historical gaps",
+    "reviewer": "Codex maintainer: reviewed Go 1.26.9 network security refresh and MCP SDK 1.32.1, smol-toml 1.9.1, ESLint 10.12.0; npm declarations unchanged and 38 historical Go evidence gaps preserved",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
