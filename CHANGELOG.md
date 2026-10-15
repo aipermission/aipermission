@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.71] - 2026-10-15
+
 ### Security
 
 - SMTP PLAIN authentication registers its reusable wire credential for mandatory
@@ -17,13 +19,19 @@ and this project uses semantic versioning for public releases.
   execution, independently of the returned-output budget.
 - Maintenance console startup requires procfs in the current PID namespace; teardown
   continues cleaning validated descendants when unrelated process metadata is
-  unavailable and reports incomplete verification.
+  unavailable, sends final signals after slow validation and reports incomplete
+  verification.
+- Coordinated Go 1.26.9 compiler, CI and container pins with golang.org/x/net 0.61.0 and
+  its required crypto, sys and text updates address newly reported standard-library and
+  HTTP/2 advisories.
+- The frontend runtime requires TIFF 4.7.2-r0 or later to address CVE-2026-4775 while
+  retaining the patched PCRE2 minimum and unprivileged runtime user.
 
 ### Fixed
 
 - Mail outbound actions retain uncertain and pending request ownership across drafts and
-  remounts until exact reconciliation; subsequent uncertain sends retain their own
-  message identity.
+  remounts until exact reconciliation; canceled in-flight replies retain their source
+  message and subsequent uncertain sends retain their own message identity.
 - Definitive local mail dispatch failures are distinguished from uncertain remote
   outcomes without enabling automatic resend.
 - S3 uploads accept explicitly empty text or Base64 content through the generic action
@@ -37,6 +45,18 @@ and this project uses semantic versioning for public releases.
   adding it to the production image.
 - Contributor documentation distinguishes authorized action execution from scoped
   credential management capabilities.
+- Updated MCP SDK to 1.32.1, smol-toml to 1.9.1, frontend dialog/icon dependencies,
+  Playwright to 1.64.0, Vite to 6.4.4 and related lint/duplication tooling with reviewed
+  license metadata.
+- Updated immutable GitHub Actions pins for setup-node 7.1.0 and CodeQL 4.38.3.
+
+### Notes
+
+- AIPermission remains local-only, single-user and developer-focused; token permissions,
+  Always grants and finite resource limits are unchanged.
+- Back up the encrypted database before upgrading. No new database schema migration is
+  introduced.
+- The MCP package must be published separately after the GitHub release.
 
 ## [0.2.70] - 2026-10-08
 

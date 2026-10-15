@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "a2473187be7a3be7db5c7f6246146009191b319af2d53f4459fd511d067facfc"
+      "sha256": "69407c7c0212252ea8ae576c4c8f44274ff81b92a0b5eb3f7dbb418fc3e7fc2d"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "5af8eec5d3502d459fa31736ac9d78ca83f5a6022515b31848fbd64a126acfe1"
+      "sha256": "4a377fc5ad46261545c445a348ffab8ddfc40b723bcc326191ff2799a19a463b"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "feac991dcab73117dd8db85d43a0e49419ae022a6b9c465a1c3fae9b93582a16"
+      "sha256": "a5e6a1b4e6d157b3357be82b54f0100f991ffc28f4aad9e9377064f9b4df3daf"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "bf6bc9ae514f10e6fe57d7a715b985a9cc1d95a9c8ba9926e5a7c3068b2e2c6d"
+      "sha256": "e25761372ab35f24bdb8dc0601814ce785853790cb1dc5e30b8ae91d7eb872cd"
     },
     {
       "path": "scripts/package.json",
@@ -51,11 +51,11 @@
       "source": "frontend/package-lock.json",
       "location": "",
       "name": "aipermission-frontend",
-      "version": "0.2.70",
+      "version": "0.2.71",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "ebe0057cdcbcfe0db7374fbd34c89231519645faa74690818462379493810eef"
+      "metadata_sha256": "9fea7307c1a6605379b5da3d85627ea02f6471d0d8f9d69780c826841903375e"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4371,11 +4371,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "",
       "name": "@aipermission/mcp",
-      "version": "0.2.70",
+      "version": "0.2.71",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "3dcda6acd2b05b7a36895459a0a5038f5e3653a6876dfa0ec38c7cfd569a54c0"
+      "metadata_sha256": "0ccd3b421d82ae9dcc9b6d8999deaa2fc757d60189f859d2dadcac042b6ddfd5"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -7789,7 +7789,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed Go 1.26.9 network security refresh, MCP SDK 1.32.1 and frontend dependency refresh (Radix, Lucide, Playwright 1.64, Vite 6.4.4, lint/duplication tooling); declarations unchanged; prior Go evidence and 38 gaps retained",
+    "reviewer": "Codex maintainer: reviewed v0.2.71 root identities, Go1.26.9 network security refresh, MCP SDK1.32.1/TOML1.9.1, frontend dependencies and immutable CI pins; license declarations unchanged; 38 historical Go evidence gaps preserved",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
