@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "5e168a1e039ebe6996143565fc5c7fcd0f3297d2ff9660541b71886a50343247"
+      "sha256": "e2f43053a67e23a4d7b5d83331432c9c45f2d31b0ef328433cadb98783b64035"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "62b035d0630ec3e0e0cedc81ce17503b91b8309d8a632aef208f5d8cd3fe73fe"
+      "sha256": "fb86adb4a4af208717ef89f486cf10eae4510a63217c3ce6c955e7cac526d626"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6141,7 +6141,7 @@
       },
       {
         "Path": "github.com/twmb/franz-go/pkg/kmsg",
-        "Version": "v1.14.0"
+        "Version": "v1.15.0"
       },
       {
         "Path": "golang.org/x/crypto",
@@ -7059,17 +7059,17 @@
     },
     {
       "module": "github.com/twmb/franz-go/pkg/kmsg",
-      "version": "v1.14.0",
+      "version": "v1.15.0",
       "checksums": {
-        "module": "h1:gSxrBEKWl3qnsx3QKWol5OEVujuPmIoDkhMt3didFKM=",
-        "go_mod": "h1:+DPt4NC8RmI6hqb8G09+3giKObE6uD2Eya6CfqBpeJY="
+        "module": "h1:mILdOQm4JkWojbSYVQ7KJNJ1qMdYNsLrdNOBUVKM6IA=",
+        "go_mod": "h1:sGkGxKexpRLBThFHJLjjywcyfkK09qB/g+X+wFWZQ/A="
       },
       "requirement": "direct",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
-            "path": "github.com/twmb/franz-go/pkg/kmsg@v1.14.0/LICENSE",
+            "path": "github.com/twmb/franz-go/pkg/kmsg@v1.15.0/LICENSE",
             "sha256": "9ed9133de92870659a93ee70f11102dac696c23a65d68161fa292f1a23831be6",
             "bytes": 1491
           }
@@ -7789,7 +7789,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed v0.2.71 root identities, Go1.26.9 network security refresh, MCP SDK1.32.1/TOML1.9.1, frontend dependencies and immutable CI pins; license declarations unchanged; 38 historical Go evidence gaps preserved",
+    "reviewer": "Codex maintainer: reviewed kmsg1.15.0 source identity and BSD evidence; unchanged evidence and historical gaps preserved",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
