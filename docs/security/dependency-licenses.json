@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "2a9b9547592175f3297a8ed839f25065cf7f98a744bbe1f211fcc00b7f314b2c"
+      "sha256": "c6cbae7d4b384f2f17f9564e39a4de4227c4a353f827def8ad9b8b5f99b1637c"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "d13e1b6dc4d067f250346e70aa441e695d34547b18954081f323a6231c602d6e"
+      "sha256": "b2f391f1fddfcd627f4784d8d4a68a90e8a00973fcc9d0f2fd88996b5364b885"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "a5e6a1b4e6d157b3357be82b54f0100f991ffc28f4aad9e9377064f9b4df3daf"
+      "sha256": "f45f96a5c320edcd6e977b562e207d9f06a2a2b1e67fa96e683b4adc7c7f5874"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "250251f46c397b008d156d48c4315d131e87f1c22413d0ec8b39e58269d17b7f"
+      "sha256": "81c79f4f59f65557c6c8353bb1d61d4b2b3ee15cf7d58bf651142ecbe864e72f"
     },
     {
       "path": "scripts/package.json",
@@ -51,11 +51,11 @@
       "source": "frontend/package-lock.json",
       "location": "",
       "name": "aipermission-frontend",
-      "version": "0.2.71",
+      "version": "0.2.72",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "69e0231664e46bc565548373ef2df00d54f61661d4d137ff86d1ba10f3557b3d"
+      "metadata_sha256": "1e618344df74562babe57b9838eb8a0a8f207f89fb8658338a01879ac0ce275e"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4371,11 +4371,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "",
       "name": "@aipermission/mcp",
-      "version": "0.2.71",
+      "version": "0.2.72",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "0ccd3b421d82ae9dcc9b6d8999deaa2fc757d60189f859d2dadcac042b6ddfd5"
+      "metadata_sha256": "4437424abd2944cd1e96b28fc4f49a342e64be6f8cc1aec05d81b10dff98f63c"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -7784,7 +7784,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed coordinated Go1.27.3 security patch and unchanged dependency license identities",
+    "reviewer": "Codex maintainer: reviewed v0.2.72 root identities, Go1.27.3 and Node24.22 coordinated maintenance, frontend/MCP/Kafka updates; all historical evidence gaps explicit",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

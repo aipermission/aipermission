@@ -1,6 +1,45 @@
 {
-  "version": "0.2.71",
+  "version": "0.2.72",
   "entries": [
+    {
+      "version": "0.2.72",
+      "label": "Dependency maintenance and reliable verification",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "The frontend runtime requires libX11 1.8.14-r0 or later for CVE-2026-88806, retaining existing PCRE2/TIFF guards and the unprivileged runtime user.",
+            "DOMPurify is pinned to 3.4.17; Monaco's production and development sanitizer replacement remains enforced.",
+            "Go 1.27.3 includes the upstream crypto/x509 security mitigation for CVE-2026-111943."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Deferred transfer recovery assertions use explicit synchronization so a successful asynchronous retry cannot produce a false shutdown-order failure.",
+            "Architecture verification avoids repeated allocating inventory scans and reuses context-scoped detached snapshots without dropping platform, fixture or security checks.",
+            "The editor optimizer regression reads the exact sanitizer version from the package manifest instead of rejecting a valid reviewed patch update."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Coordinated Go 1.27.3 and Node.js 24.22.0 across contributor setup, CI, Docker builders and native dependency metadata.",
+            "Updated Kafka kmsg to 1.15.0, React to 19.3.1, dialog and icon dependencies, Playwright to 1.64.1, Vitest to 4.1.12 and Prettier to 3.9.10 with reviewed license metadata.",
+            "Pinned Linux workflows to Ubuntu 24.04 and updated both CodeQL analyses to immutable 4.39.0 action references.",
+            "Documented live repository protection checks and the private vulnerability reporting channel; bot dependency proposals are replaced by maintainer-authored commits."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user and developer-focused; connector isolation, token permissions, Always grants and finite resource limits are unchanged.",
+            "Back up the encrypted database before upgrading. No database schema migration or new connector is introduced.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.71",
       "label": "Mail ownership and dependency security hardening",
@@ -285,47 +324,6 @@
           "items": [
             "AIPermission remains local-only, single-user, and developer-focused.",
             "Pending transcript memory is not crash-durable, browser invalidation cannot erase copied data, and numeric projection cannot recover precision already lost inside an upstream driver.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.64",
-      "label": "Scoped UI ownership and measured maintenance checks",
-      "sections": [
-        {
-          "title": "Fixed",
-          "items": [
-            "Connector confirmations, credential editors, Kubernetes namespace caches, S3 pagination and SSH key-file imports preserve the request and view that own each asynchronous completion.",
-            "Mail mutation completion cannot reload a newer mailbox view, cancel a newer outbound submission, or let delayed browser snapshots resurrect an acknowledged removal; send and reply outcomes retain their own presentation.",
-            "Vault permission saves preserve newer drafts and server revisions, History detail completion preserves current labels, and expired tokens cannot remain eligible through old grants.",
-            "Manual SQL queries claim admission before repeated keyboard dispatch; bulk output displays stdout, stderr and uncertain outcome diagnostics together.",
-            "Postgres and ClickHouse SQL controls remain contained at narrow and wide browser sizes, and VS Code doctor accepts JSONC using the shared safe setup parser."
-          ]
-        },
-        {
-          "title": "Security",
-          "items": [
-            "SQL spreadsheet exports escape formula-like string cells and delimiter characters; canonical JSON remains the lossless output option.",
-            "Mock browser tests block unexpected API HTTP and WebSocket traffic, while executable import guards follow actual Vite query, worker and loader behavior."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "Every measured backend owner requires an explicit coverage floor; existing floors remain intact, with early warnings below unchanged source and test budget limits.",
-            "MCP setup separates configuration, Git protection and TOML responsibilities, loads its UI only on navigation, and documented examples execute through the packaged MCP server.",
-            "Workflow fixtures bind to explicit repository roots, changed-owner discovery preserves exact Git paths, and shared fixture setup reduces test duplication without weakening assertions.",
-            "The common build entry point compiles native backend packages; contributor guidance maps lifecycle owners and the pinned native runner.",
-            "Offline dependency-license metadata is checked against exact source identities, with historical evidence gaps recorded explicitly rather than inferred."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user, and developer-focused.",
-            "Measured coverage floors and license metadata do not assert complete security coverage or legal compliance; platform and provenance limitations remain explicit.",
             "The MCP package must be published separately after the GitHub release."
           ]
         }
