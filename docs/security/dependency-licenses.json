@@ -35,7 +35,7 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "e2f43053a67e23a4d7b5d83331432c9c45f2d31b0ef328433cadb98783b64035"
+      "sha256": "12a6da33fa03352076678318709a8b24a3128f2290e7a5293be08ce0d8e9b215"
     },
     {
       "path": "backend/go.sum",
@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "2f9d3bf4f67e1772b21a6ad2126ca27c91542a539819363832e3dae05096ca08"
+      "sha256": "7b3158fc464d25fba3fe80ec41b0376e847cad6c948f048ae1de262f2ba9db87"
     }
   ],
   "npm": [
@@ -6073,7 +6073,7 @@
       "Path": "github.com/aipermission/aipermission/backend"
     },
     "Go": "1.26.0",
-    "Toolchain": "go1.26.9",
+    "Toolchain": "go1.27.3",
     "Require": [
       {
         "Path": "github.com/ClickHouse/clickhouse-go/v2",
@@ -6239,12 +6239,7 @@
         "Version": "v1.44.0",
         "Indirect": true
       }
-    ],
-    "Exclude": null,
-    "Replace": null,
-    "Retract": null,
-    "Tool": null,
-    "Ignore": null
+    ]
   },
   "go": [
     {
@@ -7785,11 +7780,11 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "2f9d3bf4f67e1772b21a6ad2126ca27c91542a539819363832e3dae05096ca08"
+    "sha256": "7b3158fc464d25fba3fe80ec41b0376e847cad6c948f048ae1de262f2ba9db87"
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed frontend React19.3.1, Radix, DOMPurify3.4.17, Lucide1.58 and test-tool updates; license declarations and38 acknowledged gaps preserved",
+    "reviewer": "Codex maintainer: reviewed coordinated Go1.27.3 security patch and unchanged dependency license identities",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

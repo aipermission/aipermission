@@ -75,7 +75,7 @@ JSON to stdout. Both CLIs accept `--root` for disposable fixtures.
 
 Generation is deterministic for identical inputs, Go parser output, and cache
 evidence; there are no timestamps or absolute cache paths. Use the reviewed
-contributor Go 1.26.9 toolchain for byte-for-byte regeneration because parser
+contributor Go 1.27.3 toolchain for byte-for-byte regeneration because parser
 JSON fields can vary between Go versions. Every newly generated candidate has
 `review.status=pending-owner-review`, so copying generated output alone cannot
 pass the gate. Compare the candidate with the baseline, review changed
@@ -94,6 +94,13 @@ evidence also fail. The existing hygiene command invokes this check through
 unchanged.
 
 ## Evidence Gaps and Limits
+
+The 0.2.72 refresh aligns the compiler/parser capture and native builder with
+Go 1.27.3 and records Kafka kmsg 1.15.0's named BSD license evidence. Frontend
+React/Radix, DOMPurify 3.4.17, Lucide 1.58.0, Playwright 1.64.1, Vitest 4.1.12
+and Prettier 3.9.10 retain their prior license declarations, as does MCP's
+formatter update. The existing 38 historical Go evidence gaps remain explicit;
+this is metadata review, not a legal determination.
 
 The 0.2.71 refresh aligns the compiler/parser capture and native builder image
 with Go 1.26.9, and records x/net 0.61.0 with the coordinated crypto/sys/text
