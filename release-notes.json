@@ -3,6 +3,46 @@
   "unreleased": [],
   "releases": [
     {
+      "version": "0.2.72",
+      "date": "2026-10-20",
+      "label": "Dependency maintenance and reliable verification",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "The frontend runtime requires libX11 1.8.14-r0 or later for CVE-2026-88806, retaining existing PCRE2/TIFF guards and the unprivileged runtime user.",
+            "DOMPurify is pinned to 3.4.17; Monaco's production and development sanitizer replacement remains enforced.",
+            "Go 1.27.3 includes the upstream crypto/x509 security mitigation for CVE-2026-111943."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Deferred transfer recovery assertions use explicit synchronization so a successful asynchronous retry cannot produce a false shutdown-order failure.",
+            "Architecture verification avoids repeated allocating inventory scans and reuses context-scoped detached snapshots without dropping platform, fixture or security checks.",
+            "The editor optimizer regression reads the exact sanitizer version from the package manifest instead of rejecting a valid reviewed patch update."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Coordinated Go 1.27.3 and Node.js 24.22.0 across contributor setup, CI, Docker builders and native dependency metadata.",
+            "Updated Kafka kmsg to 1.15.0, React to 19.3.1, dialog and icon dependencies, Playwright to 1.64.1, Vitest to 4.1.12 and Prettier to 3.9.10 with reviewed license metadata.",
+            "Pinned Linux workflows to Ubuntu 24.04 and updated both CodeQL analyses to immutable 4.39.0 action references.",
+            "Documented live repository protection checks and the private vulnerability reporting channel; bot dependency proposals are replaced by maintainer-authored commits."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only, single-user and developer-focused; connector isolation, token permissions, Always grants and finite resource limits are unchanged.",
+            "Back up the encrypted database before upgrading. No database schema migration or new connector is introduced.",
+            "The MCP package must be published separately after the GitHub release."
+          ]
+        }
+      ]
+    },
+    {
       "version": "0.2.71",
       "date": "2026-10-15",
       "label": "Mail ownership and dependency security hardening",
