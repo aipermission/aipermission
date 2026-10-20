@@ -35,10 +35,12 @@ var packageImportCache = struct {
 	graphs       map[string]map[string][]string
 	testGraphs   map[string]map[string][]string
 	dependencies map[string]map[string]bool
+	mutableTypes map[string]map[string]bool
 }{
 	graphs:       map[string]map[string][]string{},
 	testGraphs:   map[string]map[string][]string{},
 	dependencies: map[string]map[string]bool{},
+	mutableTypes: map[string]map[string]bool{},
 }
 
 func testPackageImportGraphs(t *testing.T) []packageImportGraph {
