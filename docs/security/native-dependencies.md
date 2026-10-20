@@ -83,6 +83,14 @@ maintainer can review it deliberately.
 Dependabot and `govulncheck` remain useful signals for the Go wrapper, but they
 are not treated as complete native-code CVE coverage.
 
+## Frontend Runtime Packages
+
+The frontend Dockerfile upgrades the pinned nginx image's Alpine packages and
+requires `libx11>=1.8.14-r0` for CVE-2026-88806, alongside the existing PCRE2 and
+TIFF minimums. A source regression preserves those package guards and the return
+to unprivileged UID101. Scan the final rebuilt image: package minimums alone do
+not certify that all image dependencies are free of known vulnerabilities.
+
 ## Disposable Protocol Qualification
 
 The conformance-only Docker VM uses Docker 28.5.1 from its immutable image
