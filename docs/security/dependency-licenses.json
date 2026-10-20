@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "e25761372ab35f24bdb8dc0601814ce785853790cb1dc5e30b8ae91d7eb872cd"
+      "sha256": "250251f46c397b008d156d48c4315d131e87f1c22413d0ec8b39e58269d17b7f"
     },
     {
       "path": "scripts/package.json",
@@ -5691,11 +5691,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/prettier",
       "name": "prettier",
-      "version": "3.9.9",
+      "version": "3.9.10",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.9.9.tgz",
-      "integrity": "sha512-Z/CJHIkdujO/OtN7nXUii0Rf3VT5SRuhjBA82Xvu2XhBUgX3nhP67T0LHceBdQLex7OOFGTox+Q5Yg8Jk2Qivg==",
-      "metadata_sha256": "27295710e508fdd73fe140376b73d72035f0d65554ca72b9c2b9f0ff2f79df4f"
+      "resolved": "https://registry.npmjs.org/prettier/-/prettier-3.9.10.tgz",
+      "integrity": "sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA==",
+      "metadata_sha256": "a09c3f984ead4dbc6dc77ffb4767abd9a8e538d5d512571d51b9d83ed03f727e"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -7789,7 +7789,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed kmsg1.15.0 source identity and BSD evidence; unchanged evidence and historical gaps preserved",
+    "reviewer": "Codex maintainer: reviewed MCP Prettier3.9.10 MIT metadata; preserved Go/native evidence and historical gaps",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
