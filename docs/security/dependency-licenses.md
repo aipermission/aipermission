@@ -194,7 +194,7 @@ baseline edits remain subject to independent review.
 
 Monaco 0.57.0 includes an embedded DOMPurify copy as well as a declared npm
 dependency. An npm override alone does not replace that embedded code.
-The frontend pins DOMPurify 3.4.16 and its Vite bridge redirects only Monaco's
+The frontend pins DOMPurify 3.4.17 and its Vite bridge redirects only Monaco's
 exact sanitizer import to that package in both the production graph and Vite's
 development dependency optimizer. An actual optimizer regression verifies the
 patched output and source identity. Production graph verification rejects

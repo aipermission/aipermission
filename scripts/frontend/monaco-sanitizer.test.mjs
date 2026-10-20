@@ -171,7 +171,9 @@ test("Vite development optimization uses the patched sanitizer, not Monaco's emb
     const entry = metadata.optimized[consumer];
     assert.ok(entry, "Monaco sanitizer consumer must actually be optimized");
     const output = await readFile(entry.file, "utf8");
-    assert.match(output, /3\.4\.16/);
+    const version = require("./package.json").dependencies.dompurify;
+    assert.match(version, /^\d+\.\d+\.\d+$/, "sanitizer must remain exactly pinned");
+    assert.ok(output.includes(version), "optimizer must include the pinned sanitizer");
     assert.doesNotMatch(output, /3\.4\.15/);
     const map = JSON.parse(await readFile(`${entry.file}.map`, "utf8"));
     assert.ok(
