@@ -6,8 +6,79 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 )
+
+func TestInventoryFieldsMatchBoundedSplitWithoutAllocating(t *testing.T) {
+	for _, key := range []string{"", "pkg", "pkg\x00name", "pkg\x00name\x00Type", "pkg\x00\x00", "pkg\x00name\x00Type\x00suffix", "other\x00name\x00Type"} {
+		name, entry, ok := inventoryFieldsForPackage(key, "pkg")
+		parts := strings.SplitN(key, "\x00", 3)
+		expected := len(parts) == 3 && parts[0] == "pkg"
+		if ok != expected || (ok && (name != parts[1] || entry != parts[2])) {
+			t.Fatalf("inventory fields for %q = %q, %q, %t", key, name, entry, ok)
+		}
+	}
+	if allocations := testing.AllocsPerRun(100, func() { inventoryFieldsForPackage("pkg\x00name\x00Type", "pkg") }); allocations != 0 {
+		t.Fatalf("inventory field lookup allocations = %v", allocations)
+	}
+}
+
+func TestLocalMutableInventoryReturnsDetachedSnapshots(t *testing.T) {
+	buildContext := supportedBuildContext(t, "linux")
+	first := localMutableTypeInventory(t, buildContext)
+	if len(first) == 0 {
+		t.Fatal("production type inventory is empty")
+	}
+	const marker = "fixture\x00cache\x00mutated"
+	first[marker] = true
+	if localMutableTypeInventory(t, buildContext)[marker] {
+		t.Fatal("caller mutation changed the shared inventory cache")
+	}
+}
+
+func TestLocalMutableInventoryCacheSeparatesConcurrentContexts(t *testing.T) {
+	contexts := []backendBuildContext{
+		{goos: "fixture", goarch: "amd64", cgo: "0"},
+		{goos: "fixture-other", goarch: "amd64", cgo: "0"},
+		{goos: "fixture", goarch: "arm64", cgo: "0"},
+		{goos: "fixture", goarch: "amd64", cgo: "1"},
+		{goos: "fixture", goarch: "amd64", cgo: "0", tags: []string{"fixture"}},
+	}
+	keys := map[string]bool{}
+	for _, candidate := range contexts {
+		if keys[candidate.cacheKey()] {
+			t.Fatal("build contexts share a cache key")
+		}
+		keys[candidate.cacheKey()] = true
+	}
+	packageImportCache.Lock()
+	for key := range keys {
+		packageImportCache.mutableTypes[key] = map[string]bool{key: true}
+	}
+	packageImportCache.Unlock()
+	t.Cleanup(func() {
+		packageImportCache.Lock()
+		defer packageImportCache.Unlock()
+		for key := range keys {
+			delete(packageImportCache.mutableTypes, key)
+		}
+	})
+	var workers sync.WaitGroup
+	for _, candidate := range contexts {
+		workers.Go(func() {
+			for range 20 {
+				inventory := localMutableTypeInventory(t, candidate)
+				if len(inventory) != 1 || !inventory[candidate.cacheKey()] {
+					t.Error("cached inventory crossed a build context or retained caller mutation")
+				}
+				inventory["caller mutation"] = true
+			}
+		})
+	}
+	workers.Wait()
+}
 
 func TestSourceMatchesBuildContextExcludesCgoImportsWhenDisabled(t *testing.T) {
 	root := t.TempDir()

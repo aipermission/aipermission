@@ -13,6 +13,7 @@ import (
 	"go/types"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -534,11 +535,18 @@ func packageImportBindings(file *ast.File, importedTypes map[string]bool) map[st
 	return bindings
 }
 
+func inventoryFieldsForPackage(key, packagePath string) (string, string, bool) {
+	owner, rest, ok := strings.Cut(key, "\x00")
+	if !ok || owner != packagePath {
+		return "", "", false
+	}
+	return strings.Cut(rest, "\x00")
+}
+
 func importedPackageName(packagePath string, importedTypes map[string]bool) string {
 	for key := range importedTypes {
-		parts := strings.SplitN(key, "\x00", 3)
-		if len(parts) == 3 && parts[0] == packagePath {
-			return parts[1]
+		if name, _, ok := inventoryFieldsForPackage(key, packagePath); ok {
+			return name
 		}
 	}
 	base := filepath.Base(packagePath)
@@ -664,16 +672,15 @@ func bindingsForFile(bindings map[string][]ast.Expr, file *ast.File, importedMut
 			continue
 		}
 		for key := range importedMutableTypes {
-			parts := strings.SplitN(key, "\x00", 3)
-			if len(parts) != 3 || parts[0] != packagePath {
+			alias, entry, ok := inventoryFieldsForPackage(key, packagePath)
+			if !ok {
 				continue
 			}
-			alias := parts[1]
 			if specification.Name != nil {
 				alias = specification.Name.Name
 			}
-			if strings.HasPrefix(parts[2], constantExpressionInventoryPrefix) {
-				constantSpec := strings.TrimPrefix(parts[2], constantExpressionInventoryPrefix)
+			if strings.HasPrefix(entry, constantExpressionInventoryPrefix) {
+				constantSpec := strings.TrimPrefix(entry, constantExpressionInventoryPrefix)
 				constantName, encodedExpression, ok := strings.Cut(constantSpec, "=")
 				if !ok {
 					continue
@@ -693,8 +700,8 @@ func bindingsForFile(bindings map[string][]ast.Expr, file *ast.File, importedMut
 				result[binding] = []ast.Expr{constantExpression}
 				continue
 			}
-			if strings.HasPrefix(parts[2], constantTypeInventoryPrefix) {
-				typeSpec := strings.TrimPrefix(parts[2], constantTypeInventoryPrefix)
+			if strings.HasPrefix(entry, constantTypeInventoryPrefix) {
+				typeSpec := strings.TrimPrefix(entry, constantTypeInventoryPrefix)
 				typeName, encodedExpression, ok := strings.Cut(typeSpec, "=")
 				if !ok {
 					continue
@@ -714,9 +721,9 @@ func bindingsForFile(bindings map[string][]ast.Expr, file *ast.File, importedMut
 				result[binding] = []ast.Expr{typeExpression}
 				continue
 			}
-			binding := "import-type:" + alias + "." + parts[2]
+			binding := "import-type:" + alias + "." + entry
 			if alias == "." {
-				binding = "type:" + parts[2]
+				binding = "type:" + entry
 			}
 			result[binding] = []ast.Expr{&ast.MapType{}}
 		}
@@ -726,7 +733,18 @@ func bindingsForFile(bindings map[string][]ast.Expr, file *ast.File, importedMut
 
 func localMutableTypeInventory(t *testing.T, buildContext backendBuildContext) map[string]bool {
 	t.Helper()
-	return mutableTypeInventoryAt(t, filepath.Join("..", ".."), modulePath, buildContext)
+	key := buildContext.cacheKey()
+	packageImportCache.Lock()
+	cached := packageImportCache.mutableTypes[key]
+	packageImportCache.Unlock()
+	if cached != nil {
+		return maps.Clone(cached)
+	}
+	result := mutableTypeInventoryAt(t, filepath.Join("..", ".."), modulePath, buildContext)
+	packageImportCache.Lock()
+	packageImportCache.mutableTypes[key] = result
+	packageImportCache.Unlock()
+	return maps.Clone(result)
 }
 
 func mutableTypeInventoryAt(t *testing.T, backendRoot, modulePrefix string, buildContext backendBuildContext) map[string]bool {
@@ -875,11 +893,11 @@ func mutableTypeInventoryAt(t *testing.T, backendRoot, modulePrefix string, buil
 				local[name] = expressions
 			}
 			for candidate := range resolved {
-				parts := strings.SplitN(candidate, "\x00", 3)
-				if len(parts) == 3 && parts[0] == declaration.packagePath && parts[1] == declaration.packageName &&
-					!strings.HasPrefix(parts[2], constantExpressionInventoryPrefix) &&
-					!strings.HasPrefix(parts[2], constantTypeInventoryPrefix) {
-					local["type:"+parts[2]] = []ast.Expr{&ast.MapType{}}
+				name, entry, ok := inventoryFieldsForPackage(candidate, declaration.packagePath)
+				if ok && name == declaration.packageName &&
+					!strings.HasPrefix(entry, constantExpressionInventoryPrefix) &&
+					!strings.HasPrefix(entry, constantTypeInventoryPrefix) {
+					local["type:"+entry] = []ast.Expr{&ast.MapType{}}
 				}
 			}
 			if mutableRegistryType(declaration.typeRef, bindingsForFile(local, declaration.file, resolved), map[string]bool{}) {
