@@ -270,22 +270,22 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 	committed = true
 	if err := removeRemoteUploadStagingDir(client, tempPath); err != nil {
 		return TransferResult{
-				Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
-				DurationMS: time.Since(started).Milliseconds(),
-			}, connectors.ClassifyOutcomeUnknown("remote_staging_cleanup", map[string]any{
-				"remote_staging_path": tempPath,
-				"recovery_hint":       "The destination is committed; remove the empty remote staging directory before retrying.",
-			}, fmt.Errorf("remove committed remote staging directory: %w", err))
+			Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
+			DurationMS: time.Since(started).Milliseconds(),
+		}, connectors.ClassifyOutcomeUnknown("remote_staging_cleanup", map[string]any{
+			"remote_staging_path": tempPath,
+			"recovery_hint":       "The destination is committed; remove the empty remote staging directory before retrying.",
+		}, fmt.Errorf("remove committed remote staging directory: %w", err))
 	}
 	if stagingRecorded && options.ClearStaging != nil {
 		if err := options.ClearStaging(context.Background(), tempPath); err != nil {
 			return TransferResult{
-					Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
-					DurationMS: time.Since(started).Milliseconds(),
-				}, connectors.ClassifyOutcomeUnknown("remote_staging_record", map[string]any{
-					"remote_staging_path": tempPath,
-					"recovery_hint":       "Inspect the destination before retrying the upload.",
-				}, fmt.Errorf("clear committed remote staging record: %w", err))
+				Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
+				DurationMS: time.Since(started).Milliseconds(),
+			}, connectors.ClassifyOutcomeUnknown("remote_staging_record", map[string]any{
+				"remote_staging_path": tempPath,
+				"recovery_hint":       "Inspect the destination before retrying the upload.",
+			}, fmt.Errorf("clear committed remote staging record: %w", err))
 		}
 	}
 	if options.Progress != nil {
