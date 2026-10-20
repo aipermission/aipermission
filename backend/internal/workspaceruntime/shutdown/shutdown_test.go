@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -414,20 +415,32 @@ func TestCloseRetriesTransferRecoveryBeforeClosingStorage(t *testing.T) {
 		Storage: workspacestorage.New(database, nil, nil, "workspace-transfer-recovery", nil),
 	}
 	var recoverCalls atomic.Int32
+	retryEntered := make(chan struct{})
+	retryRelease := make(chan struct{})
+	release := sync.OnceFunc(func() { close(retryRelease) })
+	t.Cleanup(release)
 	transfer := &transferWorkflowSpy{recover: func(context.Context) error {
 		if recoverCalls.Add(1) == 1 {
 			return errors.New("transient transfer persistence failure")
 		}
+		close(retryEntered)
+		<-retryRelease
 		return nil
 	}}
-	if err := closeWithTimeout(runtime, nil, nil, func() TransferWorkflow { return transfer }, 10*time.Millisecond); err == nil {
-		t.Fatal("transfer persistence failure did not defer storage close")
+	if err := closeWithTimeout(runtime, nil, nil, func() TransferWorkflow { return transfer }, 10*time.Millisecond); !errors.Is(err, ErrShutdownDeferred) {
+		t.Fatalf("transfer persistence failure did not defer storage close: %v", err)
+	}
+	select {
+	case <-retryEntered:
+	case <-time.After(time.Second):
+		t.Fatal("deferred teardown did not retry transfer recovery")
 	}
 	select {
 	case <-storageClosed:
 		t.Fatal("storage closed before transfer persistence recovered")
 	default:
 	}
+	release()
 	select {
 	case <-storageClosed:
 	case <-time.After(time.Second):
