@@ -87,9 +87,18 @@ are not treated as complete native-code CVE coverage.
 
 The frontend Dockerfile upgrades the pinned nginx image's Alpine packages and
 requires `libx11>=1.8.14-r0` for CVE-2026-88806, alongside the existing PCRE2 and
-TIFF minimums. A source regression preserves those package guards and the return
-to unprivileged UID101. Scan the final rebuilt image: package minimums alone do
-not certify that all image dependencies are free of known vulnerabilities.
+TIFF minimums. The unprivileged base is pinned to nginx 1.30.6's immutable image
+digest, preserving its matched nginx modules. It also requires
+`nginx>=1.30.6-r0` for CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205; see the
+[upstream nginx advisories](https://nginx.org/en/security_advisories.html).
+This package floor is not evidence that the application's configuration exposes
+each advisory's prerequisites. A source regression preserves the guards and
+the return to unprivileged UID101. Scan the final rebuilt image: package
+minimums alone do not certify that all image dependencies are free of known
+vulnerabilities.
+Use a fresh vulnerability database for pre-push scans and retain its metadata
+alongside the exact image identity. A still-valid cached database can predate
+new advisories and is not evidence of parity with CI's fresh scan.
 
 ## Disposable Protocol Qualification
 
