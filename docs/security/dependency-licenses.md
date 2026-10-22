@@ -104,6 +104,11 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The subsequent frontend router refresh records React Router 8.5.0 with its
+unchanged MIT declaration. Its optional React type peers match the existing
+React 19.3 type packages; the application retains its existing browser-router
+configuration. Go/native evidence and acknowledged gaps are unchanged.
+
 The post-0.2.72 maintenance updates record MCP's development-only ESLint
 10.13.0 with its unchanged MIT declaration, plus frontend Lucide 1.59.0
 (ISC), ESLint 10.13.0 (MIT) and fake-indexeddb 6.2.6 (Apache-2.0). These
