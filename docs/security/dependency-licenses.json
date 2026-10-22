@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "da3e1af5f48cdff928af192b861e12dfe1cbfafde9527566db5612bc285406a8"
+      "sha256": "e7115e24e2ba703346fdfc541326ebf839f8910887a6bed92595d5ec6b4741a1"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "6045590f432cc107da3a3b749966b145cd56ef5b622af2436a0a611ff5bf5b54"
+      "sha256": "0a118acfea586d983454dd3c0f698e1fa1e719c96fcfba4ea6d6f78e76370838"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "44063127d4fec582620f218a8cc597064468e34aebc5d0bccca9c9bac461c0d5"
+      "metadata_sha256": "5dcf94b6ce8f99602d73d176ad66e3351e558e4cf568e1fcfea66c580483a923"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1781,61 +1781,61 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/parser",
       "name": "@typescript-eslint/parser",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.71.2.tgz",
-      "integrity": "sha512-aTtmZjp/x3gsGHkDs04/1I8kNogBJkpQaeGaN0PfiG43NzDEmW2n+OP5im9wfsvyX0yP1UZWBrAGtDBfH9jEVw==",
-      "metadata_sha256": "f60d40c7b0fefb1468c86d4395ffd48ce8f28e89d9826e9a79322ec768019bc7"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.72.0.tgz",
+      "integrity": "sha512-0O+x3ynciD6zuXb1CKSu165haQV6ey53DKhHHUnujP7U+XlltJG+/keT0Xhd1HXCze+IHf7Tvt39ovyepX/LNw==",
+      "metadata_sha256": "bd5e0d532e5a278767e1c47e59d37c332660ea170a61bad877f44c1fff09a8b0"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/project-service",
       "name": "@typescript-eslint/project-service",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.71.2.tgz",
-      "integrity": "sha512-Pd68GsLVh5ZXlcEccFPdhSOvtHZ/2WU0XsA8zmXOS3F158lVlcTLhfQ6qvtL1RzbMie0Kp8xtbVwAg4nejKPHw==",
-      "metadata_sha256": "d09deaf29a1bcc11fd275891cfa2c919d062b61417d1739d75980c18283d3aed"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.72.0.tgz",
+      "integrity": "sha512-bzHngBbmIgzj6TsTjVUCntGx6FFLgE7mPjpO0PzHycOaZHXqS43XnrkFIHRS16LLr/xO6FHSXG3GJFo/F4bSBQ==",
+      "metadata_sha256": "9dea2feec95aec38d3b7135b0fa6a3a1d2dcd784072b8995c23d4feb242fc69c"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/scope-manager",
       "name": "@typescript-eslint/scope-manager",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.71.2.tgz",
-      "integrity": "sha512-YF4wgg5iUX5Obywoac27B56FhozMNFhdJSbh11H5GBAwmBtfyRhmgTQqW9tRNNmHDvsZ2CX6UGzoz+YfYn2Leg==",
-      "metadata_sha256": "6f116254fa960f387221e6ddf7b2d3710d17fec8f23bfcc352c3a8535273e328"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.72.0.tgz",
+      "integrity": "sha512-JewPyJOYcXBSAS7PIgufscHOwZqhTGyBRiQJhhuDln66tMchxvvt7nJ90JKKIoOelmdHA3kAQbm9cEUHc4JSEA==",
+      "metadata_sha256": "324c388c2df6476bd00e9de582fdc7d0125d4114ef71d69c2ae377108c362d24"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/tsconfig-utils",
       "name": "@typescript-eslint/tsconfig-utils",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.71.2.tgz",
-      "integrity": "sha512-jz49TAWokm/7yWD9/o837nYax9DyALxIPOImdImvVzo6canBCZYzin8zJyqNR5k1j9K1DE0bVvr0XYB+99uAdg==",
-      "metadata_sha256": "114abad0a30cc2209e37c86619e16af723f5f59beb4fbf903fbee9a15033bd0e"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.72.0.tgz",
+      "integrity": "sha512-0vbxCf7xLVPSjcOdm6eQbgViH8EDJ8xnl1laLT9yoqSz2YmcSfSg5Vdl0JUvZf6rcuJ0ZivJIuMD4edTg8obaA==",
+      "metadata_sha256": "d7ab98b5000bf803f727796a9fee8f6e2ea0426f463979a6a997f1cd04dfcd8c"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/types",
       "name": "@typescript-eslint/types",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.71.2.tgz",
-      "integrity": "sha512-y5Ukl3oVp7e/VGxqIoEXoeb/Roj71PAJ4WG/N/RGj+eeDvKRLM15kGr9MijLbN0i03S52zxu31Z98E5gWChJKw==",
-      "metadata_sha256": "a392c02ca881ece79df7051590563556cc6ce42d3c5a73eb4758ce34c6c1d659"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.72.0.tgz",
+      "integrity": "sha512-Adfoy59kxNEjT5E5fnyrp7GpHYuWs8ONbdohu4ez6IU46qDq8LltG90tLmkucZB2uhYL8mqBjtXqGd8yhfjXqQ==",
+      "metadata_sha256": "c6a4bf54edf6a325de8070b68c56d8974d5f777b9919f860073e4cf692d49d10"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/typescript-estree",
       "name": "@typescript-eslint/typescript-estree",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.71.2.tgz",
-      "integrity": "sha512-DgNOEsl4pdYzwSL+N/Cl33tX1Hlw3FvId73LnKXfq7jnrF2viOEn7X+P7RBkkSWCVm92gnWd28GIC5vJuLREeA==",
-      "metadata_sha256": "342db86c669cce17f6710e7072212792b8acbce0067ebf89446f71ae82ab8747"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.72.0.tgz",
+      "integrity": "sha512-gwLfFgWcw15tN2KXDCJvxEOQjPn+P3j/n3eSqkZ5sX4VpW9Cosodr+tWwBZRvJT3TcKx6HnPRGZMCNAiP1Xhug==",
+      "metadata_sha256": "4d73b5f57850bcbb089975b39b7c33ffcf60c1ab03c94d697c13527837419714"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1851,11 +1851,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/visitor-keys",
       "name": "@typescript-eslint/visitor-keys",
-      "version": "8.71.2",
+      "version": "8.72.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.71.2.tgz",
-      "integrity": "sha512-zozlN0UA32bSG2zkKAgQyRYSbEISVoyU6vvkKYo2aSny74D8Jh4e+POkJ6Lk0dlezZi5x7TtD+88Xb06IB8nhg==",
-      "metadata_sha256": "53ddb106dbf333b392059f9400571ba968d82402f6f3647748f07377e20a1584"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.72.0.tgz",
+      "integrity": "sha512-E2mroviasaWecDzTGiGMtuEguuLVOeRggnrIn93CJuxYJzQBHbyymlT08aVQydbBal5538o+JkBKXh2sRuCyIA==",
+      "metadata_sha256": "a7bc1441a833a71c1c36a470f2975ef14305f49f846e9a9f8627423930a94ab8"
     },
     {
       "source": "frontend/package-lock.json",
