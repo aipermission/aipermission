@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "2d7e06d8d1aa6d9110ae5b053ca90c5540afc13ba4fbe89c1822373d001a9520"
+      "sha256": "da3e1af5f48cdff928af192b861e12dfe1cbfafde9527566db5612bc285406a8"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "7f939dafd5f46cd2e6001b4a11754e9ff6f347eddcbcb79ebb8a9b7b8931bdf9"
+      "sha256": "6045590f432cc107da3a3b749966b145cd56ef5b622af2436a0a611ff5bf5b54"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "1f9d8e42e8f09acf3f00f76aacf43ad09ab1978409d00e353e3bcf4ba7aedc9a"
+      "metadata_sha256": "44063127d4fec582620f218a8cc597064468e34aebc5d0bccca9c9bac461c0d5"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3771,11 +3771,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/react-router",
       "name": "react-router",
-      "version": "8.4.0",
+      "version": "8.5.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/react-router/-/react-router-8.4.0.tgz",
-      "integrity": "sha512-JtydAkBvU9UTEe5qNC+POhu+ZBNM7rlKY2IegwXc7Idj7xfRG16x5RZrw3mju+XlqBxfvb2ky9P3jUp9WyWC1g==",
-      "metadata_sha256": "3cf7281c4655e26c977606c110088089368bcdfd20b976974a20586cece0bfd0"
+      "resolved": "https://registry.npmjs.org/react-router/-/react-router-8.5.0.tgz",
+      "integrity": "sha512-9nEd/deifcTJIIcUaNIyQGkyXD0D6QVB9XD2O5GgHpP3xu3U5RXm87YQ8++Wn8JQWgMBM/5+PjWPM/7n7O7WHA==",
+      "metadata_sha256": "11e7e6830b443c7c5321b6aed522e7a44b53a907bcb966c0080070798f4336a5"
     },
     {
       "source": "frontend/package-lock.json",
