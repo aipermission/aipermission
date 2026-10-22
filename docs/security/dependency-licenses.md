@@ -95,6 +95,11 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The post-0.2.72 maintenance update records MCP's development-only ESLint
+10.13.0 with its unchanged MIT declaration. Go/native evidence and the 38
+acknowledged historical gaps are unchanged. This is metadata review, not a
+legal determination.
+
 The 0.2.72 refresh aligns the compiler/parser capture and native builder with
 Go 1.27.3 and records Kafka kmsg 1.15.0's named BSD license evidence. Frontend
 React/Radix, DOMPurify 3.4.17, Lucide 1.58.0, Playwright 1.64.1, Vitest 4.1.12
