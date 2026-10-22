@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "c6cbae7d4b384f2f17f9564e39a4de4227c4a353f827def8ad9b8b5f99b1637c"
+      "sha256": "2d7e06d8d1aa6d9110ae5b053ca90c5540afc13ba4fbe89c1822373d001a9520"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "b2f391f1fddfcd627f4784d8d4a68a90e8a00973fcc9d0f2fd88996b5364b885"
+      "sha256": "7f939dafd5f46cd2e6001b4a11754e9ff6f347eddcbcb79ebb8a9b7b8931bdf9"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "1e618344df74562babe57b9838eb8a0a8f207f89fb8658338a01879ac0ce275e"
+      "metadata_sha256": "1f9d8e42e8f09acf3f00f76aacf43ad09ab1978409d00e353e3bcf4ba7aedc9a"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2471,11 +2471,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.12.0",
+      "version": "10.13.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.12.0.tgz",
-      "integrity": "sha512-npHjrHb2o4ehH3mE+YuxABR+0gyb0aVWCIolgJDArwCiHEIsonBm3ZKjel5b0U5+a+MbEvIyRCGCzD3eKKK2NA==",
-      "metadata_sha256": "fb39d52146a84ca41063b844d5f72a2dbb361465f14ee813395553d2d56ae8a1"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.13.0.tgz",
+      "integrity": "sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==",
+      "metadata_sha256": "dda86a8530c3e6d3bb8270d8b543f25bddf6e30b45ef7201e236f3475a0e8dbd"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2601,11 +2601,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/fake-indexeddb",
       "name": "fake-indexeddb",
-      "version": "6.2.5",
+      "version": "6.2.6",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/fake-indexeddb/-/fake-indexeddb-6.2.5.tgz",
-      "integrity": "sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==",
-      "metadata_sha256": "0ae4891392ebfb07bbc9982028e66e0e4fb34410e3ba305ba5476d4b1d7e7538"
+      "resolved": "https://registry.npmjs.org/fake-indexeddb/-/fake-indexeddb-6.2.6.tgz",
+      "integrity": "sha512-ihhmr0KoET51jT8R4YhbUYuLLvr1qqO6INISygtN16i8loR8kAxtAUr4+EKHTSMjL+lggaAn4OC7DRqzrNgnuQ==",
+      "metadata_sha256": "ab7eba9ff0e1f68a97fe22c7afd071ff1229ebbffc9f502d79605e8b2380a733"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3331,11 +3331,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.58.0",
+      "version": "1.59.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.58.0.tgz",
-      "integrity": "sha512-hXaFNm6mk6QVtBnDGBn1YAs8j2tGUk0A4s/CpclIcczfxeXiW1rdOLVo6zCsoIih9XXsGvDODQerl749a2n7bA==",
-      "metadata_sha256": "cbea83ae9ba6d2b2c5bbfa572ac8c456c5f777ade992dcbf73cf78874cdf7162"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.59.0.tgz",
+      "integrity": "sha512-5qgMyyCPU6OvnKpLS2t693+ZtiqA8oaSweWoUows0BLFKFf6V75m4+CptpmohZHpD5IuOVIBXHBBiv2vpLJmtw==",
+      "metadata_sha256": "8ff71e66be24f26e8bb082178959f2fbac18b4e9d153d2aa4247449bb57981a5"
     },
     {
       "source": "frontend/package-lock.json",

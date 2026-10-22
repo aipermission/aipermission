@@ -95,8 +95,11 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
-The post-0.2.72 maintenance update records MCP's development-only ESLint
-10.13.0 with its unchanged MIT declaration. Go/native evidence and the 38
+The post-0.2.72 maintenance updates record MCP's development-only ESLint
+10.13.0 with its unchanged MIT declaration, plus frontend Lucide 1.59.0
+(ISC), ESLint 10.13.0 (MIT) and fake-indexeddb 6.2.6 (Apache-2.0). These
+declarations are unchanged; Lucide remains a runtime icon dependency while
+ESLint and fake-indexeddb are development-only. Go/native evidence and the 38
 acknowledged historical gaps are unchanged. This is metadata review, not a
 legal determination.
 
