@@ -21,6 +21,15 @@ in the inventory. A behavioral regression checks the actual dependency resolved
 through SDK/Express against IPv4-mapped IPv6 trust subnet spoofing. This does
 not imply that the stdio MCP bridge exposes an Express HTTP server.
 
+The post-0.2.72 MCP lockfile also updates the SDK's transitive `ip-address`
+dependency to 10.7.4 for
+[GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5).
+Its MIT declaration is unchanged. A bounded child-process regression resolves
+the actual dependency through SDK/express-rate-limit and verifies rejection
+of oversized IPv6 zone strings with line terminators, retaining valid IPv4,
+IPv6 and zone handling. This does not establish exposure of the stdio bridge
+to an untrusted HTTP request body.
+
 The frontend's development-only `source-map-js` dependency is locked to 1.2.2
 for [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
 Its BSD-3-Clause declaration is unchanged. A regression resolves the actual

@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "a8ba16653048f5d382665c1d1dc5e4ba3f315a97abf89b070d91713be1f3d0f8"
+      "sha256": "003bf74f2e78672b5dc42e394cd308ec98424e602abff3853f01049903279dfd"
     },
     {
       "path": "scripts/package.json",
@@ -5331,11 +5331,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/ip-address",
       "name": "ip-address",
-      "version": "10.7.2",
+      "version": "10.7.4",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/ip-address/-/ip-address-10.7.2.tgz",
-      "integrity": "sha512-7H/2gFSIitxc0hG3nOI1glS8QLo/EHBFFLk8vEUjXY/xu0AdL8jZ9U1IzO2PUm0d2D/ofQcAifb0g6OBkt8U7w==",
-      "metadata_sha256": "b49e2bbc682a731f6ae85ed3831254302021ba67c0d66709f115f0139120bb6f"
+      "resolved": "https://registry.npmjs.org/ip-address/-/ip-address-10.7.4.tgz",
+      "integrity": "sha512-DWBMKyeM25D70nrIiTkgQth59/G+naKOTep6huF9j+GmeK3DMD60Zvxg5d5qQnz+38AHgou6ean2LECX+lrKDg==",
+      "metadata_sha256": "225facd2d7cff378e2fd7dfe15073906bd3774a1292fd3a667c62bac4aa6686b"
     },
     {
       "source": "packages/mcp/package-lock.json",
