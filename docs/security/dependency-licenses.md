@@ -107,7 +107,9 @@ unchanged.
 The subsequent frontend router refresh records React Router 8.5.0 with its
 unchanged MIT declaration. Its optional React type peers match the existing
 React 19.3 type packages; the application retains its existing browser-router
-configuration. Go/native evidence and acknowledged gaps are unchanged.
+configuration. The development-only TypeScript ESLint parser and its coordinated
+package family are aligned at 8.72.0, retaining their MIT declarations and
+existing lint configuration. Go/native evidence and acknowledged gaps are unchanged.
 
 The post-0.2.72 maintenance updates record MCP's development-only ESLint
 10.13.0 with its unchanged MIT declaration, plus frontend Lucide 1.59.0
