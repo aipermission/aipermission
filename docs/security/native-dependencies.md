@@ -100,6 +100,14 @@ Use a fresh vulnerability database for pre-push scans and retain its metadata
 alongside the exact image identity. A still-valid cached database can predate
 new advisories and is not evidence of parity with CI's fresh scan.
 
+The frontend also requires `brotli-libs>=1.2.1-r0` for CVE-2026-111497. This
+native decoder dependency is separate from the Go Brotli module and Node.js's
+bundled decoder; patching one does not patch the others. See the
+[upstream Brotli releases](https://github.com/google/brotli/releases).
+The reviewed Node.js builder is 24.22.1, and MCP startup separately enforces
+patched Node release lines. A loaded library or advisory match is not proof
+that the application exposes the decoder's malformed-input prerequisites.
+
 ## Disposable Protocol Qualification
 
 The conformance-only Docker VM uses Docker 28.5.1 from its immutable image
