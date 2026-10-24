@@ -354,6 +354,12 @@ from `list_connector_targets` and no longer authorize connector actions. Target
 visibility is permission-scoped, not a live health check; treat action execution
 errors as the current reachability signal.
 
+The bridge exposes stdio, not the SDK's HTTP server. Its locked SDK dependency
+tree nevertheless includes Express/body-parser; body-parser is patched to
+2.4.0 for [CVE-2026-111181](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
+Regression fixtures exercise compressed requests and decoder teardown through
+the SDK-resolved dependency without adding an application HTTP listener.
+
 ## License
 
 AGPL-3.0-only from v0.1.14 onward.
