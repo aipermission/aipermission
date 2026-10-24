@@ -67,6 +67,12 @@ AIPermission is pre-1.0 developer software. Read the
 and [credential boundary](docs/security/credential-boundary.md) before using it
 with important systems.
 
+Security updates cover both gateway images and the MCP client's Node.js
+runtime. Use patched Node 22.23.4+, 24.22.1+, or 26.12.1+ for MCP, then restart
+the client after upgrading its interpreter. See the [changelog](CHANGELOG.md)
+and [native dependency inventory](docs/security/native-dependencies.md), including
+the explicitly tracked SQLCipher upstream follow-up.
+
 ## Why
 
 Without a gateway, AI-assisted operations often alternate between generated
