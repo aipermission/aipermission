@@ -76,6 +76,11 @@ the same canonical identities are used for exact response validation. Empty
 identities are rejected before dispatch. Connector-specific input is not trimmed
 by the MCP bridge: opaque keys and resource names retain their exact value.
 
+Gateway responses are validated with patched Zod v4 using failure-first parsing
+so malformed collections do not require an error object for every invalid
+element. Connector-owned input and output remain opaque; this does not add
+connector-specific schemas to the bridge or weaken strict shared envelopes.
+
 For config updates, setup detects outside edits observed before atomic replacement
 and stops rather than knowingly overwriting them. Review the current file and
 retry after closing other editors. This does not provide atomic compare-and-swap

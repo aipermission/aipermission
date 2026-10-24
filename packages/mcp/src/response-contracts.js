@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { connectorActionStatuses, connectorRetryClasses, connectorActionMaximumInputBytes } from "./generated-connector-contract.js";
 
-const positiveID = z.number().int().positive();
-const nonNegativeInteger = z.number().int().nonnegative();
+// Array early exit requires non-continuable element failures, including refinements.
+const positiveID = z.number().int({ abort: true }).positive({ abort: true });
+const nonNegativeInteger = z.number().int({ abort: true }).nonnegative({ abort: true });
 const forbiddenMetadataField = /(?:^|_)(?:credential|password|passphrase|private_key|secret|token|api_key|access_key)(?:$|_)/;
 
 function normalizeMetadataKey(key) {
@@ -18,14 +19,14 @@ function rejectSecretMetadataKeys(value, context) {
   while (pending.length > 0) {
     const current = pending.pop();
     if (Array.isArray(current)) {
-      pending.push(...current);
+      for (const item of current) pending.push(item);
       continue;
     }
     if (!current || typeof current !== "object") continue;
     for (const [key, item] of Object.entries(current)) {
       const normalized = normalizeMetadataKey(key);
       if (forbiddenMetadataField.test(normalized)) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "connector metadata contains a forbidden secret field" });
+        context.addIssue({ code: "custom", message: "connector metadata contains a forbidden secret field", continue: false });
         return;
       }
       pending.push(item);
@@ -33,7 +34,7 @@ function rejectSecretMetadataKeys(value, context) {
   }
 }
 
-const connectorMetadataSchema = z.record(z.unknown()).superRefine(rejectSecretMetadataKeys);
+const connectorMetadataSchema = z.record(z.string(), z.unknown()).superRefine(rejectSecretMetadataKeys);
 
 const actionGrantSchema = z
   .object({
@@ -115,7 +116,7 @@ const actionDefinitionSchema = z
     sensitive_input_fields: z.array(z.string()).optional(),
     output_hint: outputHintSchema.optional(),
     retry_policy: retryPolicySchema,
-    max_input_bytes: positiveID.max(connectorActionMaximumInputBytes),
+    max_input_bytes: positiveID.max(connectorActionMaximumInputBytes, { abort: true }),
   })
   .strict();
 
@@ -130,14 +131,14 @@ const connectorActionRequestSchema = z
     connector_kind: z.string(),
     profile_label: z.string().optional(),
     action_name: z.string(),
-    input: z.record(z.unknown()).optional(),
+    input: z.record(z.string(), z.unknown()).optional(),
     // Connector-owned output is intentionally opaque. The gateway credential
     // boundary redacts values; this schema owns only the shared MCP envelope.
     output: z.unknown().optional(),
     display_text: z.string().optional(),
     error: z.string().optional(),
     retry_policy: retryPolicySchema,
-    retry_after_seconds: nonNegativeInteger.max(3600).optional(),
+    retry_after_seconds: nonNegativeInteger.max(3600, { abort: true }).optional(),
     assistant_hint: z.string().optional(),
     output_withheld: z.boolean().optional(),
     replayed: z.boolean().optional(),
@@ -146,13 +147,13 @@ const connectorActionRequestSchema = z
   .superRefine((value, context) => {
     if (value.output_withheld) {
       if (value.input !== undefined || value.output !== undefined || value.display_text !== undefined || value.error !== undefined) {
-        context.addIssue({ code: z.ZodIssueCode.custom, message: "withheld action output must not contain request or result content" });
+        context.addIssue({ code: "custom", message: "withheld action output must not contain request or result content", continue: false });
       }
     } else if (!value.target_ref || !value.connector_kind || !value.action_name) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "action response identity is required" });
+      context.addIssue({ code: "custom", message: "action response identity is required", continue: false });
     }
   });
-const connectorActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1) }).strict();
+const connectorActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1, { abort: true }) }).strict();
 const connectorActionCallSchema = z.union([connectorActionRequestSchema, connectorActionStoppedSchema]);
 
 const vaultItemSchema = z
@@ -242,13 +243,13 @@ const vaultActionStatuses = ["approval_pending", "running", "completed", "failed
 const vaultActionRecordedShape = {
   status: z.enum(vaultActionStatuses),
   request_id: positiveID,
-  project_ref: z.string().min(1),
+  project_ref: z.string().min(1, { abort: true }),
   reason: z.string().optional(),
   created_at: z.string().optional(),
   expires_at: z.string().optional(),
   secret_values_returned: z.literal(false),
   output_withheld: z.literal(true).optional(),
-  retry_after_seconds: nonNegativeInteger.max(3600).optional(),
+  retry_after_seconds: nonNegativeInteger.max(3600, { abort: true }).optional(),
   assistant_hint: z.string().optional(),
   error: z.string().optional(),
 };
@@ -273,10 +274,10 @@ const vaultActionRecordedSchema = z
   ])
   .superRefine((value, context) => {
     if (value.output_withheld && value.output !== undefined) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "withheld Vault output must not contain result content" });
+      context.addIssue({ code: "custom", message: "withheld Vault output must not contain result content", continue: false });
     }
   });
-const vaultActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1) }).strict();
+const vaultActionStoppedSchema = z.object({ status: z.literal("stopped"), error: z.string().min(1, { abort: true }) }).strict();
 const vaultActionResponseSchema = z.union([vaultActionRecordedSchema, vaultActionStoppedSchema]);
 
 export const responseContracts = Object.freeze({
@@ -290,7 +291,7 @@ export const responseContracts = Object.freeze({
 });
 
 export function projectGatewaySuccess(schema, value, expected = undefined) {
-  const result = schema.safeParse(value);
+  const result = schema.safeParse(value, { abortEarly: true });
   if (!result.success) {
     throw gatewayContractError();
   }

@@ -100,7 +100,7 @@ server.tool(
   {
     target_ref: connectorIdentifierSchema.describe("Target ref from list_connector_targets."),
     action_name: connectorIdentifierSchema.describe("Action name from get_connector_actions."),
-    input: z.record(z.unknown()).optional().describe("Connector-specific action input."),
+    input: z.record(z.string(), z.unknown()).optional().describe("Connector-specific action input."),
     reason: z.string().optional().describe("Why this connector action is needed."),
     idempotency_key: idempotencyKeySchema,
   },
