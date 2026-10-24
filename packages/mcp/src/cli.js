@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { getClientCatalog } from "./client-registry.js";
+import { assertSupportedNodeRuntime } from "./runtime-policy.js";
+
+assertSupportedNodeRuntime();
 
 const command = process.argv[2] || "serve";
 

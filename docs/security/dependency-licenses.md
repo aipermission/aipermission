@@ -104,6 +104,10 @@ unchanged.
 
 ## Evidence Gaps and Limits
 
+The 0.2.73 runtime refresh changes the MCP root's engine metadata to patched
+Node.js release lines. Package identities and license declarations are unchanged;
+Go/native evidence and all acknowledged historical gaps are preserved.
+
 The subsequent frontend router refresh records React Router 8.5.0 with its
 unchanged MIT declaration. Its optional React type peers match the existing
 React 19.3 type packages; the application retains its existing browser-router

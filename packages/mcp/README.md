@@ -18,7 +18,8 @@ target/profile/action permission model as future connectors.
 
 `@aipermission/mcp` is the official MCP bridge package. The unscoped `aipermission` npm package is only a placeholder that points users here.
 
-The bridge requires Node.js 20+ and npm/npx in the AI client's child-process
+The bridge requires a patched supported Node.js release: 22.23.4+, 24.22.1+,
+or 26.12.1+, with npm/npx in the AI client's child-process
 environment. GUI clients and native Windows shells can use a different `PATH`
 from your interactive terminal.
 
@@ -58,11 +59,17 @@ npx -y @aipermission/mcp doctor --client codex --scope user
 The generated MCP config contains a bearer token. Keep it private.
 
 Repository builds use the pinned Node.js toolchain. The published MCP runtime
-supports Node.js 20 and newer; `npm test` also exercises the packaged stdio
-bridge on exactly Node.js 20.0.0 in Linux x64 CI using a checksum-pinned official
+supports the patched 22, 24 and 26 release lines listed above, and newer major
+versions. Node.js 20, 21, 23, 25 and older patches are rejected before gateway
+access. `npm test` also exercises the packaged stdio
+bridge on exactly Node.js 22.23.4 in Linux x64 CI using a checksum-pinned official
 archive. This smoke verifies protocol dispatch and withheld-response handling,
 not every operating system or Node minor version. Use a maintained Node release
-for normal operation.
+for normal operation. Node.js 24.22.1 is recommended. After updating Node,
+restart the AI client so its MCP child processes inherit the updated executable;
+upgrading the npm package alone does not replace an already running Node process.
+These runtime floors include the
+[October 2026 Node.js security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
 
 Connector target references and action names are trimmed before HTTP dispatch;
 the same canonical identities are used for exact response validation. Empty

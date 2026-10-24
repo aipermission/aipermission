@@ -101,7 +101,7 @@ through MCP or the normal REST API.
 Requirements:
 
 - Docker with Docker Compose
-- Node.js 20+ with npm/npx when using the MCP bridge or developing its package
+- Patched Node.js 22.23.4+, 24.22.1+, or 26.12.1+ with npm/npx for the MCP bridge; Node.js 24.22.1 is the reviewed development toolchain
 
 Start from a full Git checkout so version pinning and repository verification
 metadata remain available:

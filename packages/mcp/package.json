@@ -39,12 +39,12 @@
     "dev": "node src/cli.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
   "devEngines": {
     "runtime": {
       "name": "node",
-      "version": ">=20.19.0",
+      "version": "^22.23.4 || ^24.22.1 || >=26.12.1",
       "onFail": "error"
     }
   },

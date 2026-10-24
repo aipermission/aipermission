@@ -5,11 +5,12 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { minimumRuntimeVersions, supportedNodeEngines } from "../src/runtime-policy.js";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-const version = "20.0.0";
-const archiveHash = "9e512f1f1cadb3a5e37a10aa2d5e632f93aaf9f37165803e2ed981009970a3d7";
-assert.equal(JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8")).engines.node, ">=20");
+const version = minimumRuntimeVersions[0];
+const archiveHash = "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce";
+assert.equal(JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8")).engines.node, supportedNodeEngines);
 
 // Ubuntu CI exercises the published runtime floor, independently of build tooling.
 if (process.platform !== "linux" || process.arch !== "x64") {

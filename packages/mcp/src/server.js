@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+import { assertSupportedNodeRuntime } from "./runtime-policy.js";
+
+assertSupportedNodeRuntime();
+
 if (process.argv[2] === "init") {
   const { runInit } = await import("./init.js");
   await runInit(process.argv.slice(3));
