@@ -30,6 +30,13 @@ of oversized IPv6 zone strings with line terminators, retaining valid IPv4,
 IPv6 and zone handling. This does not establish exposure of the stdio bridge
 to an untrusted HTTP request body.
 
+The 0.2.73 review records Zod 4.6.7 (MIT), body-parser 2.4.0 (MIT), its required
+content-type 2.1.0 / iconv-lite 0.7.3 (MIT) and qs 6.16.1 (BSD-3-Clause), and
+fast-uri 3.1.9 (BSD-3-Clause). Registry integrity and location identities are
+retained; these dependency updates do not resolve the separately documented
+SQLCipher native follow-up. Go evidence and acknowledged license-evidence gaps
+are preserved rather than recaptured from a different local cache.
+
 The frontend's development-only `source-map-js` dependency is locked to 1.2.2
 for [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
 Its BSD-3-Clause declaration is unchanged. A regression resolves the actual
@@ -103,6 +110,16 @@ evidence also fail. The existing hygiene command invokes this check through
 unchanged.
 
 ## Evidence Gaps and Limits
+
+The 0.2.73 runtime refresh changes the MCP root's engine metadata to patched
+Node.js release lines. Package identities and license declarations are unchanged;
+Go/native evidence and all acknowledged historical gaps are preserved.
+
+The same security update records Zod 4.6.7 for the MCP runtime and frontend
+development tooling, retaining its MIT declaration. The MCP uses v4 record
+schemas without a legacy adapter; failure-first response validation retains
+the existing secret, identity and withheld-output contracts. This is reviewed
+dependency metadata, not a claim of legal compliance or universal DoS resistance.
 
 The subsequent frontend router refresh records React Router 8.5.0 with its
 unchanged MIT declaration. Its optional React type peers match the existing

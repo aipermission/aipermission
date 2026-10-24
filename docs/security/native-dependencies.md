@@ -21,7 +21,7 @@ references this native record without claiming native license compliance.
 | SQLCipher runtime                             | `4.16.0 community`                                   | Verified with `PRAGMA cipher_version` in backend tests      |
 | Embedded SQLite runtime                       | `3.53.1`                                             | Verified with `sqlite_version()` in backend tests           |
 | OpenSSL provider                              | `3.x` from the digest-pinned Debian image repository | Exact package version is captured in the image SBOM         |
-| Latest official SQLCipher reviewed for update | `4.19.0`, commit `c4b275a47932...`                   | Reviewed 2026-09-17; not active until the wrapper embeds it |
+| Latest official SQLCipher reviewed for update | `4.19.0`, commit `c4b275a47932...`                   | Reviewed 2026-10-24; not active until the wrapper embeds it |
 
 The backend does not rely on an untracked system SQLCipher library. The wrapper
 module contains the native SQLite/SQLCipher amalgamation compiled into the Go
@@ -41,17 +41,31 @@ The committed SQLCipher 4.4.2 fixture contains synthetic data only. Its checked
 hash protects the compatibility baseline from accidental regeneration. The
 active runtime must open it before an update can be accepted.
 
-The 4.19.0 upstream review checked the release advisory and the GitHub security
-advisory pages for both the wrapper and official SQLCipher. It found no known
-advisory applicable to AIPermission's use of the pin. The two upstream low-risk
-fixes concern attacker-controlled aliases reaching `sqlcipher_export()` and an
-undocumented `hexkey` URI parameter. AIPermission uses neither API surface. This
-is a point-in-time maintainer review, not a claim that `govulncheck` covers the
-embedded C code. The pinned Go wrapper has not advanced and still embeds
-SQLCipher 4.16.0, so this review does not change AIPermission's active runtime
-or database compatibility baseline. The runtime should move when a reviewed
-wrapper commit embeds the maintenance release and passes the encrypted fixture
-suite.
+The 2026-10-24 review checked the release advisory, the GitHub advisory pages,
+the pinned amalgamation, and the wrapper's unchanged source commit. Two known
+native fixes remain absent from the embedded SQLCipher 4.16.0 runtime:
+
+- [Malformed `hexkey` handling](https://github.com/sqlcipher/sqlcipher/commit/0c1c46a84620766483395543c66a71181fb33150)
+  can create an unencrypted database instead of rejecting an invalid key.
+- [Schema alias escaping in `sqlcipher_export()`](https://github.com/sqlcipher/sqlcipher/commit/4abaa9cd85d2c0e3344e6029c90a6e6806d36673)
+  protects callers that supply attacker-controlled attached schema names.
+
+AIPermission uses neither API surface: the opener encodes the filename and
+`_key` passphrase separately, and snapshots use parameter-bound `VACUUM INTO ?`.
+`sqlcipher_security_test.go` exercises real create/import/migration entry points
+with URI-option-looking filenames and passwords, adversarial snapshot names,
+encrypted headers, exact-password reopen, and rekey isolation. These tests
+protect the application boundary; they do **not** patch the native library.
+
+**Open native-update follow-up:** consume a reviewed wrapper commit embedding
+these upstream fixes once available, then rerun the encrypted fixture suite.
+No patched artifact is currently published on the selected wrapper branch.
+Maintainers accepted this limited deferral for v0.2.73; arbitrary SQL access or
+future use of either affected API requires a new assessment before release.
+The inventory's `no-known-applicable-advisory` result describes current
+application reachability, not absence of known native issues. Neither
+`govulncheck` nor the container scan certifies the embedded C code. This release
+does not change the storage runtime or database compatibility baseline.
 
 ## Update Policy
 
@@ -99,6 +113,14 @@ vulnerabilities.
 Use a fresh vulnerability database for pre-push scans and retain its metadata
 alongside the exact image identity. A still-valid cached database can predate
 new advisories and is not evidence of parity with CI's fresh scan.
+
+The frontend also requires `brotli-libs>=1.2.1-r0` for CVE-2026-111497. This
+native decoder dependency is separate from the Go Brotli module and Node.js's
+bundled decoder; patching one does not patch the others. See the
+[upstream Brotli releases](https://github.com/google/brotli/releases).
+The reviewed Node.js builder is 24.22.1, and MCP startup separately enforces
+patched Node release lines. A loaded library or advisory match is not proof
+that the application exposes the decoder's malformed-input prerequisites.
 
 ## Disposable Protocol Qualification
 

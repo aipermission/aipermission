@@ -9,7 +9,7 @@ Prerequisites:
 1. The gateway is running with `docker compose up`.
 2. An API token exists in the web UI.
 3. The token has at least one connector target/profile/action permission.
-4. Node.js 20+ and npm/npx are available in the AI client's child-process
+4. Patched Node.js 22.23.4+, 24.22.1+, or 26.12.1+ and npm/npx are available in the AI client's child-process
    environment. GUI applications, WSL, and native Windows shells can have a
    different `PATH` from the terminal where setup is run.
 
@@ -267,7 +267,7 @@ home directory and takes precedence. Codex project config is loaded only after
 the client trusts that project.
 
 On native Windows, some clients cannot spawn `npx` directly even when it works
-in an interactive terminal. First make Node.js 20+ visible to the GUI process
+in an interactive terminal. First make a supported patched Node.js release visible to the GUI process
 and restart that client. If it still reports `spawn npx ENOENT`, use `init --print`
 and adapt the server command to `cmd` with arguments beginning
 `["/d", "/s", "/c", "npx", "-y", "@aipermission/mcp@VERSION"]`.

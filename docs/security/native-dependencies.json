@@ -14,7 +14,7 @@
     "reviewed_upstream_tag": "v4.19.0",
     "reviewed_upstream_runtime_version": "4.19.0",
     "reviewed_upstream_commit": "c4b275a47932888216bade83aff2bbc73df0ff85",
-    "reviewed_upstream_date": "2026-09-17",
+    "reviewed_upstream_date": "2026-10-24",
     "review_max_age_days": 45,
     "release_review_sources": [
       "https://www.zetetic.net/blog/2026/09/08/sqlcipher-4.19.0-release/",

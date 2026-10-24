@@ -18,7 +18,8 @@ target/profile/action permission model as future connectors.
 
 `@aipermission/mcp` is the official MCP bridge package. The unscoped `aipermission` npm package is only a placeholder that points users here.
 
-The bridge requires Node.js 20+ and npm/npx in the AI client's child-process
+The bridge requires a patched supported Node.js release: 22.23.4+, 24.22.1+,
+or 26.12.1+, with npm/npx in the AI client's child-process
 environment. GUI clients and native Windows shells can use a different `PATH`
 from your interactive terminal.
 
@@ -58,16 +59,27 @@ npx -y @aipermission/mcp doctor --client codex --scope user
 The generated MCP config contains a bearer token. Keep it private.
 
 Repository builds use the pinned Node.js toolchain. The published MCP runtime
-supports Node.js 20 and newer; `npm test` also exercises the packaged stdio
-bridge on exactly Node.js 20.0.0 in Linux x64 CI using a checksum-pinned official
+supports the patched 22, 24 and 26 release lines listed above, and newer major
+versions. Node.js 20, 21, 23, 25 and older patches are rejected before gateway
+access. `npm test` also exercises the packaged stdio
+bridge on exactly Node.js 22.23.4 in Linux x64 CI using a checksum-pinned official
 archive. This smoke verifies protocol dispatch and withheld-response handling,
 not every operating system or Node minor version. Use a maintained Node release
-for normal operation.
+for normal operation. Node.js 24.22.1 is recommended. After updating Node,
+restart the AI client so its MCP child processes inherit the updated executable;
+upgrading the npm package alone does not replace an already running Node process.
+These runtime floors include the
+[October 2026 Node.js security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
 
 Connector target references and action names are trimmed before HTTP dispatch;
 the same canonical identities are used for exact response validation. Empty
 identities are rejected before dispatch. Connector-specific input is not trimmed
 by the MCP bridge: opaque keys and resource names retain their exact value.
+
+Gateway responses are validated with patched Zod v4 using failure-first parsing
+so malformed collections do not require an error object for every invalid
+element. Connector-owned input and output remain opaque; this does not add
+connector-specific schemas to the bridge or weaken strict shared envelopes.
 
 For config updates, setup detects outside edits observed before atomic replacement
 and stops rather than knowingly overwriting them. Review the current file and
@@ -341,6 +353,15 @@ gateway UI. Connector permissions may be temporary; expired grants are omitted
 from `list_connector_targets` and no longer authorize connector actions. Target
 visibility is permission-scoped, not a live health check; treat action execution
 errors as the current reachability signal.
+
+The bridge exposes stdio, not the SDK's HTTP server. Its locked SDK dependency
+tree nevertheless includes Express/body-parser; body-parser is patched to
+2.4.0 for [CVE-2026-111181](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
+Regression fixtures exercise compressed requests and decoder teardown through
+the SDK-resolved dependency without adding an application HTTP listener.
+The SDK's Ajv dependency also resolves patched fast-uri 3.1.9. Its regressions
+cover scheme spoofing, ambiguous authorities, relative resolution, and suffix
+serialization; this is distinct from the bridge's own loopback URL validation.
 
 ## License
 
