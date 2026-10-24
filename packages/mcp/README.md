@@ -359,6 +359,9 @@ tree nevertheless includes Express/body-parser; body-parser is patched to
 2.4.0 for [CVE-2026-111181](https://github.com/expressjs/body-parser/security/advisories/GHSA-27r3-jxmh-p828).
 Regression fixtures exercise compressed requests and decoder teardown through
 the SDK-resolved dependency without adding an application HTTP listener.
+The SDK's Ajv dependency also resolves patched fast-uri 3.1.9. Its regressions
+cover scheme spoofing, ambiguous authorities, relative resolution, and suffix
+serialization; this is distinct from the bridge's own loopback URL validation.
 
 ## License
 

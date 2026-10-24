@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "117fee07f36c7aceaef7cedba82a7c8b91d362fe764cd9401ec8e47d7ac52931"
+      "sha256": "de907b3b1b93f5f5b9096ce63b53a6142f4d3617b80d50e75160dd8085b0dccf"
     },
     {
       "path": "scripts/package.json",
@@ -5091,11 +5091,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/fast-uri",
       "name": "fast-uri",
-      "version": "3.1.8",
+      "version": "3.1.9",
       "declared_license": "BSD-3-Clause",
-      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.8.tgz",
-      "integrity": "sha512-GZMtZUTNRpOVIECoXwLNZS5xUGE+mVNbTB8h/7Rwh2TFWcBQiPzTgyZi05BF9UMZKkLJv8XBRJTlU7zg8+ZfMg==",
-      "metadata_sha256": "d3954e0751648ef1d1b2dcad691d355635be8e0e95d3c5cd6ed885ec8dbad4c8"
+      "resolved": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.9.tgz",
+      "integrity": "sha512-hS/0Wt3Ya043oKXs0sIxrMpKQITXhMLIrVAKKXi4gozGC9v7YRWVnXIZzjNPTO02M9BdxLCWqK1yRXgNziVyJQ==",
+      "metadata_sha256": "cb21aa06cc45b5a081a6ad0ae14fad8ebc326c741e3ad5711e09264252a7e7b5"
     },
     {
       "source": "packages/mcp/package-lock.json",
