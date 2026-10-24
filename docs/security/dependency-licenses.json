@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "7b3158fc464d25fba3fe80ec41b0376e847cad6c948f048ae1de262f2ba9db87"
+      "sha256": "8756b95803d6e069ca51a3d3418a9880ab283aa234d66733aedc2f8e9a23b692"
     }
   ],
   "npm": [
@@ -7780,7 +7780,7 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "7b3158fc464d25fba3fe80ec41b0376e847cad6c948f048ae1de262f2ba9db87"
+    "sha256": "8756b95803d6e069ca51a3d3418a9880ab283aa234d66733aedc2f8e9a23b692"
   },
   "review": {
     "status": "metadata-reviewed",
