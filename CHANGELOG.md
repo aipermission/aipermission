@@ -9,6 +9,42 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.73] - 2026-10-24
+
+### Security
+
+- MCP requires patched Node.js release lines: 22.23.4+, 24.22.1+, or 26.12.1+;
+  unsupported runtimes fail before gateway access. Contributor, CI and builder pins use
+  Node.js 24.22.1.
+- The unprivileged frontend runtime pins nginx 1.30.6 for CVE-2026-15176, CVE-2026-93479
+  and CVE-2026-97205, and requires native Brotli 1.2.1-r0 for CVE-2026-111497.
+- MCP uses patched Zod 4.6.7 with failure-first gateway validation and record schemas
+  compatible with the SDK. The frontend's development-only Zod copy is aligned.
+- Patched the SDK dependency tree's body-parser to 2.4.0, fast-uri to 3.1.9 and
+  ip-address to 10.7.4. Isolated regressions cover decoder teardown, URI ambiguity and
+  oversized IPv6 zone input without adding an HTTP server to the stdio bridge.
+
+### Maintenance
+
+- Reviewed frontend router/icon and MCP ESLint/TypeScript ESLint metadata updates retain
+  the dependency license inventory and maintainer-authored history.
+- Added encrypted storage boundary tests for URI-option-looking filenames and passwords,
+  adversarial snapshot names, exact-password reopen and rekey isolation.
+
+### Notes
+
+- Upgrade the Node.js interpreter used by your MCP client before installing this
+  package, then restart the client. An already running client does not adopt a newly
+  installed interpreter automatically.
+- SQLCipher remains 4.16.0: the selected wrapper has no published patched artifact. Two
+  known native fixes are not reachable through current application APIs;
+  application-boundary tests are not a native patch. The upstream update remains
+  explicitly tracked in the native dependency documentation.
+- AIPermission remains local-only, single-user and developer-focused. No connector,
+  database schema migration or permission change is introduced. Back up the encrypted
+  database before upgrading.
+- The MCP package must be published separately after the GitHub release.
+
 ## [0.2.72] - 2026-10-20
 
 ### Security

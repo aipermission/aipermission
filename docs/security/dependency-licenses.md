@@ -30,6 +30,13 @@ of oversized IPv6 zone strings with line terminators, retaining valid IPv4,
 IPv6 and zone handling. This does not establish exposure of the stdio bridge
 to an untrusted HTTP request body.
 
+The 0.2.73 review records Zod 4.6.7 (MIT), body-parser 2.4.0 (MIT), its required
+content-type 2.1.0 / iconv-lite 0.7.3 (MIT) and qs 6.16.1 (BSD-3-Clause), and
+fast-uri 3.1.9 (BSD-3-Clause). Registry integrity and location identities are
+retained; these dependency updates do not resolve the separately documented
+SQLCipher native follow-up. Go evidence and acknowledged license-evidence gaps
+are preserved rather than recaptured from a different local cache.
+
 The frontend's development-only `source-map-js` dependency is locked to 1.2.2
 for [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q).
 Its BSD-3-Clause declaration is unchanged. A regression resolves the actual
