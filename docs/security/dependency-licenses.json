@@ -19,11 +19,11 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "f45f96a5c320edcd6e977b562e207d9f06a2a2b1e67fa96e683b4adc7c7f5874"
+      "sha256": "096c6c927e4fd1e000aaf52090931f0d37fe3e589e36d2e5138eeb727602eb7c"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "003bf74f2e78672b5dc42e394cd308ec98424e602abff3853f01049903279dfd"
+      "sha256": "5613d88a2b86544d4e0f4eb6ab27d34529a13a1f0c08249ce17b8d230c881a36"
     },
     {
       "path": "scripts/package.json",
@@ -4375,7 +4375,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "4437424abd2944cd1e96b28fc4f49a342e64be6f8cc1aec05d81b10dff98f63c"
+      "metadata_sha256": "c8248c85ae2fbdd3511e5ad1b6d55b65d20c449d22c4e8ee6a50e3c6029f14d8"
     },
     {
       "source": "packages/mcp/package-lock.json",

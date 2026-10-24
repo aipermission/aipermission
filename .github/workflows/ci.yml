@@ -24,7 +24,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
           cache: npm
           cache-dependency-path: scripts/package-lock.json
       - name: Install repository verification dependencies
@@ -92,7 +92,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
           cache: npm
           cache-dependency-path: scripts/package-lock.json
       - uses: ./.github/actions/setup-backend-native
@@ -149,7 +149,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
       - name: Database ownership behavior
         working-directory: backend
         run: node ../scripts/ci/windows-runtime-tests.js
@@ -166,7 +166,7 @@ jobs:
           cache-dependency-path: backend/go.sum
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
       - name: Catalog move behavior
         working-directory: backend
         run: node ../scripts/ci/darwin-runtime-tests.js
@@ -182,7 +182,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
@@ -273,7 +273,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
           cache: npm
           cache-dependency-path: packages/mcp/package-lock.json
       - name: Install
@@ -308,7 +308,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
           cache: npm
           cache-dependency-path: packages/mcp/package-lock.json
       - name: Install
@@ -335,7 +335,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         with:
-          node-version: 24.22.0
+          node-version: 24.22.1
       - name: Pack dry run
         working-directory: packages/npm-placeholder
         run: npm pack --dry-run
