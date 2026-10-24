@@ -108,6 +108,12 @@ The 0.2.73 runtime refresh changes the MCP root's engine metadata to patched
 Node.js release lines. Package identities and license declarations are unchanged;
 Go/native evidence and all acknowledged historical gaps are preserved.
 
+The same security update records Zod 4.6.7 for the MCP runtime and frontend
+development tooling, retaining its MIT declaration. The MCP uses v4 record
+schemas without a legacy adapter; failure-first response validation retains
+the existing secret, identity and withheld-output contracts. This is reviewed
+dependency metadata, not a claim of legal compliance or universal DoS resistance.
+
 The subsequent frontend router refresh records React Router 8.5.0 with its
 unchanged MIT declaration. Its optional React type peers match the existing
 React 19.3 type packages; the application retains its existing browser-router

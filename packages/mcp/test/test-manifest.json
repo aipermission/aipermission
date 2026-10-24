@@ -21,6 +21,7 @@
     "test/security/ip-address.test.js",
     "test/security/proxy-address.test.js",
     "test/security/runtime.test.js",
+    "test/security/zod.test.js",
     "test/server.test.js",
     "test/skill-drift.test.js",
     "test/test-manifest-policy.test.js",
@@ -30,7 +31,7 @@
     "test/transport/origin.test.js",
     "test/transport/withheld-output.test.js"
   ],
-  "minimumTests": 254,
+  "minimumTests": 257,
   "maximumSkipped": 1,
   "windowsACLTests": [
     "Windows ACL helpers use absolute System32 executables",

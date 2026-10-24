@@ -15,15 +15,15 @@
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "0a118acfea586d983454dd3c0f698e1fa1e719c96fcfba4ea6d6f78e76370838"
+      "sha256": "dfd2503bfd7830caaf6ca698e03abe0396625095e1addc3020a26686c985bbdb"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "096c6c927e4fd1e000aaf52090931f0d37fe3e589e36d2e5138eeb727602eb7c"
+      "sha256": "2f82ab20dc94259f7635632bfe6c38efdb944bfcd34c072cb41458bcd64fd4df"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "5613d88a2b86544d4e0f4eb6ab27d34529a13a1f0c08249ce17b8d230c881a36"
+      "sha256": "f5f077b1aced3eee666ee8b8250018d067c6a822e648713831bd47254c6e44e5"
     },
     {
       "path": "scripts/package.json",
@@ -4351,11 +4351,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/zod",
       "name": "zod",
-      "version": "4.4.3",
+      "version": "4.6.7",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/zod/-/zod-4.4.3.tgz",
-      "integrity": "sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==",
-      "metadata_sha256": "6ad4a055b5f34f9bd8f88f72051a1e8582af8bba2a23fb56993a442afd4a7508"
+      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.7.tgz",
+      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==",
+      "metadata_sha256": "b5fcbc9789a211623ce4cca5c147cd46d6dd5e55af6651ee5c687a5aa1988156"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4375,7 +4375,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "c8248c85ae2fbdd3511e5ad1b6d55b65d20c449d22c4e8ee6a50e3c6029f14d8"
+      "metadata_sha256": "88414cc83d7f3cce3e65ca81ccb653a95888d662356514545c324f7cfc170c69"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -6031,11 +6031,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/zod",
       "name": "zod",
-      "version": "3.25.76",
+      "version": "4.6.7",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/zod/-/zod-3.25.76.tgz",
-      "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==",
-      "metadata_sha256": "28331a9899da610a235a3a885d35b231f8513a6f3174cd430eebe83faa38696a"
+      "resolved": "https://registry.npmjs.org/zod/-/zod-4.6.7.tgz",
+      "integrity": "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==",
+      "metadata_sha256": "f7582a83385473a8baab3af04b0d78984bb1530880cf9921773e48a265408e11"
     },
     {
       "source": "packages/mcp/package-lock.json",
