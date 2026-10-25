@@ -6,15 +6,14 @@ import {
   createTargetProfileLifecycle,
   defaultTargetProfile,
 } from "../_shared/target-profile-lifecycle";
-import type { RedisConfig, RedisModelForm, RedisPresentationTarget, RedisProfile, RedisTarget } from "./form-types";
-import type { UsernameCredentialForm } from "../_shared/connector-form-types";
+import type { RedisConfig, RedisCredentialForm, RedisModelForm, RedisPresentationTarget, RedisProfile, RedisTarget } from "./form-types";
 import type { LifecycleProfileOperation } from "../../profile-lifecycle/types";
 import type { ConnectorDeleteDialog } from "../../editor/connector-editor-dialog-types";
 
 const emptyRedisCredentialForm = { target_id: "", profile_label: "default", username: "", password: "", risk_label: "cache access" };
 const defaultServerFamily = "redis";
 export const connectorProductLabel = "Redis / Valkey";
-const lifecycle = createTargetProfileLifecycle<RedisModelForm, UsernameCredentialForm, RedisProfile, RedisTarget>({
+const lifecycle = createTargetProfileLifecycle<RedisModelForm, RedisCredentialForm, RedisProfile, RedisTarget>({
   connectorKind: "redis",
   connectorLabel: connectorProductLabel,
   targetPayload: (form) => ({ name: form.name, config: redisTargetConfigFromForm(form) }),
@@ -179,14 +178,14 @@ function redisTargetConfigFromForm(form: RedisModelForm) {
 }
 
 function redisProfilePayloadFromForm(
-  form: RedisModelForm | UsernameCredentialForm,
+  form: RedisModelForm | RedisCredentialForm,
   { profile, operation }: { profile: RedisProfile | null; operation: LifecycleProfileOperation },
 ) {
   return {
     kind: profile?.kind || "username_password",
     label: form.profile_label,
     public: { username: form.username },
-    ...(form.password ? { secret: { password: form.password } } : {}),
+    ...(form.clear_password ? { secret: { password: null } } : form.password ? { secret: { password: form.password } } : {}),
     risk_label: operation.startsWith("target") ? form.risk_label || "cache access" : form.risk_label,
   };
 }

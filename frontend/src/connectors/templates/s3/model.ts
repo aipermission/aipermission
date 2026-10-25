@@ -53,12 +53,16 @@ export type S3Form = {
   access_key_id: string;
   secret_access_key: string;
   session_token: string;
+  clear_session_token?: boolean;
   risk_label: string;
   profile_id?: string;
   project_id?: string | number;
 };
 
-type S3CredentialForm = Pick<S3Form, "profile_label" | "access_key_id" | "secret_access_key" | "session_token" | "risk_label"> & {
+export type S3CredentialForm = Pick<
+  S3Form,
+  "profile_label" | "access_key_id" | "secret_access_key" | "session_token" | "clear_session_token" | "risk_label"
+> & {
   target_id: string;
 };
 
@@ -283,11 +287,13 @@ function s3ProfilePayloadFromForm(
 }
 
 function s3SecretPayload(form: S3Form | S3CredentialForm) {
-  const secret: { secret_access_key?: string; session_token?: string } = {};
+  const secret: { secret_access_key?: string; session_token?: string | null } = {};
   if (form.secret_access_key) {
     secret.secret_access_key = form.secret_access_key;
   }
-  if (form.session_token) {
+  if (form.clear_session_token) {
+    secret.session_token = null;
+  } else if (form.session_token) {
     secret.session_token = form.session_token;
   }
   return secret;

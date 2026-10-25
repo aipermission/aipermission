@@ -4,6 +4,7 @@ import { emptyForm } from "./model";
 import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-transport-fields";
 import type { NetworkTarget } from "../_shared/network-transport-fields";
 import type { ConnectorFieldChange } from "../_shared/connector-form-types";
+import { OptionalSecretField } from "../_shared/optional-secret-field";
 
 type S3ConnectorFormProps = {
   form: ReturnType<typeof emptyForm>;
@@ -106,16 +107,15 @@ export function S3ConnectorFormTemplate({ form, mode = "create", targets = [], o
           placeholder={editing ? "Leave blank to keep the current encrypted secret" : "S3 secret access key"}
         />
       </Field>
-      <Field>
-        Session token
-        <Input
-          type="password"
-          value={form.session_token}
-          onChange={(event) => onChange("session_token", event.target.value)}
-          autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep the current session token" : "Optional temporary session token"}
-        />
-      </Field>
+      <OptionalSecretField
+        label="Session token"
+        value={form.session_token}
+        editing={editing}
+        clear={form.clear_session_token}
+        onChange={(value) => onChange("session_token", value)}
+        onClear={(clear) => onChange("clear_session_token", clear)}
+        placeholder={editing ? "Leave blank to keep the current session token" : "Optional temporary session token"}
+      />
     </>
   );
 }

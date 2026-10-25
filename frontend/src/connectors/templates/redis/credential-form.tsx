@@ -4,7 +4,9 @@ import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
 import { connectorProductLabel, serverProductLabel } from "./model";
-import type { CredentialFormProps, UsernameCredentialForm } from "../_shared/connector-form-types";
+import type { CredentialFormProps } from "../_shared/connector-form-types";
+import type { RedisCredentialForm } from "./form-types";
+import { OptionalSecretField } from "../_shared/optional-secret-field";
 
 export function RedisCredentialFormTemplate({
   targets,
@@ -13,7 +15,7 @@ export function RedisCredentialFormTemplate({
   state,
   onChange,
   onSubmit,
-}: CredentialFormProps<UsernameCredentialForm>) {
+}: CredentialFormProps<RedisCredentialForm>) {
   const redisTargets = targets.filter((target) => target.connector_kind === "redis");
   const selectedTarget = redisTargets.find((target) => Number(target.id) === Number(form.target_id));
   const product = selectedTarget ? serverProductLabel(selectedTarget) : connectorProductLabel;
@@ -48,16 +50,15 @@ export function RedisCredentialFormTemplate({
           placeholder={`optional ${product} ACL username`}
         />
       </Field>
-      <Field>
-        {editing ? "New password" : "Password"}
-        <Input
-          type="password"
-          value={form.password}
-          onChange={(event) => onChange({ ...form, password: event.target.value })}
-          autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep current password" : `optional ${product} password`}
-        />
-      </Field>
+      <OptionalSecretField
+        label={editing ? "New password" : "Password"}
+        value={form.password}
+        editing={editing}
+        clear={form.clear_password}
+        onChange={(value) => onChange({ ...form, password: value })}
+        onClear={(clear) => onChange({ ...form, clear_password: clear })}
+        placeholder={editing ? "Leave blank to keep current password" : `optional ${product} password`}
+      />
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={state.state === "saving" || redisTargets.length === 0}>
         <Plus className="h-4 w-4" />
