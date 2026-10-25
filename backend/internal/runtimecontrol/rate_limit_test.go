@@ -2,9 +2,21 @@ package runtimecontrol
 
 import (
 	"context"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
+
+func TestConnectionRateLimitIdentityIgnoresSourcePortAndForwardedHeaders(t *testing.T) {
+	first := httptest.NewRequest("GET", "http://localhost/api/status", nil)
+	first.RemoteAddr = "127.0.0.1:1234"
+	second := httptest.NewRequest("GET", "http://localhost/api/status", nil)
+	second.RemoteAddr = "127.0.0.1:5678"
+	second.Header.Set("X-Forwarded-For", "203.0.113.1")
+	if Key(first, "mcp") != Key(second, "mcp") || Key(first, "mcp") == Key(first, "vault") {
+		t.Fatal("connection backoff trusted a forwarded identity or lost scope isolation")
+	}
+}
 
 func TestWindowEnforcesIndependentKeys(t *testing.T) {
 	limiter := NewWindow(2, time.Minute)
