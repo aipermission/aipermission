@@ -424,6 +424,7 @@
     "internal/connectortransport": 89,
     "internal/console": 80,
     "internal/console/manualinput": 95,
+    "internal/console/manualinput/heredocsyntax": 95,
     "internal/console/persistence": 74,
     "internal/console/streamoutput": 100,
     "internal/console/terminaltext": 46,

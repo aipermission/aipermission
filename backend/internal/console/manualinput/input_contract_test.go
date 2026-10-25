@@ -79,8 +79,12 @@ func TestManualCommandClassificationContract(t *testing.T) {
 	if got := classifyManualCommand("partial", true); got.Command != "partial ..." || got.TrackOutput {
 		t.Fatalf("truncation = %#v", got)
 	}
-	for command, want := range map[string]string{"no heredoc": "", "cat <<": "", "cat <<-": "", "cat << ''": "", "cat << path/name": "", "cat << path\\name": "", "cat <<-\"EOF\"": "EOF"} {
-		if got := heredocTerminator(command); got != want {
+	for command, want := range map[string]string{"no heredoc": "", "cat <<": "", "cat <<-": "", "cat << ''": "", "cat << path/name": "path/name", "cat << path\\name": "pathname", "cat <<-\"EOF\"": "EOF"} {
+		got := ""
+		if documents := heredocs(command); len(documents) > 0 {
+			got = documents[0].Delimiter
+		}
+		if got != want {
 			t.Fatalf("terminator(%q) = %q; want %q", command, got, want)
 		}
 	}
