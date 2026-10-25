@@ -503,6 +503,16 @@ encrypted data to accumulate; check disk capacity and keep retention enabled.
 Invalid configuration prevents gateway startup. MCP actions cannot set this
 operator-owned process configuration.
 
+Authentication backoff is separate from these accepted-action limits. Failed
+MCP authentication has both a token-fingerprint backoff and a higher-threshold
+connection-IP backoff. Behind the local Compose proxy, clients share the
+loopback IP, so repeated invalid credentials from one client can temporarily
+delay other clients too. Fix or stop the stale client configuration rather than
+spinning retries. Database-password attempts and local Vault reveal/generation
+limits are likewise scoped to the actual connection IP; forwarded-IP headers
+are not trusted as client identity. This is a single-user gateway, not a
+per-browser or multi-user isolation guarantee.
+
 The local Settings **Connector capacity** panel shows per-token stored records,
 reserved result bytes, running work, pending approvals, and configured limits.
 Warnings at 80% and 90% help the operator act before new requests are refused.
