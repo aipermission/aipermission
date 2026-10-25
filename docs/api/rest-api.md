@@ -1926,6 +1926,12 @@ GET /api/history?limit=50&cursor=MjAyNi0wOS0wNVQxMjozMDowMC4wMDBaCjEyMA
 
 History response items include `source`, `tracking_reason`, and `output_truncated`. Manual Console command logging records typed or pasted terminal input as `source = manual`. For simple commands, AIPermission uses the normal PTY transcript to capture output when the shell prompt returns, then marks the row `completed` or `canceled`. Because the gateway does not install shell hooks or append hidden command suffixes, it cannot reliably infer every interactive shell state. Interactive commands, nested shells, heredocs, and unsafe control sequences are stored as `untracked` best-effort rows, with output still available in the Console transcript. Arrow/history recall uses a placeholder command because the terminal does not send the recalled command text; simple recalled commands may still capture output when the prompt returns, while ambiguous interactive recalled commands are left `untracked`.
 
+Manual heredoc capture recognizes shell redirections rather than matching text
+containing `<<`. Here-strings, quoted text and arithmetic shifts do not suspend
+subsequent history capture. Actual heredoc bodies are omitted until their exact
+delimiter (with tab stripping only for `<<-`); cancellation resets capture.
+This remains best-effort terminal observation, not a shell execution audit.
+
 The paginated response is an envelope:
 
 ```json

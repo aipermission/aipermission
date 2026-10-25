@@ -9,16 +9,16 @@ import (
 // decides whether resulting records may be persisted or used to track output.
 // The zero value is ready to consume input.
 type Capture struct {
-	line              string
-	initialized       bool
-	trusted           bool
-	escapePending     bool
-	escapeIntro       bool
-	escapeOSC         bool
-	lastWasCR         bool
-	truncated         bool
-	heredocTerminator string
-	historyRecall     bool
+	line          string
+	initialized   bool
+	trusted       bool
+	escapePending bool
+	escapeIntro   bool
+	escapeOSC     bool
+	lastWasCR     bool
+	truncated     bool
+	heredocs      []heredoc
+	historyRecall bool
 }
 
 func (c *Capture) Consume(data string) []Record {
@@ -126,9 +126,13 @@ func (c *Capture) finishLine() []Record {
 	historyRecall := c.historyRecall
 	c.historyRecall = false
 
-	if c.heredocTerminator != "" {
-		if strings.TrimSpace(line) == c.heredocTerminator {
-			c.heredocTerminator = ""
+	if len(c.heredocs) > 0 {
+		document := c.heredocs[0]
+		if document.StripTabs {
+			line = strings.TrimLeft(line, "\t")
+		}
+		if line == document.Delimiter {
+			c.heredocs = c.heredocs[1:]
 		}
 		return nil
 	}
@@ -153,9 +157,7 @@ func (c *Capture) finishLine() []Record {
 	}
 
 	record := classifyManualCommand(command, truncated)
-	if terminator := heredocTerminator(command); terminator != "" {
-		c.heredocTerminator = terminator
-	}
+	c.heredocs = heredocs(command)
 	return []Record{record}
 }
 
@@ -177,6 +179,6 @@ func (c *Capture) Reset() {
 	c.escapeOSC = false
 	c.lastWasCR = false
 	c.truncated = false
-	c.heredocTerminator = ""
+	c.heredocs = nil
 	c.historyRecall = false
 }

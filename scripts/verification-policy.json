@@ -505,6 +505,10 @@
   ],
   "fuzz_targets": [
     {
+      "package": "./internal/console/manualinput/heredocsyntax",
+      "name": "FuzzParseHeadersBounded"
+    },
+    {
       "package": "./internal/jsonidentity",
       "name": "FuzzValidateAcceptsEncoderOutputWithoutPanicking"
     },

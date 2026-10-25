@@ -24,7 +24,7 @@ func classifyManualCommand(command string, truncated bool) Record {
 	if truncated || len(command) > PreviewLimit {
 		reason = "command_preview_truncated"
 	}
-	if heredocTerminator(command) != "" {
+	if len(heredocs(command)) > 0 {
 		reason = "multiline_or_heredoc"
 	}
 	if reason == "manual_output_not_tracked" {
@@ -109,26 +109,6 @@ func Preview(command string, incomplete bool) string {
 		command = strings.TrimRight(command, " \t") + " ..."
 	}
 	return command
-}
-
-func heredocTerminator(command string) string {
-	index := strings.Index(command, "<<")
-	if index < 0 {
-		return ""
-	}
-	rest := strings.TrimSpace(command[index+2:])
-	if strings.HasPrefix(rest, "-") {
-		rest = strings.TrimSpace(strings.TrimPrefix(rest, "-"))
-	}
-	if rest == "" {
-		return ""
-	}
-	token := strings.Fields(rest)[0]
-	token = strings.Trim(token, `"'`)
-	if token == "" || strings.ContainsAny(token, `/\`) {
-		return ""
-	}
-	return token
 }
 
 func trimLastRune(value string) string {

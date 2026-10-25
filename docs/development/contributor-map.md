@@ -81,11 +81,16 @@ when changing either side of this boundary.
 `internal/console/manualinput` owns bounded command previews, escape/input
 capture and best-effort interactive classification. A capture is session-local;
 its caller must serialize input and must not advance it after a failed terminal
-write. Text classification is not shell parsing, an authorization decision or
+write. Syntax-assisted classification is not an authorization decision or
 proof of execution. Console owns execution exclusion, prompt/stream positions,
 session closure, mandatory redaction and transactional history projection.
 Run both `go test ./internal/console/manualinput` and the complete console suite
 when changing this boundary; do not duplicate classification in connectors.
+`internal/console/manualinput/heredocsyntax` owns the bounded, non-executing shell-header
+grammar and literal delimiter recovery used by that capture; it never writes
+history, interprets terminal state or authorizes execution. The complete input
+owner namespace, including all child helpers, must remain transitively free
+of application-service dependencies.
 
 The SSH connector's `execution/remotemetadata` owner supplies complete remote
 stat metadata under one bounded-response contract. Call it only after peer
