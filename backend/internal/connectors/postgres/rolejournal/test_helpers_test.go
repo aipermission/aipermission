@@ -140,7 +140,7 @@ func provisionTest(t *testing.T, journal *Journal) Entry {
 	return entry
 }
 
-func resourceTest(t *testing.T) resourcecontract.CredentialResource {
+func resourceTest(t testing.TB) resourcecontract.CredentialResource {
 	t.Helper()
 	intent := Intent{Anchor: testAnchor(), RoleName: " My Role ", OperationID: "abcdef0123456789abcdef0123456789"}
 	record := Record{Version: 1, Intent: intent, Generation: "1234567890abcdef1234567890abcdef", RoleOID: 42, Status: Provisioned}
@@ -148,7 +148,7 @@ func resourceTest(t *testing.T) resourcecontract.CredentialResource {
 		ResourceType: recordType, Fingerprint: intentDigest(intent)}, record)
 }
 
-func encodeTestRecord(t *testing.T, resource resourcecontract.CredentialResource, record Record) resourcecontract.CredentialResource {
+func encodeTestRecord(t testing.TB, resource resourcecontract.CredentialResource, record Record) resourcecontract.CredentialResource {
 	t.Helper()
 	encoded, err := json.Marshal(record)
 	if err != nil {

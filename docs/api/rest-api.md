@@ -558,6 +558,11 @@ does not dial a server, read secrets, adopt a role, release a lifecycle fence or
 repeat any mutation. It lists the exact local target, not other same-cluster
 aliases. Response paging currently does not bound the underlying journal scan.
 Unavailable or corrupt journal evidence returns a sanitized conflict response.
+The scan validates journal evidence outside the returned page, including rows
+before the cursor. `BenchmarkHistoryForTarget` measures decode/filter cost for
+100, 1000 and 10000 records; it excludes SQLite I/O and is not evidence of a
+bounded storage scan. A future indexed inspection path must preserve the
+documented corruption/fencing contract rather than silently skipping it.
 
 The optional credential-backed operator contract uses the same route with
 `{"profile_id":"2","input":{...}}`. The profile ID must be canonical positive
