@@ -1,5 +1,12 @@
 # Development Testing
 
+When a contained-service fixture fails to start or its runner fails, the
+conformance harness reports states/health and bounded logs for all eight
+fixture services, including RabbitMQ. Logs are limited to 40 lines per service
+and 64 KiB total. Diagnostics inspect only the run's owned project, never the
+operator's stable stack, Docker environment or mount configuration. A passing
+retry does not establish the cause of an earlier fixture failure.
+
 Use the root `Makefile` for the common verification set.
 
 Direct backend tests require a C compiler and OpenSSL 3 development headers
