@@ -186,6 +186,14 @@ Settings rekeys the active database with SQLCipher `rekey`.
 - after container restart or Lock Database, the new password is required
 
 Previously downloaded `.aipdb` backups keep the password they had when created. Backups downloaded after Change Password use the new password.
+This also applies to remote backup versions and sibling
+`<database>.pre-migration-v<version>.aipdb` recovery snapshots. Change Password
+does not rewrite or delete any of these independent copies; Settings warns
+before rekeying. Preserve the original password for retained recovery copies.
+If rotating because the old password may be compromised, inventory and remove
+or independently re-encrypt those copies, including remote/offline backups,
+after verifying a replacement recovery set. Removing a file does not guarantee
+physical erasure from snapshots, SSD storage or other backup systems.
 
 ## Delete Database
 

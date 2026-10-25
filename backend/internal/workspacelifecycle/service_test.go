@@ -223,6 +223,10 @@ func TestServiceChangePasswordReplacesRuntimeConnectionPool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	snapshotPath := path + ".pre-migration-v1.aipdb"
+	if err := db.Snapshot(database, snapshotPath); err != nil {
+		t.Fatal(err)
+	}
 	registry := NewRegistry(path, "default", func(runtime *serviceRuntime) Identity { return runtime.identity })
 	original := &serviceRuntime{identity: Identity{ID: "default", Path: path}, database: database}
 	registry.Activate(original)
@@ -249,6 +253,12 @@ func TestServiceChangePasswordReplacesRuntimeConnectionPool(t *testing.T) {
 
 	if err := service.ChangePassword(t.Context(), currentPassword, newPassword); err != nil {
 		t.Fatal(err)
+	}
+	if err := db.ValidateEncrypted(snapshotPath, currentPassword); err != nil {
+		t.Fatalf("password change rewrote the immutable recovery snapshot: %v", err)
+	}
+	if err := db.ValidateEncrypted(snapshotPath, newPassword); err == nil {
+		t.Fatal("snapshot unexpectedly adopted the current database password")
 	}
 	active, ok := service.Active()
 	if !ok || active == original || opened != 1 || closed != 1 {

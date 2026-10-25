@@ -40,7 +40,10 @@ export function PasswordSettingsPanel() {
       </CardHeader>
       <CardContent>
         <form className="grid gap-4" onSubmit={changePassword}>
-          <Notice>Downloaded backups keep the password they had when they were created.</Notice>
+          <Notice tone="warn">
+            Existing backups and pre-migration snapshots keep their original password. Changing this password only re-encrypts the current
+            database. Review old copies separately if the previous password was compromised.
+          </Notice>
           <Field>
             Current password
             <Input
