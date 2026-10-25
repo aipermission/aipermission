@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.74] - 2026-10-25
+
 ### Security
 
 - Kubernetes resource descriptions mask inline environment values and embedded
@@ -21,8 +23,9 @@ and this project uses semantic versioning for public releases.
 
 ### Fixed
 
-- Manual console capture distinguishes real heredocs from shifts, quoted operators and
-  here-strings, preserving later history without recording heredoc bodies.
+- Best-effort manual console capture distinguishes real heredocs from shifts, quoted
+  operators and here-strings; regression tests cover literal delimiters, compound
+  statements, body omission and subsequent history resumption.
 - ClickHouse metadata identifiers and remote filesystem paths retain exact identity
   through preparation and execution; malformed transfer path arrays are rejected.
 - Typed REST responses enforce published inclusive integer bounds without losing int64
@@ -36,8 +39,17 @@ and this project uses semantic versioning for public releases.
   conformance fixtures, role-history scaling measurements, and corrected MCP replay and
   configurable migration-port guidance.
 - Settings and storage documentation clarify that changing the active database password
-  does not re-encrypt existing snapshots or remote backups. Full role-history inspection
-  remains a measured scalability limitation, not a bounded-scan implementation.
+  does not re-encrypt existing snapshots or remote backups.
+
+### Notes
+
+- AIPermission remains local-only, single-user and developer-focused. No new connector
+  or database schema migration is introduced; back up the encrypted database before
+  upgrading.
+- Full role-history inspection remains a measured scalability limitation, not a
+  bounded-scan implementation. Previously documented SQLCipher native limitations remain
+  unchanged; this release does not update the cipher.
+- The MCP package must be published separately after the GitHub release.
 
 ## [0.2.73] - 2026-10-24
 
