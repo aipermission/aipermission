@@ -303,7 +303,7 @@ func (s *Service[T]) Setup(ctx context.Context, databaseID, databaseName, passwo
 		if db.LooksLikePlainSQLite(identity.Path) {
 			return Transition{}, ErrPlaintext
 		}
-		return Transition{}, fmt.Errorf("encrypted database already exists; unlock it or create a new database")
+		return Transition{}, fmt.Errorf("%w; unlock it or create a new database", databasecatalog.ErrDatabaseExists)
 	}
 	s.registry.Select(identity)
 	return s.openAndActivateLocked(ctx, identity, password, "unlocked")

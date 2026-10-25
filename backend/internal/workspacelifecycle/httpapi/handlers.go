@@ -73,6 +73,12 @@ func clearStrings(values ...*string) {
 
 func writeUnlockError(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, databasecatalog.ErrDatabaseExists):
+		httptransport.WriteError(w, http.StatusConflict, "encrypted database already exists; unlock it or create a new database")
+	case errors.Is(err, databasecatalog.ErrInvalidSelection):
+		httptransport.WriteError(w, http.StatusBadRequest, databasecatalog.ErrInvalidSelection.Error())
+	case errors.Is(err, workspacelifecycle.ErrInvalidRequest):
+		httptransport.WriteError(w, http.StatusBadRequest, workspacelifecycle.ErrInvalidRequest.Error())
 	case errors.Is(err, databaseownership.ErrDatabaseInUse):
 		httptransport.WriteError(w, http.StatusConflict, databaseownership.ErrDatabaseInUse.Error())
 	case errors.Is(err, workspacelifecycle.ErrCredential), errors.Is(err, workspacelifecycle.ErrAuthentication):
@@ -90,7 +96,7 @@ func writeUnlockError(w http.ResponseWriter, err error) {
 	case errors.Is(err, workspacelifecycle.ErrPlaintext):
 		httptransport.WriteError(w, http.StatusConflict, "plaintext SQLite databases are not supported; create or import an encrypted .aipdb database")
 	default:
-		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		httptransport.WriteInternalError(w)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 )
 
 var ErrDatabaseExists = errors.New("database name already exists")
+var ErrInvalidSelection = errors.New("invalid database id or name")
 var errDatabaseDeleteRecoveryConflict = errors.New("database delete recovery has a conflicting artifact")
 
 const databaseDeleteQuarantinePrefix = ".aipermission-delete-"
@@ -109,7 +110,7 @@ func DatabasePath(defaultPath string, id string) (string, error) {
 				return checkedDatabasePath(legacyPath)
 			}
 		}
-		return "", fmt.Errorf("invalid database id")
+		return "", fmt.Errorf("%w: invalid database id", ErrInvalidSelection)
 	}
 	namedPath := filepath.Join(DatabasesDir(defaultPath), id+".db")
 	if id == "default" && !databaseCatalogFileExists(namedPath) {
@@ -830,16 +831,16 @@ func validDatabaseID(id string) bool {
 func canonicalDatabaseID(name string) (string, error) {
 	id := slugifyDatabaseName(name)
 	if id == "" {
-		return "", fmt.Errorf("database name is required")
+		return "", fmt.Errorf("%w: database name is required", ErrInvalidSelection)
 	}
 	if id == "local-default" {
-		return "", fmt.Errorf("database name uses a reserved identifier")
+		return "", fmt.Errorf("%w: database name uses a reserved identifier", ErrInvalidSelection)
 	}
 	if len(id) > maxDatabaseIDLength {
-		return "", fmt.Errorf("database name must produce an identifier no longer than %d characters", maxDatabaseIDLength)
+		return "", fmt.Errorf("%w: database name must produce an identifier no longer than %d characters", ErrInvalidSelection, maxDatabaseIDLength)
 	}
 	if !validDatabaseID(id) {
-		return "", fmt.Errorf("database name produces an invalid identifier")
+		return "", fmt.Errorf("%w: database name produces an invalid identifier", ErrInvalidSelection)
 	}
 	return id, nil
 }

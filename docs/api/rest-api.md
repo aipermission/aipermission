@@ -39,6 +39,12 @@ and response shapes.
 
 ## Error Shape
 
+Setup and unlock classify invalid selections as `400`, rejected credentials as
+`401`, and database ownership/existence conflicts as `409`. Unexpected internal
+errors use a generic `500` response instead of returning filesystem details.
+Deliberate migration recovery guidance, including a retained snapshot path,
+remains available in the known initialization-conflict response.
+
 Errors use a JSON object:
 
 ```json
