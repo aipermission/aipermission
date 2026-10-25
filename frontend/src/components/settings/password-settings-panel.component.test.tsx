@@ -17,6 +17,7 @@ function fillForm(password = "NewDatabasePass123") {
 
 it("requires a strong different password and matching confirmation", () => {
   render(<PasswordSettingsPanel />);
+  expect(screen.getByText(/Existing backups and pre-migration snapshots keep their original password/)).toBeVisible();
   const submit = screen.getByRole("button", { name: "Change password" });
   expect(submit).toBeDisabled();
   fillForm("short");
