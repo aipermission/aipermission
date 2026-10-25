@@ -51,7 +51,18 @@ func (Connector) ProvisionCredentialProfile(ctx context.Context, runtime connect
 	if registrar, ok := runtime.Secrets.(connectors.SensitiveValueRegistrar); ok {
 		registrar.RegisterSensitiveValue(password)
 	}
-	statements, summary, err := provisionRoleStatements(runtime.Target, roleName, password, preset, scope)
+	iterations, err := roleSCRAMIterations(ctx, runtime)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	verifier, err := rolePasswordVerifier(password, iterations)
+	if err != nil {
+		return connectors.ProvisionedCredentialProfile{}, err
+	}
+	if registrar, ok := runtime.Secrets.(connectors.SensitiveValueRegistrar); ok {
+		registrar.RegisterSensitiveValue(string(verifier))
+	}
+	statements, summary, err := provisionRoleStatements(runtime.Target, roleName, verifier, preset, scope)
 	if err != nil {
 		return connectors.ProvisionedCredentialProfile{}, err
 	}

@@ -90,13 +90,13 @@ func provisionScopeInput(input map[string]any) (provisionScope, error) {
 	return scope, nil
 }
 
-func provisionRoleStatements(target connectors.TargetView, roleName string, password string, preset string, scope provisionScope) ([]string, map[string]any, error) {
+func provisionRoleStatements(target connectors.TargetView, roleName string, verifier roleVerifier, preset string, scope provisionScope) ([]string, map[string]any, error) {
 	database := targetString(target.Config, "database")
 	if database == "" {
 		return nil, nil, fmt.Errorf("target database is required")
 	}
 	roleSQL := quoteIdentifier(roleName)
-	statements := []string{fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", roleSQL, quoteLiteral(password))}
+	statements := []string{fmt.Sprintf("CREATE ROLE %s LOGIN PASSWORD %s", roleSQL, quoteLiteral(string(verifier)))}
 	statements = append(statements, fmt.Sprintf("GRANT CONNECT ON DATABASE %s TO %s", quoteIdentifier(database), roleSQL))
 	grants := []map[string]any{}
 	privileges := "SELECT"

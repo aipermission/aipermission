@@ -416,19 +416,20 @@ func TestProvisionRoleStatementsBuildsScopedGrants(t *testing.T) {
 			},
 		},
 	}
-	statements, summary, err := provisionRoleStatements(
+	statements, summary, err := testProvisionRoleStatements(
 		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
 		"app_reader",
 		"secret-value",
 		"read_only",
 		scope,
+		4096,
 	)
 	if err != nil {
 		t.Fatalf("role statements: %v", err)
 	}
 	joined := strings.Join(statements, "\n")
 	for _, want := range []string{
-		`CREATE ROLE "app_reader" LOGIN PASSWORD E'secret-value'`,
+		`CREATE ROLE "app_reader" LOGIN PASSWORD E'SCRAM-SHA-256$4096:`,
 		`GRANT CONNECT ON DATABASE "appdb" TO "app_reader"`,
 		`GRANT SELECT ON TABLE "public"."orders" TO "app_reader"`,
 		`GRANT SELECT ("id", "email") ON TABLE "public"."users" TO "app_reader"`,
@@ -444,12 +445,13 @@ func TestProvisionRoleStatementsBuildsScopedGrants(t *testing.T) {
 }
 
 func TestProvisionRoleStatementsRejectsColumnScopedWrites(t *testing.T) {
-	_, _, err := provisionRoleStatements(
+	_, _, err := testProvisionRoleStatements(
 		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
 		"app_writer",
 		"secret-value",
 		"read_write",
 		provisionScope{Schemas: []provisionSchemaScope{{Schema: "public", Tables: []provisionTableScope{{Table: "users", Columns: []string{"email"}}}}}},
+		4096,
 	)
 	if err == nil {
 		t.Fatal("expected column-scoped write grants to be rejected")
@@ -481,9 +483,9 @@ func TestProvisionRoleStatementsGrantOnlyOwnedSequencesForWritableScopes(t *test
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			statements, summary, err := provisionRoleStatements(
+			statements, summary, err := testProvisionRoleStatements(
 				connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
-				"app_writer", "secret-value", "read_write", testCase.scope,
+				"app_writer", "secret-value", "read_write", testCase.scope, 4096,
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -509,9 +511,9 @@ func TestProvisionRoleStatementsGrantOnlyOwnedSequencesForWritableScopes(t *test
 }
 
 func TestProvisionRoleStatementsDoNotGrantSequencesToReadonlyRoles(t *testing.T) {
-	statements, summary, err := provisionRoleStatements(
+	statements, summary, err := testProvisionRoleStatements(
 		connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"database": "appdb"}},
-		"app_reader", "secret-value", "read_only", provisionScope{AllSchemas: true},
+		"app_reader", "secret-value", "read_only", provisionScope{AllSchemas: true}, 4096,
 	)
 	if err != nil {
 		t.Fatal(err)
