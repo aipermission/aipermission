@@ -209,6 +209,11 @@ is strictly normalized to the selected action schema before persistence;
 `item_id`, `source_project_id`, and optional `replace_existing`. Undeclared
 fields are rejected rather than echoed into the approval lifecycle.
 
+A request read may first expire overdue pending approvals. Expiration updates
+the request, unified history and the `vault.action_request.expired` audit outbox
+event in one transaction. Audit persistence failure rolls the transition back;
+re-reading an already expired request does not emit another expiry event.
+
 Before persistence, active custom redaction rules are applied to the public
 request input, reason, approval projection, History, Audit, and MCP projection.
 The exact normalized input and reason required for execution are stored in a
