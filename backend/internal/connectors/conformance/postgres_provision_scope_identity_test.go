@@ -64,6 +64,7 @@ func TestPostgresProvisionScopePreservesExactPrivilegesRealService(t *testing.T)
 				if err != nil || provisioned.Public["username"] != role {
 					t.Fatalf("provision exact scope: %v", err)
 				}
+				assertManagedRolePasswordAuthentication(t, connection, role, provisioned.Secret["password"].(string))
 				for _, name := range schemas {
 					for _, item := range tables {
 						for _, column := range []string{" id ", "id"} {

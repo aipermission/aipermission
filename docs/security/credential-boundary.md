@@ -7,6 +7,15 @@ profile update), retaining the profile identity and its token permission links.
 This changes local credential storage, not the remote server's authentication
 configuration. Required access keys cannot be cleared this way.
 
+Managed Postgres users receive locally generated passwords. Role-creation SQL
+contains a client-generated SCRAM-SHA-256 verifier, never the plaintext password.
+The connector honors the server's `scram_iterations` (4096 when unavailable),
+accepting 4096 through 1048576 iterations to bound work. New managed roles require
+a SCRAM-capable client even when the server's default `password_encryption` is
+MD5; PostgreSQL `md5` HBA rules automatically negotiate SCRAM for SCRAM verifiers.
+Existing roles are not converted. Verifiers remain sensitive and are registered
+for local redaction; remote database administrators control their own logs.
+
 The core connector-credential guarantee:
 
 > Stored connector-profile credential fields are never deliberately returned

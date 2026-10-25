@@ -36,7 +36,7 @@ func TestProvisionScopePreservesOpaqueResourceNamesThroughGrants(t *testing.T) {
 				!reflect.DeepEqual(scope.Schemas[0].Tables[0].Columns, []string{names[2]}) {
 				t.Fatalf("scope identity changed: %#v %v", scope, err)
 			}
-			statements, summary, err := provisionRoleStatements(connectors.TargetView{Config: map[string]any{"database": "appdb"}}, "reader", "test-password", "read_only", scope)
+			statements, summary, err := testProvisionRoleStatements(connectors.TargetView{Config: map[string]any{"database": "appdb"}}, "reader", "test-password", "read_only", scope, 4096)
 			if err != nil {
 				t.Fatal(err)
 			}

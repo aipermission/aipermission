@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "90ed9c859094e298d8a1c53aabb411fcf0c4ed7972e9bc7efd5c8cddfad92ffd"
+      "sha256": "4315ac815faac812f789625d7eeea137f9828f74fb501ce1dc75ad24904dd00d"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "b7fed91b8fbca60ebc38b58486d19d3cf1e766e95a45bf4bdfb484fb1a5f080c"
+      "sha256": "d77ccb55b956c92a757806872541a5cd47df18d03ddf8311bd75dc23c0bbfa0d"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6144,6 +6144,10 @@
         "Version": "v1.15.0"
       },
       {
+        "Path": "github.com/xdg-go/scram",
+        "Version": "v1.2.0"
+      },
+      {
         "Path": "golang.org/x/crypto",
         "Version": "v0.58.0"
       },
@@ -6231,6 +6235,16 @@
       {
         "Path": "github.com/shopspring/decimal",
         "Version": "v1.4.0",
+        "Indirect": true
+      },
+      {
+        "Path": "github.com/xdg-go/pbkdf2",
+        "Version": "v1.0.0",
+        "Indirect": true
+      },
+      {
+        "Path": "github.com/xdg-go/stringprep",
+        "Version": "v1.0.4",
         "Indirect": true
       },
       {
@@ -7171,6 +7185,63 @@
       }
     },
     {
+      "module": "github.com/xdg-go/pbkdf2",
+      "version": "v1.0.0",
+      "checksums": {
+        "module": "h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=",
+        "go_mod": "h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT5RDeI="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/xdg-go/pbkdf2@v1.0.0/LICENSE",
+            "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+            "bytes": 10142
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/xdg-go/scram",
+      "version": "v1.2.0",
+      "checksums": {
+        "module": "h1:bYKF2AEwG5rqd1BumT4gAnvwU/M9nBp2pTSxeZw7Wvs=",
+        "go_mod": "h1:3dlrS0iBaWKYVt2ZfA4cj48umJZ+cAEbR6/SjLA88I8="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/xdg-go/scram@v1.2.0/LICENSE",
+            "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+            "bytes": 10142
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/xdg-go/stringprep",
+      "version": "v1.0.4",
+      "checksums": {
+        "module": "h1:XLI/Ng3O1Atzq0oBs3TWm+5ZVgkq2aqdlvP9JtoZ6c8=",
+        "go_mod": "h1:mPGuuIYwz7CmR2bT9j4GbQqutWS1zV24gijq1dTyGkM="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/xdg-go/stringprep@v1.0.4/LICENSE",
+            "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
+            "bytes": 10142
+          }
+        ]
+      }
+    },
+    {
       "module": "github.com/xyproto/randomstring",
       "version": "v1.0.5",
       "checksums": {
@@ -7703,6 +7774,29 @@
         "status": "owner-review-required",
         "reason": "module-not-in-local-cache",
         "files": []
+      }
+    },
+    {
+      "module": "golang.org/x/text",
+      "version": "v0.3.8",
+      "checksums": {
+        "go_mod": "h1:E6s5w1FMmriuDzIBO73fBruAKo1PCIq6d2Q6DHfQ8WQ="
+      },
+      "requirement": "sum-only",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "golang.org/x/text@v0.3.8/LICENSE",
+            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+            "bytes": 1479
+          },
+          {
+            "path": "golang.org/x/text@v0.3.8/PATENTS",
+            "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+            "bytes": 1303
+          }
+        ]
       }
     },
     {
