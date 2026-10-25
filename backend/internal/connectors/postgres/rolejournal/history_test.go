@@ -12,7 +12,7 @@ import (
 	resourcecontract "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi/credentialresource"
 )
 
-func historyResource(t *testing.T, id, targetID int64) resourcecontract.CredentialResource {
+func historyResource(t testing.TB, id, targetID int64) resourcecontract.CredentialResource {
 	t.Helper()
 	resource := resourceTest(t)
 	entry, err := parseResource(resource)
