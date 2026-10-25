@@ -71,34 +71,40 @@ Gateway flow:
 
 1. Validate the API token.
 2. Reject revoked or expired tokens.
-3. Resolve the connector target, project, and credential profile.
-4. Require that project to be enabled for the token.
-5. Prepare the connector action.
-6. Check token permission for target/profile/action.
-7. Return the original request when a matching idempotency key is replayed, or
+3. Acquire the workspace secret-delivery gate for the MCP call.
+4. Check that the global MCP runtime is started. A stopped runtime rejects even
+   a previously completed request replay; it does not deliver its cached output.
+5. Look up the original request when a matching idempotency key is replayed, or
    reject a mismatched reuse with `409 Conflict`.
-8. Reject expired action grants.
-9. Check whether the global MCP runtime is started.
-10. If the runtime is stopped, return a stopped/error response.
-11. If the rule is `always_run`, execute the connector action.
-12. If the rule is `approval_required`, create a pending connector action approval.
-13. If the rule is `blocked`, reject the action without execution.
-14. For a declared network or command transport, allow only the exact
+6. For a new request, resolve the connector target, project and credential
+   profile, require the project's token scope, and prepare the action.
+7. Require a caller-stable idempotency key for new MCP mutations.
+8. Check token permission for target/profile/action and reject expired grants.
+9. If the rule is `blocked`, reject the action without execution.
+10. If the rule is `always_run`, execute the connector action.
+11. If the rule is `approval_required`, create a pending connector action approval.
+12. For a declared network or command transport, allow only the exact
     dependency captured during preparation and re-resolve it under the Vault
     delivery gate immediately before opening the transport.
-15. Record project-snapshotted history and action lifecycle audit events. A
+13. Record project-snapshotted history and action lifecycle audit events. A
     target move does not change the project identity of an existing action.
+14. Reauthorize result delivery, including replay output, against current token,
+    target/profile/project authority and applicable Vault leases. Withhold output
+    if that authority is no longer valid. Reconciliation is not a new execution
+    or permission grant.
 
 ```mermaid
 flowchart TD
-  Request[MCP connector action request] --> Auth[Validate token, project, target, and profile]
-  Auth --> Prepare[Prepare deterministic connector action]
-  Prepare --> Idempotency{Matching idempotency key?}
-  Idempotency -->|same request| Existing[Return existing request]
+  Request[MCP connector action request] --> Auth[Validate token and workspace]
+  Auth --> Gate[Acquire secret-delivery gate]
+  Gate --> Runtime{MCP runtime started?}
+  Runtime -->|no| Stopped[Reject without execution or cached delivery]
+  Runtime -->|yes| Idempotency{Matching idempotency key?}
+  Idempotency -->|same request| Existing[Reconcile original request]
+  Existing --> Delivery[Reauthorize delivery or withhold output]
   Idempotency -->|mismatched payload| Conflict[Reject with conflict]
-  Idempotency -->|new request| Runtime{MCP runtime started?}
-  Runtime -->|no| Stopped[Reject without execution]
-  Runtime -->|yes| Rule{Effective action rule}
+  Idempotency -->|new request| Prepare[Resolve target and scope; prepare action]
+  Prepare --> Rule{Current unexpired action rule}
   Rule -->|Blocked| Blocked[Reject without execution]
   Rule -->|Prompt| Pending[Store pending request and approval snapshot]
   Pending --> Decision{Local user decision}
@@ -109,11 +115,16 @@ flowchart TD
   Rule -->|Always| Execute
   Execute --> Project[Redact and bound result]
   Project --> Record[Persist unified history and audit]
+  Record --> Delivery
 ```
 
 No branch exposes connector credentials to the MCP client. Prompt and Always
 converge on the same connector execution, redaction, history, and audit path;
 only the local decision step differs.
+The runtime/replay order is implemented in `actions.Runtime.Call` and exercised
+by `TestMCPConnectorActionIdempotencyReplaysAndRejectsDrift`; replay does not
+re-run preparation or execution. The HTTP delivery boundary still revalidates
+authority before exposing a stored result.
 
 ## Approval Required
 
