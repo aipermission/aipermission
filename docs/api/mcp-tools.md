@@ -427,6 +427,9 @@ ClickHouse metadata database/table names are exact identities: do not strip
 their surrounding spaces or literal quotes. Console-generated identifiers
 escape backslashes and backticks for the ClickHouse dialect. Invalid NUL
 characters are rejected rather than replaced with a default database.
+SSH file browsing and download preparation likewise preserve remote path
+whitespace. Download selections must be arrays of non-empty strings; malformed
+entries are rejected instead of silently dropped, coerced or trimmed.
 
 Kubernetes actions include cluster version metadata, namespace/workload/pod/
 service/ingress/node/event listing, resource JSON describes, bounded pod log

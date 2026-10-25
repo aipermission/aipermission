@@ -469,6 +469,8 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestBrowsePathIdentitySurvivesSharedPreparation",
+    "TestDownloadPathsRejectMalformedSelectionsInsteadOfChangingThem",
     "TestMetadataIdentifiersSurviveSharedActionPreparation",
     "TestMetadataIdentifiersRejectNULInsteadOfSelectingDefault",
     "TestDockerDaemonRealService",

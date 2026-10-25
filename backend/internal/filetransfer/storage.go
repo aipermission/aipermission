@@ -290,7 +290,6 @@ func NormalizeRemoteFilePath(value string) (string, error) {
 	if err := validatePortableRemotePath(value, "remote_path"); err != nil {
 		return "", err
 	}
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", fmt.Errorf("remote_path is required")
 	}
@@ -318,7 +317,6 @@ func NormalizeRemoteDirectoryPath(value string) (string, error) {
 			return "", err
 		}
 	}
-	value = strings.TrimSpace(value)
 	if value == "" {
 		value = "/"
 	}

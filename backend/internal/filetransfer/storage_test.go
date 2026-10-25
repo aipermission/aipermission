@@ -281,14 +281,14 @@ func TestTransferPathAndProgressHelpers(t *testing.T) {
 	}
 
 	fileCases := map[string]string{
-		" /var/log/../log/app.log ": "/var/log/app.log",
+		"/var/log/../log/app.log ": "/var/log/app.log ",
 	}
 	for input, want := range fileCases {
 		if got, err := NormalizeRemoteFilePath(input); err != nil || got != want {
 			t.Fatalf("NormalizeRemoteFilePath(%q) = %q, %v", input, got, err)
 		}
 	}
-	for _, input := range []string{"", "relative.txt", "/", "/tmp/bad\nname"} {
+	for _, input := range []string{"", "relative.txt", " /var/log/app.log", "/", "/tmp/bad\nname"} {
 		if _, err := NormalizeRemoteFilePath(input); err == nil {
 			t.Fatalf("expected remote file %q to fail", input)
 		}
@@ -308,7 +308,10 @@ func TestTransferPathAndProgressHelpers(t *testing.T) {
 	if got, err := NormalizeRemoteDirectoryPath("/tmp/../var"); err != nil || got != "/var" {
 		t.Fatalf("remote directory = %q, %v", got, err)
 	}
-	for _, input := range []string{"relative", "/tmp/bad\tname", "/" + strings.Repeat("x", 4097)} {
+	if got, err := NormalizeRemoteDirectoryPath("/data/ directory "); err != nil || got != "/data/ directory " {
+		t.Fatalf("remote directory identity changed: %q %v", got, err)
+	}
+	for _, input := range []string{"relative", " /var", " ", "/tmp/bad\tname", "/" + strings.Repeat("x", 4097)} {
 		if _, err := NormalizeRemoteDirectoryPath(input); err == nil {
 			t.Fatalf("expected remote directory %q to fail", input)
 		}

@@ -168,7 +168,7 @@ func TestPrepareStartFileDownload(t *testing.T) {
 		t.Fatalf("prepare download: %v", err)
 	}
 	paths, ok := prepared.Payload["remote_paths"].([]string)
-	if !ok || len(paths) != 2 || paths[1] != "/etc/hosts" {
+	if !ok || len(paths) != 2 || paths[1] != "  /etc/hosts " {
 		t.Fatalf("remote_paths = %#v", prepared.Payload["remote_paths"])
 	}
 	if prepared.Preview["items"] != 2 {
