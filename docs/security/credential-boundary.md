@@ -1,5 +1,12 @@
 # Credential Boundary
 
+When editing a credential, an empty secret input preserves its stored value.
+Optional S3 session tokens and Redis / Valkey passwords also offer an explicit
+"Remove stored" checkbox. Saving it clears only that secret (`null` in the
+profile update), retaining the profile identity and its token permission links.
+This changes local credential storage, not the remote server's authentication
+configuration. Required access keys cannot be cleared this way.
+
 The core connector-credential guarantee:
 
 > Stored connector-profile credential fields are never deliberately returned

@@ -4,15 +4,8 @@ import { Button } from "../../../components/ui/button";
 import { Field, Input } from "../../../components/ui/form";
 import { Notice } from "../../../components/ui/notice";
 import { CredentialProfileFields } from "../_shared/credential-profile-fields";
-
-type S3CredentialForm = {
-  target_id: string;
-  profile_label: string;
-  risk_label: string;
-  access_key_id: string;
-  secret_access_key: string;
-  session_token: string;
-};
+import { OptionalSecretField } from "../_shared/optional-secret-field";
+import type { S3CredentialForm } from "./model";
 
 type S3CredentialTarget = {
   id: number | string;
@@ -74,16 +67,15 @@ export function S3CredentialFormTemplate({ targets, form, formMode = "create", s
           placeholder={editing ? "Leave blank to keep current secret" : "S3 secret access key"}
         />
       </Field>
-      <Field>
-        {editing ? "New session token" : "Session token"}
-        <Input
-          type="password"
-          value={form.session_token}
-          onChange={(event) => onChange({ ...form, session_token: event.target.value })}
-          autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep current token" : "Optional temporary session token"}
-        />
-      </Field>
+      <OptionalSecretField
+        label={editing ? "New session token" : "Session token"}
+        value={form.session_token}
+        editing={editing}
+        clear={form.clear_session_token}
+        onChange={(value) => onChange({ ...form, session_token: value })}
+        onClear={(clear) => onChange({ ...form, clear_session_token: clear })}
+        placeholder={editing ? "Leave blank to keep current token" : "Optional temporary session token"}
+      />
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={state.state === "saving" || s3Targets.length === 0}>
         <Plus className="h-4 w-4" />

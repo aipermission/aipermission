@@ -86,6 +86,22 @@ it("deletes only the selected S3 profile without deleting bucket objects", async
   expect(apiPost).not.toHaveBeenCalled();
 });
 
+it("explicitly removes the session token without deleting the access key or profile", async () => {
+  const user = userEvent.setup();
+  renderCredentialFamily(familyTemplate, { targets: [target] });
+  await user.click(screen.getByRole("button", { name: "Edit credential" }));
+  const dialog = within(screen.getByRole("dialog"));
+  await user.click(dialog.getByRole("checkbox", { name: "Remove stored session token" }));
+  expect(dialog.getByLabelText("New session token")).toBeDisabled();
+  await user.click(dialog.getByRole("button", { name: "Save S3 credential" }));
+  await waitFor(() =>
+    expect(apiPut).toHaveBeenCalledWith(
+      "/api/connector-targets/3/profiles/11",
+      expect.objectContaining({ secret: { session_token: null } }),
+    ),
+  );
+});
+
 it("validates S3 native config and public access-key metadata", () => {
   expect(s3CredentialTargets([inventoryTargetFixture({ ...target, config: { port: "443" } })])[0].config.port).toBe("443");
   expect(s3CredentialTargets([target, inventoryTargetFixture({ config: { path_style: [] } })])).toMatchObject([

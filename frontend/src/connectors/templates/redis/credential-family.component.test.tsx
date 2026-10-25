@@ -73,6 +73,19 @@ it("deletes the native profile without deleting its connector target", async () 
   expect(apiDelete).toHaveBeenCalledExactlyOnceWith("/api/connector-targets/3/profiles/11");
 });
 
+it("explicitly removes the stored password while retaining the profile identity", async () => {
+  const user = userEvent.setup();
+  renderCredentialFamily(familyTemplate, { targets: [target] });
+  await user.click(screen.getByRole("button", { name: "Edit credential" }));
+  const dialog = within(screen.getByRole("dialog"));
+  await user.click(dialog.getByRole("checkbox", { name: "Remove stored password" }));
+  expect(dialog.getByLabelText("New password")).toBeDisabled();
+  await user.click(dialog.getByRole("button", { name: "Save Valkey credential" }));
+  await waitFor(() =>
+    expect(apiPut).toHaveBeenCalledWith("/api/connector-targets/3/profiles/11", expect.objectContaining({ secret: { password: null } })),
+  );
+});
+
 it("keeps the profile/runtime IDs independent and rejects malformed owned fields", () => {
   const original = inventoryTargetFixture({
     ...target,

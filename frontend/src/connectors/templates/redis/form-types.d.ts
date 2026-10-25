@@ -1,8 +1,10 @@
 import type { NetworkConnectionForm, UsernameCredentialForm } from "../_shared/connector-form-types";
 import type { UsernamePasswordProfile } from "../../profile-lifecycle/types";
 
+export type RedisCredentialForm = UsernameCredentialForm & { clear_password?: boolean };
+
 export type RedisConnectionForm = NetworkConnectionForm &
-  Omit<UsernameCredentialForm, "target_id"> & {
+  Omit<RedisCredentialForm, "target_id"> & {
     name: string;
     server_family?: string;
     database: string | number;

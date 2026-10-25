@@ -41,6 +41,18 @@ it("round-trips and wires verified conditional request trust", () => {
   expect(onChange).toHaveBeenCalledWith("trust_conditional_requests", true);
 });
 
+it("wires explicit stored session token removal in the connector editor", () => {
+  const onChange = vi.fn();
+  const form = emptyForm();
+  const { rerender } = render(<S3ConnectorFormTemplate form={form} mode="edit" onChange={onChange} />);
+  fireEvent.click(screen.getByRole("checkbox", { name: "Remove stored session token" }));
+  expect(onChange).toHaveBeenCalledWith("clear_session_token", true);
+  rerender(<S3ConnectorFormTemplate form={{ ...form, clear_session_token: true }} mode="edit" onChange={onChange} />);
+  expect(screen.getByLabelText("Session token")).toBeDisabled();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Remove stored session token" }));
+  expect(onChange).toHaveBeenCalledWith("clear_session_token", false);
+});
+
 it("limits credential selection to S3 targets and updates the access key", () => {
   const onChange = vi.fn();
   const form = {

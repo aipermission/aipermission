@@ -993,6 +993,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/_shared/optional-secret-field.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/_shared/result-sections.tsx": {
       "statements": 100,
       "branches": 94.44,
@@ -2021,7 +2027,7 @@
     },
     "src/connectors/templates/redis/model.ts": {
       "statements": 96.61,
-      "branches": 87.23,
+      "branches": 87.5,
       "functions": 96.42,
       "lines": 98.07
     },
@@ -2134,10 +2140,10 @@
       "lines": 100
     },
     "src/connectors/templates/s3/model.ts": {
-      "statements": 84.37,
-      "branches": 70.47,
+      "statements": 90.9,
+      "branches": 85.04,
       "functions": 84.61,
-      "lines": 86.88
+      "lines": 92.06
     },
     "src/connectors/templates/s3/object-browser.tsx": {
       "statements": 100,

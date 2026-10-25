@@ -4,6 +4,7 @@ import { ConnectionModeFields, NetworkEndpointFields } from "../_shared/network-
 import { serverProductLabel } from "./model";
 import type { ConnectorFormProps } from "../_shared/connector-form-types";
 import type { RedisConnectionForm } from "./form-types";
+import { OptionalSecretField } from "../_shared/optional-secret-field";
 
 export function RedisConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: ConnectorFormProps<RedisConnectionForm>) {
   const editing = mode === "edit";
@@ -70,16 +71,15 @@ export function RedisConnectorFormTemplate({ form, mode = "create", targets = []
           placeholder={`optional ${product} ACL username`}
         />
       </Field>
-      <Field>
-        Password
-        <Input
-          type="password"
-          value={form.password}
-          onChange={(event) => onChange("password", event.target.value)}
-          autoComplete="new-password"
-          placeholder={editing ? "Leave blank to keep the current encrypted password" : `optional ${product} password`}
-        />
-      </Field>
+      <OptionalSecretField
+        label="Password"
+        value={form.password}
+        editing={editing}
+        clear={form.clear_password}
+        onChange={(value) => onChange("password", value)}
+        onClear={(clear) => onChange("clear_password", clear)}
+        placeholder={editing ? "Leave blank to keep the current encrypted password" : `optional ${product} password`}
+      />
     </>
   );
 }
