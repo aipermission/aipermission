@@ -144,7 +144,7 @@ Both Compose files publish only to `127.0.0.1`. The backend is not exposed as
 a separate host port. To use another local UI port:
 
 ```bash
-AIPERMISSION_FRONTEND_PORT=3211 docker compose up -d --build
+AIPERMISSION_FRONTEND_PORT=3212 docker compose up -d --build
 ```
 
 The release Compose file defaults to the version shipped in the checkout, so

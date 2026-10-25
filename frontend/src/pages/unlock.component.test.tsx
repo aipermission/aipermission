@@ -109,7 +109,10 @@ describe("UnlockPage workflows", () => {
 
     await user.type(screen.getByLabelText("Database password"), "OldPassword123");
     await user.click(screen.getByRole("button", { name: "Unlock" }));
-    expect(await screen.findByRole("link", { name: "Open migration helper" })).toBeVisible();
+    expect(await screen.findByRole("link", { name: "Migration instructions" })).toHaveAttribute(
+      "href",
+      "https://github.com/aipermission/aipermission/blob/main/docs/setup/database-migration.md",
+    );
     await user.click(screen.getByRole("button", { name: "Delete old local copy" }));
     const confirm = screen.getByLabelText("Type the database name to confirm");
     expect(screen.getByRole("button", { name: "Delete permanently" })).toBeDisabled();
