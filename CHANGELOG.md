@@ -9,6 +9,36 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Security
+
+- Kubernetes resource descriptions mask inline environment values and embedded
+  last-applied manifests; logs and arbitrary application fields still require operator
+  care.
+- Postgres managed roles use client-derived SCRAM-SHA-256 verifiers instead of plaintext
+  passwords in role statements. Newly managed roles require SCRAM-capable clients.
+- Setup and unlock classify known validation and recovery errors while withholding
+  unexpected internal failure details.
+
+### Fixed
+
+- Manual console capture distinguishes real heredocs from shifts, quoted operators and
+  here-strings, preserving later history without recording heredoc bodies.
+- ClickHouse metadata identifiers and remote filesystem paths retain exact identity
+  through preparation and execution; malformed transfer path arrays are rejected.
+- Typed REST responses enforce published inclusive integer bounds without losing int64
+  precision.
+- Credential editors can explicitly remove optional S3 session tokens and Redis
+  passwords; leaving a secret blank still preserves its stored value.
+
+### Maintenance
+
+- Added atomic read-triggered Vault expiry audit tests, bounded diagnostics for all
+  conformance fixtures, role-history scaling measurements, and corrected MCP replay and
+  configurable migration-port guidance.
+- Settings and storage documentation clarify that changing the active database password
+  does not re-encrypt existing snapshots or remote backups. Full role-history inspection
+  remains a measured scalability limitation, not a bounded-scan implementation.
+
 ## [0.2.73] - 2026-10-24
 
 ### Security
