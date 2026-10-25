@@ -220,11 +220,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			Risk:        connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
 				{
-					Name:        "path",
-					Label:       "Remote path",
-					Type:        connectors.FieldString,
-					Default:     "~",
-					Description: "Remote directory to list.",
+					Name: "path", Label: "Remote path", Type: connectors.FieldString,
+					PreserveWhitespace: true, Default: "~", Description: "Exact remote directory to list.",
 				},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: MaxBrowseRemoteRows},
@@ -312,7 +309,7 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.Payload = map[string]any{}
 		return base, nil
 	case ActionBrowseRemoteFiles:
-		remotePath := strings.TrimSpace(stringInput(req.Input, "path"))
+		remotePath := stringInput(req.Input, "path")
 		if remotePath == "" {
 			remotePath = "~"
 		}
@@ -324,7 +321,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.ContextMaterial["path"] = remotePath
 		return base, nil
 	case ActionStartFileDownload:
-		remotePaths := stringSliceInput(req.Input, "remote_paths")
+		remotePaths, err := stringSliceInput(req.Input, "remote_paths")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		if len(remotePaths) == 0 {
 			return connectors.PreparedAction{}, fmt.Errorf("%s remote_paths is required", ActionStartFileDownload)
 		}
@@ -376,13 +376,13 @@ func boolInput(input map[string]any, name string) bool {
 	return connectors.BoolMapValue(input, name, false)
 }
 
-func stringSliceInput(input map[string]any, name string) []string {
+func stringSliceInput(input map[string]any, name string) ([]string, error) {
 	if input == nil {
-		return nil
+		return nil, nil
 	}
 	value, ok := input[name]
 	if !ok || value == nil {
-		return nil
+		return nil, nil
 	}
 	var raw []string
 	switch typed := value.(type) {
@@ -390,19 +390,19 @@ func stringSliceInput(input map[string]any, name string) []string {
 		raw = typed
 	case []any:
 		for _, item := range typed {
-			raw = append(raw, strings.TrimSpace(fmt.Sprint(item)))
+			text, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("%s must contain only strings", name)
+			}
+			raw = append(raw, text)
 		}
-	case string:
-		raw = []string{typed}
 	default:
-		raw = []string{fmt.Sprint(typed)}
+		return nil, fmt.Errorf("%s must be an array of paths", name)
 	}
-	clean := make([]string, 0, len(raw))
 	for _, item := range raw {
-		item = strings.TrimSpace(item)
-		if item != "" {
-			clean = append(clean, item)
+		if strings.TrimSpace(item) == "" {
+			return nil, fmt.Errorf("%s must not contain empty paths", name)
 		}
 	}
-	return clean
+	return append([]string(nil), raw...), nil
 }

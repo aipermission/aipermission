@@ -81,7 +81,6 @@ func stringSlicePayload(payload map[string]any, name string) []string {
 }
 
 func normalizeRemoteDirectoryPath(value string) (string, error) {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", nil
 	}
