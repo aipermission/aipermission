@@ -19,6 +19,7 @@ type fakeLifecycle struct {
 	status        workspacelifecycle.Status
 	renameError   error
 	unlockError   error
+	setupError    error
 	passwordError error
 	lockError     error
 	lockCalls     int
@@ -27,7 +28,7 @@ type fakeLifecycle struct {
 func (f *fakeLifecycle) IsUnlocked() bool                           { return f.unlocked }
 func (f *fakeLifecycle) Status() (workspacelifecycle.Status, error) { return f.status, nil }
 func (f *fakeLifecycle) Setup(context.Context, string, string, string) (workspacelifecycle.Transition, error) {
-	return workspacelifecycle.Transition{}, nil
+	return workspacelifecycle.Transition{}, f.setupError
 }
 func (f *fakeLifecycle) Unlock(context.Context, string, string) (workspacelifecycle.Transition, error) {
 	return workspacelifecycle.Transition{}, f.unlockError

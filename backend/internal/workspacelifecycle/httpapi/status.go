@@ -37,7 +37,7 @@ func (h *Handlers) Setup(w http.ResponseWriter, r *http.Request) {
 	}
 	transition, err := h.dependencies.Lifecycle.Setup(r.Context(), request.DatabaseID, request.DatabaseName, request.Password)
 	if err != nil {
-		httptransport.WriteError(w, http.StatusBadRequest, err.Error())
+		writeUnlockError(w, err)
 		return
 	}
 	if transition.Status == "current" {
