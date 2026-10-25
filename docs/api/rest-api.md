@@ -28,6 +28,10 @@ The machine-readable [OpenAPI contract](openapi.json) is generated from the
 core route registration source, connector-owned adapter route catalogs, and a
 single schema catalog in `backend/internal/restcontract`. Backend tests block
 core or adapter route and schema drift.
+Typed response validation checks inclusive integer `minimum`/`maximum` bounds
+with exact signed 64-bit comparisons, rejecting fractional or overflowing
+values and invalid bounds. A generated schema or a passing response validator
+does not claim complete JSON Schema support for every keyword.
 Shared error, target/profile/action, approval, history, and audit response
 families are typed. Operations that have not yet migrated remain explicitly
 marked `route-inventory`; this document remains authoritative for those request

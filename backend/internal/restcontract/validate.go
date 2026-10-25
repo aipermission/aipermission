@@ -100,12 +100,35 @@ func validateSchemaValue(path string, value any, schema map[string]any, schemas 
 		if !ok {
 			return fmt.Errorf("%s must be an integer", path)
 		}
-		if _, err := number.Int64(); err != nil {
+		integer, err := number.Int64()
+		if err != nil {
 			return fmt.Errorf("%s must be an integer: %w", path, err)
 		}
+		return validateIntegerBounds(path, integer, schema)
 	case "boolean":
 		if _, ok := value.(bool); !ok {
 			return fmt.Errorf("%s must be a boolean", path)
+		}
+	}
+	return nil
+}
+
+func validateIntegerBounds(path string, value int64, schema map[string]any) error {
+	for _, keyword := range []string{"minimum", "maximum"} {
+		raw, exists := schema[keyword]
+		if !exists {
+			continue
+		}
+		encoded, err := json.Marshal(raw)
+		if err != nil {
+			return fmt.Errorf("%s schema %s is not an integer: %w", path, keyword, err)
+		}
+		bound, err := strconv.ParseInt(string(encoded), 10, 64)
+		if err != nil {
+			return fmt.Errorf("%s schema %s is not an int64: %w", path, keyword, err)
+		}
+		if keyword == "minimum" && value < bound || keyword == "maximum" && value > bound {
+			return fmt.Errorf("%s violates %s %d", path, keyword, bound)
 		}
 	}
 	return nil
