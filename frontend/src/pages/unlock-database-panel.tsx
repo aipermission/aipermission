@@ -104,9 +104,13 @@ export function UnlockDatabasePanel({
         {migrationRequired ? (
           <div className="grid gap-2 sm:grid-cols-2">
             <Button type="button" asChild>
-              <a href="http://localhost:3211" target="_blank" rel="noreferrer">
+              <a
+                href="https://github.com/aipermission/aipermission/blob/main/docs/setup/database-migration.md"
+                target="_blank"
+                rel="noreferrer"
+              >
                 <ExternalLink className="h-4 w-4" />
-                Open migration helper
+                Migration instructions
               </a>
             </Button>
             <Button type="button" variant="danger" onClick={openDeleteDialog}>

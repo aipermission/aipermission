@@ -28,6 +28,17 @@ Open:
 http://localhost:3211
 ```
 
+This is the default migration port, not necessarily your configured port. Both
+Compose files honor `AIPERMISSION_MIGRATION_FRONTEND_PORT`; keep it distinct
+from the normal UI port. For example:
+
+```bash
+AIPERMISSION_MIGRATION_FRONTEND_PORT=3231 docker compose --profile migrate up -d --build migration
+```
+
+Then open `http://localhost:3231`. The unlock screen links to these instructions
+instead of guessing the address of a separately configured helper.
+
 Do not use the source database in the normal gateway while migration is running.
 For the cleanest copy, lock the source database or stop the normal gateway
 containers before starting the migration.
