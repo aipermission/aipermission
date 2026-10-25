@@ -52,7 +52,7 @@ if (args[0] === "context") {
   console.log(process.env.FIXTURE_ENDPOINT || "unix:///var/run/docker.sock");
   process.exit(0);
 }
-const action = args.find(value => ["build", "up", "run", "down"].includes(value));
+const action = args.find(value => ["build", "up", "run", "down", "logs", "ps"].includes(value));
 const source = process.env.AIPERMISSION_CONFORMANCE_SOURCE;
 if (action === "build") {
   for (const file of ["backend/go.mod", "backend/internal/public.go", "backend/cmd/main.go", "scripts/verification-policy.json", "backend/testdata/connector-conformance/protocols/Dockerfile", "backend/testdata/connector-conformance/protocols/start.sh", "backend/testdata/connector-conformance/kubernetes/Dockerfile", "backend/testdata/connector-conformance/kubernetes/scope.yaml"])
@@ -60,7 +60,9 @@ if (action === "build") {
   for (const file of [".env", ".git", "backend/internal/private.go"])
     if (fs.existsSync(path.join(source, file))) process.exit(18);
 }
-console.log(JSON.stringify({action, source, project: args[args.indexOf("-p")+1]}));
+console.log(JSON.stringify({action, source, args, project: args[args.indexOf("-p")+1]}));
+if (action === "logs" && process.env.FIXTURE_LOG_BYTES)
+  process.stdout.write("x".repeat(Number(process.env.FIXTURE_LOG_BYTES)));
 if (action === process.env.FIXTURE_FAIL ||
     (process.env.FIXTURE_FAIL === "runner" && action === "run" && args.at(-1) === "runner"))
   process.exit(9);
@@ -100,12 +102,37 @@ for (const failure of ["", "build", "up", "run", "runner", "down"]) {
       );
     }
     assert.equal(events.at(-1).action, "down");
+    if (failure === "up" || failure === "runner") {
+      const diagnostics = result.stderr.trim().split("\n").map(JSON.parse);
+      const logs = diagnostics.find((event) => event.action === "logs");
+      const status = diagnostics.find((event) => event.action === "ps");
+      assert.equal(logs.project, owner);
+      assert.equal(status.project, owner);
+      for (const service of ["clickhouse", "postgres", "valkey", "rabbitmq", "minio", "kafka", "protocols", "kube-api"])
+        assert.ok(logs.args.includes(service), `missing ${service} failure logs`);
+      assert.equal(logs.args[logs.args.indexOf("--tail") + 1], "40");
+      assert.ok(result.stderr.length < 65536);
+    }
     assert.equal(
       fs.readFileSync(path.join(directory, ".env"), "utf8"),
       "operator-file-not-source",
     );
   });
 }
+
+test("fixture diagnostics remain bounded when one log line is oversized", (t) => {
+  const { directory, bin } = fixture(t);
+  const result = spawnSync("sh", ["scripts/conformance/run.sh"], {
+    cwd: directory, encoding: "utf8", timeout: 15000,
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DOCKER_CONTEXT: "", DOCKER_HOST: "",
+      FIXTURE_FAIL: "up", FIXTURE_LOG_BYTES: "200000" },
+  });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.ok(Buffer.byteLength(result.stderr) <= 68000);
+  assert.ok(Buffer.byteLength(result.stderr) >= 65536);
+  assert.equal(JSON.parse(result.stdout.trim().split("\n").at(-1)).action, "down");
+});
 
 for (const environment of [
   { DOCKER_HOST: "tcp://remote.invalid:2375" },

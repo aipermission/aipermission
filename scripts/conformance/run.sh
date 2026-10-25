@@ -20,6 +20,13 @@ fixture=backend/testdata/connector-conformance/compose.yml
 export AIPERMISSION_CONFORMANCE_SOURCE="$stage/source"
 started=0
 dc() { docker compose --env-file /dev/null -p "$project" -f "$fixture" "$@"; }
+diagnostics() {
+  dc ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Health}}' >&2 || true
+  # Only this owned fixture project is inspected. Bound both line count and
+  # total output; never dump container environment, mounts or operator files.
+  dc logs --no-color --tail 40 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api 2>&1 |
+    head -c 65536 >&2 || true
+}
 cleanup() {
   status=$?
   trap - EXIT INT TERM
@@ -44,11 +51,11 @@ tar -xf "$stage/source.tar" -C "$stage/source"
 started=1
 dc build runner protocols kube-api
 if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api; then
-  dc logs --no-color --tail 100 kafka protocols kube-api >&2 || true
+  diagnostics
   exit 1
 fi
 dc run --rm --no-deps -T minio-init
 if ! dc run --rm --no-deps -T runner; then
-  dc logs --no-color --tail 100 kafka protocols kube-api >&2 || true
+  diagnostics
   exit 1
 fi
