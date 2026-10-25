@@ -428,6 +428,11 @@ service/ingress/node/event listing, resource JSON describes, bounded pod log
 tails, and explicit `rollout_restart` for deployments. Kubernetes profiles can
 scope access by namespace visibility. Raw `kubectl`, manifest apply/edit/delete,
 pod deletion, scaling, and Secret value browsing are not exposed.
+Resource describes mask inline `env[].value` entries (including init and
+ephemeral containers) and the embedded `last-applied-configuration` annotation.
+Environment names and Secret references remain visible, but referenced Secret
+values are never fetched. Other resource fields and logs remain untrusted
+external content; this masking is not a guarantee that they contain no secrets.
 For a drift-guarded restart, read the deployment with `describe_resource` and
 pass its `metadata.resourceVersion` as `expected_resource_version`. A conflict
 returns `precondition_failed`; refresh state before requesting another restart.

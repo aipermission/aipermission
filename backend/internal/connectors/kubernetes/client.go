@@ -257,6 +257,7 @@ func executeDescribe(ctx context.Context, client *kubeClient, input map[string]a
 	if err := json.Unmarshal([]byte(result.Stdout), &resource); err != nil {
 		return connectors.ActionResult{}, fmt.Errorf("parse kubectl resource JSON: %w", err)
 	}
+	resource = redactResource(resource).(map[string]any)
 	return connectors.ActionResult{Status: connectors.ResultCompleted, Output: map[string]any{"resource": resource, "summary": genericResourceSummary(resource)}, DisplayText: fmt.Sprintf("Read Kubernetes %s %s.", resourceType, resourceSummary(resourceType, namespace, name))}, nil
 }
 
