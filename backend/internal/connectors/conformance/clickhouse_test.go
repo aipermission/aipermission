@@ -1,6 +1,7 @@
 package conformance_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -35,4 +36,14 @@ func TestClickHouseRealService(t *testing.T) {
 		"max_rows": 5,
 	})
 	assertResultContains(t, result, "clickhouse-conformance")
+	for _, identifier := range []string{" events ", "`events`", `tenant\back`, "ending\\", "mixed\\`"} {
+		quoted := "`" + strings.ReplaceAll(strings.ReplaceAll(identifier, "\\", "\\\\"), "`", "``") + "`"
+		result := executeAction(t, connector, runtime, clickhouseconnector.ActionQueryReadonly, map[string]any{
+			"sql": "SELECT 1 AS " + quoted, "max_rows": 1,
+		})
+		columns := result.Output.(map[string]any)["columns"].([]string)
+		if len(columns) != 1 || columns[0] != identifier {
+			t.Fatalf("native parser changed identifier %q: %#v", identifier, columns)
+		}
+	}
 }

@@ -22,3 +22,14 @@ it("does not invent a database for empty metadata references", () => {
   expect(clickHouseConsoleConfig.describeInput({ schema: "", table: "events" })).toEqual({ database: "", table: "events" });
   expect(clickHouseConsoleConfig.tableQuery({ schema: "", table: "" }, 10)).toBe("SELECT *\nFROM ``.``\nLIMIT 10;");
 });
+
+it("preserves edge spaces and escapes literal backslashes before identifier delimiters", () => {
+  expect(clickHouseConsoleConfig.describeInput({ schema: " db ", table: " events " })).toEqual({
+    database: " db ",
+    table: " events ",
+  });
+  expect(clickHouseConsoleConfig.tableQuery({ schema: "tenant\\back", table: "events\\`" }, 10)).toBe(
+    "SELECT *\nFROM `tenant\\\\back`.`events\\\\```\nLIMIT 10;",
+  );
+  expect(clickHouseConsoleConfig.tableQuery({ schema: " db ", table: " events " }, 10)).toContain("` db `.` events `");
+});

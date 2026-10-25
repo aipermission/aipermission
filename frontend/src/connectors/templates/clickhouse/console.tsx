@@ -40,5 +40,7 @@ export function ClickHouseConnectorToolbarActionsTemplate(props: Omit<ComponentP
 }
 
 function quoteClickHouseIdentifier(value: string): string {
-  return `\`${String(value || "").replaceAll("`", "``")}\``;
+  return `\`${String(value || "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("`", "``")}\``;
 }

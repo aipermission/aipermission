@@ -423,6 +423,11 @@ volume reads, `container_exec`, and live container console sessions are bounded
 to the selected container scope where practical. Arbitrary host-level Docker
 commands, prune, removal, and raw Docker command execution are not exposed.
 
+ClickHouse metadata database/table names are exact identities: do not strip
+their surrounding spaces or literal quotes. Console-generated identifiers
+escape backslashes and backticks for the ClickHouse dialect. Invalid NUL
+characters are rejected rather than replaced with a default database.
+
 Kubernetes actions include cluster version metadata, namespace/workload/pod/
 service/ingress/node/event listing, resource JSON describes, bounded pod log
 tails, and explicit `rollout_restart` for deployments. Kubernetes profiles can
