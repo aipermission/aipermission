@@ -469,6 +469,8 @@
     }
   ],
   "connector_conformance_tests": [
+    "TestMetadataIdentifiersSurviveSharedActionPreparation",
+    "TestMetadataIdentifiersRejectNULInsteadOfSelectingDefault",
     "TestDockerDaemonRealService",
     "TestKubernetesAPIRealService",
     "TestOpenSSHRealService",

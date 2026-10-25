@@ -84,7 +84,7 @@ func (Connector) TargetSchema() connectors.Schema {
 		},
 		{Name: "host", Label: "Host", Type: connectors.FieldString, Required: true, Description: "ClickHouse host as seen by the selected connection mode."},
 		{Name: "port", Label: "Native port", Type: connectors.FieldInteger, Required: true, Default: defaultPort, Description: "ClickHouse native protocol port, commonly 9000 or 9440 with TLS."},
-		{Name: "database", Label: "Default database", Type: connectors.FieldString, Required: true, Default: "default", Description: "Default ClickHouse database for this target."},
+		{Name: "database", Label: "Default database", Type: connectors.FieldString, Required: true, PreserveWhitespace: true, Default: "default", Description: "Default ClickHouse database for this target."},
 		{
 			Name:        "tls_mode",
 			Label:       "TLS mode",
@@ -141,14 +141,14 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 		{Name: ActionGetDatabases, Label: "List databases", Description: "List visible ClickHouse databases.", Category: "metadata", Risk: connectors.RiskRead, InputSchema: connectors.Schema{}, OutputHint: connectors.OutputHint{Format: "json", MaxRows: 500}},
 		{
 			Name: ActionGetTables, Label: "List tables", Description: "List visible ClickHouse tables, optionally within one database.", Category: "metadata", Risk: connectors.RiskRead,
-			InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "database", Label: "Database", Type: connectors.FieldString, Description: "Optional database name. Empty lists tables across visible non-system databases."}}},
+			InputSchema: connectors.Schema{Fields: []connectors.Field{{Name: "database", Label: "Database", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional exact database name. Empty lists tables across visible non-system databases."}}},
 			OutputHint:  connectors.OutputHint{Format: "json", MaxRows: maxRows, MaxBytes: maxOutputBytes},
 		},
 		{
 			Name: ActionDescribeTable, Label: "Describe table", Description: "Describe ordered columns and basic metadata for one ClickHouse table.", Category: "metadata", Risk: connectors.RiskRead,
 			InputSchema: connectors.Schema{Fields: []connectors.Field{
-				{Name: "database", Label: "Database", Type: connectors.FieldString, Description: "Optional database name. The target default is used when empty."},
-				{Name: "table", Label: "Table", Type: connectors.FieldString, Required: true, Description: "Table name."},
+				{Name: "database", Label: "Database", Type: connectors.FieldString, PreserveWhitespace: true, Description: "Optional exact database name. The target default is used when empty."},
+				{Name: "table", Label: "Table", Type: connectors.FieldString, Required: true, PreserveWhitespace: true, Description: "Exact table name."},
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: 500, MaxBytes: maxOutputBytes},
 		},
@@ -190,7 +190,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.Payload = map[string]any{}
 		return base, nil
 	case ActionGetTables:
-		database := cleanIdentifierInput(req.Input, "database")
+		database, err := identifierInput(req.Input, "database")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		base.Title = "List ClickHouse tables"
 		base.Summary = targetSummary(req.Target, "List visible tables")
 		base.Preview = map[string]any{"database": database}
@@ -198,11 +201,17 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.ContextMaterial["database"] = database
 		return base, nil
 	case ActionDescribeTable:
-		database := cleanIdentifierInput(req.Input, "database")
-		if database == "" {
-			database = targetString(req.Target.Config, "database")
+		database, err := identifierInput(req.Input, "database")
+		if err != nil {
+			return connectors.PreparedAction{}, err
 		}
-		table := cleanIdentifierInput(req.Input, "table")
+		if database == "" {
+			database = stringInput(req.Target.Config, "database")
+		}
+		table, err := identifierInput(req.Input, "table")
+		if err != nil {
+			return connectors.PreparedAction{}, err
+		}
 		if table == "" {
 			return connectors.PreparedAction{}, fmt.Errorf("%s table is required", ActionDescribeTable)
 		}
@@ -254,7 +263,7 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 			WHERE name NOT IN ('system', 'INFORMATION_SCHEMA', 'information_schema')
 			ORDER BY name`, 500)
 	case ActionGetTables:
-		database := payloadString(action.Payload, "database")
+		database := stringInput(action.Payload, "database")
 		output, err = queryRows(ctx, db, `
 			SELECT database, name AS table, engine, total_rows, total_bytes
 			FROM system.tables
@@ -262,8 +271,8 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 			  AND (? = '' OR database = ?)
 			ORDER BY database, name`, maxRows, database, database)
 	case ActionDescribeTable:
-		database := payloadString(action.Payload, "database")
-		table := payloadString(action.Payload, "table")
+		database := stringInput(action.Payload, "database")
+		table := stringInput(action.Payload, "table")
 		if database == "" || table == "" {
 			return connectors.ActionResult{}, fmt.Errorf("%s database and table are required", ActionDescribeTable)
 		}
@@ -333,7 +342,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, e
 		}
 	}
 	host := targetString(runtime.Target.Config, "host")
-	database := targetString(runtime.Target.Config, "database")
+	database := stringInput(runtime.Target.Config, "database")
 	port := targetPort(runtime.Target.Config)
 	if host == "" || database == "" || port < 1 {
 		return nil, fmt.Errorf("%w: host, port, and database are required", ErrInvalidConfig)
@@ -516,13 +525,12 @@ func boundedRows(value int) int {
 	return value
 }
 
-func cleanIdentifierInput(input map[string]any, name string) string {
-	value := strings.TrimSpace(stringInput(input, name))
-	value = strings.Trim(value, "\"`")
-	if strings.ContainsAny(value, ";\x00\n\r") {
-		return ""
+func identifierInput(input map[string]any, name string) (string, error) {
+	value := stringInput(input, name)
+	if strings.ContainsRune(value, '\x00') {
+		return "", fmt.Errorf("%s must not contain NUL", name)
 	}
-	return value
+	return value, nil
 }
 
 func stringInput(values map[string]any, name string) string {
