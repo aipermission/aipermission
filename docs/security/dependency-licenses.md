@@ -23,6 +23,13 @@ valid payload and decompressed-size boundary cases. Memory/output limits do
 not replace this dependency fix. Unchanged Go evidence and acknowledged gaps
 are preserved; this inventory remains metadata review, not legal advice.
 
+The same maintenance batch records frontend Vite 6.4.5 (MIT), jscpd 5.4.2
+and its platform packages (MIT), and Lucide 1.61.0 (ISC). A real loopback Vite
+server regression verifies that transform query suffixes cannot bypass an
+explicit filesystem deny rule while allowed files remain readable. Duplication
+ratchets retain their existing configuration and ceilings after the jscpd patch;
+no semantic model download or new enforcement mode is enabled.
+
 The MCP SDK's transitive `proxy-addr` dependency is locked to 2.0.8 for
 [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h).
 Its declared MIT license, registry integrity and lockfile metadata are reviewed
