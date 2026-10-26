@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import net from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -66,5 +68,40 @@ test("Vite binds the explicitly requested ephemeral loopback port", async () => 
   } finally {
     await server?.close();
     if (reservation.listening) await closeListener(reservation);
+  }
+});
+
+test("Vite applies filesystem denial before and after stripping transform queries", { timeout: 30_000 }, async () => {
+  const fixture = await fs.mkdtemp(path.join(os.tmpdir(), "vite-fs-deny-"));
+  let server;
+  try {
+    await fs.writeFile(path.join(fixture, "visible.txt"), "visible fixture payload");
+    await fs.writeFile(path.join(fixture, "blocked.txt"), "denied fixture payload");
+    server = await createServer({
+      configFile: false,
+      root: fixture,
+      logLevel: "silent",
+      optimizeDeps: { noDiscovery: true, entries: [] },
+      server: {
+        host: "127.0.0.1",
+        port: 0,
+        strictPort: true,
+        fs: { strict: true, allow: [fixture], deny: ["**/blocked.txt"] },
+        watch: { ignored: ["**"] },
+      },
+    });
+    await server.listen();
+    const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
+    const visible = await fetch(`${origin}/visible.txt?raw`, { signal: AbortSignal.timeout(10_000) });
+    assert.equal(visible.status, 200);
+    assert.ok((await visible.text()).includes("visible fixture payload"));
+    for (const query of ["", "?raw", "?url", "?inline", "?import&raw", "?.svg?import"]) {
+      const response = await fetch(`${origin}/blocked.txt${query}`, { signal: AbortSignal.timeout(10_000) });
+      assert.equal(response.status, 403, query || "no query");
+      assert.ok(!(await response.text()).includes("denied fixture payload"));
+    }
+  } finally {
+    await server?.close();
+    await fs.rm(fixture, { recursive: true, force: true });
   }
 });
