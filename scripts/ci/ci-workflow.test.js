@@ -108,6 +108,6 @@ test("backend runtime enforces its patched PCRE2 inventory minimum", () => {
 test("frontend runtime installs patched native packages before dropping root", () => {
   assert.match(
     read("frontend/Dockerfile"),
-    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0' 'tiff>=4\.7\.2-r0' 'libx11>=1\.8\.14-r0' 'nginx>=1\.30\.6-r0' 'brotli-libs>=1\.2\.1-r0'\s+USER 101/,
+    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0' 'tiff>=4\.7\.2-r0' 'libx11>=1\.8\.14-r0' 'nginx>=1\.30\.6-r0' 'brotli-libs>=1\.2\.1-r0' 'curl>=8\.23\.0-r0' 'libcurl>=8\.23\.0-r0'\s+USER 101/,
   );
 });

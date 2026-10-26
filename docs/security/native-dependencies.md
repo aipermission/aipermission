@@ -114,6 +114,14 @@ Use a fresh vulnerability database for pre-push scans and retain its metadata
 alongside the exact image identity. A still-valid cached database can predate
 new advisories and is not evidence of parity with CI's fresh scan.
 
+The post-0.2.74 maintenance patch retains nginx's stable 1.30.6 base and adds
+explicit `curl>=8.23.0-r0` and `libcurl>=8.23.0-r0` floors for
+[CVE-2026-92392](https://curl.se/docs/CVE-2026-92392.html). Both packages must
+resolve together before the image returns to UID101. The advisory concerns
+HTTP/2 uploads to a malicious peer; package presence alone does not establish
+that the gateway exposes those prerequisites. Rebuild and scan the final image
+instead of relying on an nginx minor-version change to patch its dependencies.
+
 The frontend also requires `brotli-libs>=1.2.1-r0` for CVE-2026-111497. This
 native decoder dependency is separate from the Go Brotli module and Node.js's
 bundled decoder; patching one does not patch the others. See the
