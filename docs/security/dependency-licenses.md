@@ -14,6 +14,15 @@ lockfiles, their package manifests, `backend/go.mod`, `backend/go.sum`, and
 hashes deliberately make even formatting changes require a baseline review.
 No installed npm dependency tree is used.
 
+The post-0.2.74 maintenance refresh records klauspost/compress 1.20.3 and its
+named license evidence for
+[GHSA-fpmh-frq8-7rj8](https://github.com/klauspost/compress/security/advisories/GHSA-fpmh-frq8-7rj8).
+A regression reproduces the two-block FSE panic through Kafka's actual bounded
+streaming decompressor on 1.20.1 and verifies the patched dependency alongside
+valid payload and decompressed-size boundary cases. Memory/output limits do
+not replace this dependency fix. Unchanged Go evidence and acknowledged gaps
+are preserved; this inventory remains metadata review, not legal advice.
+
 The MCP SDK's transitive `proxy-addr` dependency is locked to 2.0.8 for
 [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h).
 Its declared MIT license, registry integrity and lockfile metadata are reviewed
