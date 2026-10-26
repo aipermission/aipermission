@@ -9,6 +9,30 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Security
+
+- Patched Kafka's klauspost/compress dependency to 1.20.3 for GHSA-fpmh-frq8-7rj8. A
+  regression reproduces the prior two-block zstd panic through the actual bounded
+  decompressor and retains normal decoding and size-limit checks.
+- The unprivileged frontend image requires curl and libcurl 8.23.0-r0 or later for
+  CVE-2026-92392 while retaining the stable nginx 1.30.6 base.
+- Updated development-only Vite to 6.4.5; a real loopback server regression checks
+  filesystem denial with transform-query suffixes.
+
+### Maintenance
+
+- Refreshed the Go 1.27.3 builder image digest together with the native dependency
+  inventory, frontend Lucide/jscpd patches, and immutable CodeQL 4.39.1 action pins.
+- Reviewed dependency license identities retain unchanged Go evidence and acknowledged
+  historical gaps. Existing quality and verification budgets remain enforced.
+
+### Notes
+
+- These are untagged main-branch maintenance changes, not a replacement of the published
+  v0.2.74 tag or images. Rebuild from current source or wait for the next tagged image
+  release to adopt them. No database migration, permission-model change or MCP package
+  update is introduced.
+
 ## [0.2.74] - 2026-10-25
 
 ### Security
