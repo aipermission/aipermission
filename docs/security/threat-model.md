@@ -214,6 +214,20 @@ This is an action-policy boundary, not a replacement for database privileges.
 Use dedicated read-only profiles and review database extensions, casts, and
 other server-side execution capabilities.
 
+SQL Server uses a bounded full-grammar T-SQL parse with an explicit read-rule
+allowlist and validated token projection, rather than the Postgres scanner.
+It rejects writes, procedures, sequences, hints, table functions and
+external/cross-database table references. There is no equivalent read-only
+transaction guarantee: read-only application intent is not used as one.
+Operators must review granted views, synonyms, CLR objects and external-access
+privileges, use a least-privilege SQL login, and keep verified TLS enabled.
+First-result inspection rejects unsupported XML/variant/CLR results before
+execution on a trusted stable schema. It cannot guarantee a process-memory cap
+against schema races or a hostile server. Permitted system views/functions can
+still reveal server metadata allowed by database grants, beyond catalog actions
+which enumerate only the target database.
+See the [SQL Server boundary](../setup/sql-server.md#read-boundary).
+
 ### Process Memory And Local State
 
 Risk: a local process compromise reads backend memory or restarts the gateway to clear counters.

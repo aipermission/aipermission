@@ -2,7 +2,7 @@
 
 The MCP surface is connector-first. AIPermission does not expose separate
 product-specific MCP wrappers for SSH, database, cache, queue, or container
-products. SSH, Postgres, ClickHouse, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail,
+products. SSH, Postgres, ClickHouse, SQL Server, Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail,
 and future integrations are reached through the same connector target/action
 pipeline.
 
@@ -75,6 +75,7 @@ docker:10:5
 kubernetes:11:6
 s3:12:7
 mail:13:8
+sqlserver:14:9
 ```
 
 The profile chooses which stored credential is used. The connector action still

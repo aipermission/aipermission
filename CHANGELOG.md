@@ -9,6 +9,21 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Added
+
+- Added an isolated SQL Server connector with direct TCP SQL authentication, verified
+  TLS and private-CA support; no SSH or Windows-side gateway agent is required.
+- SQL Server reuses the shared SQL console, schema browser, autocomplete, sessions and
+  result exports. Five read-only actions use the existing permission, approval, history,
+  audit and MCP pipeline.
+- Added full-grammar, fail-closed T-SQL read validation and a disposable SQL Server 2022
+  fixture covering TLS, cancellation, writable-canary policy regressions, exact scalar
+  values and result limits.
+- SQL Server checks supported result types before query execution, preserves
+  timezone-free date/time semantics, and requires a submitted password when changing a
+  profile username. Shared SQL completion preserves escaped identifiers and supports
+  quoted Enter/Tab acceptance.
+
 ### Security
 
 - Patched Kafka's klauspost/compress dependency to 1.20.3 for GHSA-fpmh-frq8-7rj8. A
@@ -28,10 +43,10 @@ and this project uses semantic versioning for public releases.
 
 ### Notes
 
-- These are untagged main-branch maintenance changes, not a replacement of the published
-  v0.2.74 tag or images. Rebuild from current source or wait for the next tagged image
-  release to adopt them. No database migration, permission-model change or MCP package
-  update is introduced.
+- These source changes do not replace the published v0.2.74 tag or images. The SQL
+  Server connector is read-only: stored procedures, write SQL, managed users and
+  backup/restore are not included. No database migration or new MCP tool family is
+  introduced.
 
 ## [0.2.74] - 2026-10-25
 

@@ -1022,6 +1022,32 @@ output. These controls do not replace ClickHouse grants. Contributors and
 operators must still use a dedicated read-only database user and should default
 exploratory query access to `approval_required`.
 
+## SQL Server Safety Boundary
+
+SQL Server reuses the SQL console, database model, generic TCP capability and
+bounded result builder. Its driver, strict TLS/configuration, T-SQL parser
+policy and metadata stay in `backend/internal/connectors/sqlserver`, with
+captured templates in `frontend/src/connectors/templates/sqlserver`.
+Registration is a catalog entry, not a new gateway execution or MCP branch.
+
+Its initial action catalog is read-only. A pinned full ANTLR T-SQL grammar
+feeds an explicit parse-tree rule/function/type allowlist. Lexer/parser errors,
+unknown rules, extra statements and over-budget input fail closed. A small
+lexical adapter bounds nested comments before the generated lexer and preserves
+escaped identifiers and strings; it is not the read-policy parser. Execution
+uses the validated token projection, never an unchecked original suffix or a
+lossy AST printer. Keep semantic projection and writable-canary regressions,
+not just crash tests. Never reuse the Postgres dialect validator for T-SQL or
+claim that SQL Server's read-only application intent prevents writes.
+Queries still require least-privilege database logins and bounded execution.
+The socket follows the full operation context even during prelogin; a driver
+dial-only context must not become its lifetime. User SQL has same-connection
+first-result type inspection before execution, but metadata is not a schema
+lock or an unconditional driver heap cap. See the result-type restrictions and
+trust assumptions below before expanding the grammar or approved casts.
+See [SQL Server setup and limits](../setup/sql-server.md) for the exact supported
+surface and the connector-owned disposable protocol fixture.
+
 ## Tests
 
 Add focused tests for:
