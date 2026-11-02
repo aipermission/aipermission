@@ -481,6 +481,7 @@
     "TestKafkaWireProbe",
     "TestKafkaRealService",
     "TestClickHouseRealService",
+    "TestSQLServerRealService",
     "TestPostgresRealService",
     "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",

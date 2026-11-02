@@ -1,7 +1,7 @@
 # Development Testing
 
 When a contained-service fixture fails to start or its runner fails, the
-conformance harness reports states/health and bounded logs for all eight
+conformance harness reports states/health and bounded logs for all nine
 fixture services, including RabbitMQ. Logs are limited to 40 lines per service
 and 64 KiB total. Diagnostics inspect only the run's owned project, never the
 operator's stable stack, Docker environment or mount configuration. A passing
@@ -295,7 +295,7 @@ an owned ephemeral loopback server to verify that unknown reads, mutations,
 and websocket connections never reach the wire; only its exact intentional
 probe log is consumed before teardown. These checks do not require a live API.
 
-Postgres and ClickHouse SQL Console browser fixtures include a recent query.
+Postgres, ClickHouse and SQL Server SQL Console browser fixtures include a recent query.
 At 390px and 1920px they assert bounding-box containment and non-overlap for
 query/session controls and save screenshots plus JSON bounds. Keyboard checks
 load the recent query, settle an empty focused editor, accept completions twice
@@ -320,7 +320,7 @@ set `AIPERMISSION_FUZZ_TIME` to an integer execution count ending in `x`, or a
 millisecond/second duration capped at 30 seconds, for a different local pass.
 The bounded runner uses one fuzz worker so CI results remain reproducible.
 
-The required connector conformance workflow exercises ClickHouse, Postgres,
+The required connector conformance workflow exercises ClickHouse, Postgres, SQL Server,
 Valkey, RabbitMQ, S3, Apache Kafka, OpenSSH, and Dovecot/Postfix Mail against disposable pinned service
 containers on pull requests and pushes to `main` and `dev`, weekly, and on
 demand. The runner joins the internal fixture network, with no published ports,

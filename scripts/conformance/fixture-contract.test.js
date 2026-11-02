@@ -25,6 +25,7 @@ test("connector conformance documentation matches the required workflow", () => 
   const families = {
     clickhouse: "ClickHouse",
     postgres: "Postgres",
+    sqlserver: "SQL Server",
     valkey: "Valkey",
     rabbitmq: "RabbitMQ",
     minio: "S3",
@@ -76,6 +77,7 @@ test("connector conformance documentation matches the required workflow", () => 
     "compiler-cache:/cache",
     "fixture-material:/fixture-material:ro",
     "kube-material:/kube-material:ro",
+    "sqlserver-material:/sqlserver-material:ro",
   ]);
   assert.equal(
     compose.services.runner.environment.SSL_CERT_FILE,
