@@ -73,8 +73,12 @@ test("Vite binds the explicitly requested ephemeral loopback port", async () => 
 
 test("Vite applies filesystem denial before and after stripping transform queries", { timeout: 30_000 }, async () => {
   const fixture = await fs.mkdtemp(path.join(os.tmpdir(), "vite-fs-deny-"));
+  const reservation = net.createServer();
   let server;
   try {
+    await listenOnLoopback(reservation);
+    const port = reservation.address().port;
+    await closeListener(reservation);
     await fs.writeFile(path.join(fixture, "visible.txt"), "visible fixture payload");
     await fs.writeFile(path.join(fixture, "blocked.txt"), "denied fixture payload");
     server = await createServer({
@@ -84,13 +88,14 @@ test("Vite applies filesystem denial before and after stripping transform querie
       optimizeDeps: { noDiscovery: true, entries: [] },
       server: {
         host: "127.0.0.1",
-        port: 0,
+        port,
         strictPort: true,
         fs: { strict: true, allow: [fixture], deny: ["**/blocked.txt"] },
         watch: { ignored: ["**"] },
       },
     });
     await server.listen();
+    assert.equal(server.httpServer.address().port, port);
     const origin = `http://127.0.0.1:${server.httpServer.address().port}`;
     const visible = await fetch(`${origin}/visible.txt?raw`, { signal: AbortSignal.timeout(10_000) });
     assert.equal(visible.status, 200);
@@ -102,6 +107,7 @@ test("Vite applies filesystem denial before and after stripping transform querie
     }
   } finally {
     await server?.close();
+    if (reservation.listening) await closeListener(reservation);
     await fs.rm(fixture, { recursive: true, force: true });
   }
 });
