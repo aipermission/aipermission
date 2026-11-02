@@ -386,6 +386,7 @@
     "internal/connectors/builtin/catalogdata": 98,
     "internal/connectors/builtin/catalogruntime": 98,
     "internal/connectors/clickhouse": 58,
+    "internal/connectors/sqlserver": 84,
     "internal/connectors/connectortest": 68,
     "internal/connectors/docker": 52,
     "internal/connectors/docker/apiadapter": 49,

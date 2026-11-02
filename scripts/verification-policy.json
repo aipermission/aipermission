@@ -509,6 +509,10 @@
   ],
   "fuzz_targets": [
     {
+      "package": "./internal/connectors/sqlserver",
+      "name": "FuzzReadonlySQL"
+    },
+    {
       "package": "./internal/console/manualinput/heredocsyntax",
       "name": "FuzzParseHeadersBounded"
     },
