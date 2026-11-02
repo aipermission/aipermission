@@ -403,7 +403,7 @@ func TestBoundedReadConnRejectsAnEmptyProbeWithoutProgress(t *testing.T) {
 func TestContextBoundConnectionClosesWhenActionIsCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	conn := &trackedConn{memoryConn: memoryConn{Reader: bytes.NewReader(nil)}}
-	bound := bindConnToContext(ctx, conn)
+	bound := connectors.BindNetworkConnectionContext(ctx, conn)
 	cancel()
 	deadline := time.Now().Add(time.Second)
 	for !conn.isClosed() && time.Now().Before(deadline) {

@@ -38,11 +38,6 @@ type boundedReadConn struct {
 	read int64
 }
 
-type contextBoundConn struct {
-	net.Conn
-	stop func() bool
-}
-
 // deadlineCapConn keeps protocol libraries from extending or clearing the
 // absolute connection/bootstrap deadline while authentication is in progress.
 type deadlineCapConn struct {
@@ -81,19 +76,6 @@ func (conn *deadlineCapConn) SetReadDeadline(deadline time.Time) error {
 
 func (conn *deadlineCapConn) SetWriteDeadline(deadline time.Time) error {
 	return conn.Conn.SetWriteDeadline(conn.capped(deadline))
-}
-
-func bindConnToContext(ctx context.Context, conn net.Conn) net.Conn {
-	bound := &contextBoundConn{Conn: conn}
-	bound.stop = context.AfterFunc(ctx, func() { _ = conn.Close() })
-	return bound
-}
-
-func (conn *contextBoundConn) Close() error {
-	if conn.stop != nil {
-		conn.stop()
-	}
-	return conn.Conn.Close()
 }
 
 func (conn *boundedReadConn) Read(buffer []byte) (int, error) {
@@ -180,7 +162,7 @@ func dialProtocol(lifetimeCtx context.Context, dialCtx context.Context, runtime 
 	if err != nil {
 		return nil, classifyProtocolError("connect", err)
 	}
-	return bindConnToContext(lifetimeCtx, &boundedReadConn{Conn: conn}), nil
+	return connectors.BindNetworkConnectionContext(lifetimeCtx, &boundedReadConn{Conn: conn}), nil
 }
 
 func setConnDeadlineFromContext(conn net.Conn, ctx context.Context, fallback time.Duration) error {
