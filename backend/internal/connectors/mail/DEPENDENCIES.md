@@ -11,7 +11,8 @@ The first Mail connector release pins small, protocol-focused Go libraries:
 - `github.com/emersion/go-message` v0.18.2 for MIME and RFC message handling.
 - `github.com/microcosm-cc/bluemonday` v1.0.27 for an outbound HTML allowlist.
 - `golang.org/x/net/html` and `idna` for parsed HTML-to-text projection and
-  recipient-domain normalization.
+  recipient-domain normalization. x/net 0.62.0 includes the GO-2026-6860
+  text-coalescing allocation fix.
 
 These packages use permissive licenses compatible with AIPermission's AGPL-3.0
 distribution. Production protocol debug writers stay disabled. All reads,

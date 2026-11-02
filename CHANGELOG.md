@@ -26,6 +26,8 @@ and this project uses semantic versioning for public releases.
 
 ### Security
 
+- Updated golang.org/x/net to 0.62.0 for GO-2026-6860 in Mail HTML parsing, with a
+  bounded allocation regression for ignored-tag text coalescing.
 - Patched Kafka's klauspost/compress dependency to 1.20.3 for GHSA-fpmh-frq8-7rj8. A
   regression reproduces the prior two-block zstd panic through the actual bounded
   decompressor and retains normal decoding and size-limit checks.

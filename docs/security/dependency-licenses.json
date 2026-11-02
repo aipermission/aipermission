@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "9b1223d8f7b3ada9a21d8311ef6169b9a0e2a01bbc0ee9b6f95893cda6daf2a2"
+      "sha256": "24d947c834932083d8e41d00cdc303316b0fcc032a238c8393e51f6e927cea72"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "6e33d93fe8a0fa05ef3bf364af7e6723702ecf806e949cbdd224e93a61d619f6"
+      "sha256": "ad3ac27e33e2ec98439693d2e1c1f203f4c42b6a2dfdf63015bc404202b4dede"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6165,7 +6165,7 @@
       },
       {
         "Path": "golang.org/x/net",
-        "Version": "v0.61.0"
+        "Version": "v0.62.0"
       },
       {
         "Path": "golang.org/x/sys",
@@ -7769,9 +7769,9 @@
     },
     {
       "module": "golang.org/x/net",
-      "version": "v0.61.0",
+      "version": "v0.62.0",
       "checksums": {
-        "module": "h1:RR+6j/BTBCrggOLugxa+66R8FvoN6MHlzDlZIbN9YFw=",
+        "module": "h1:18ELalfM5+XNRwzM2nYqXsZQ9ByS1uhj2O/U7+5jqRY=",
         "go_mod": "h1:WgDCOTH8iwtB66T4/GfI94AHo/hhdb7Hah9NDseQfiI="
       },
       "requirement": "direct",
@@ -7779,12 +7779,12 @@
         "status": "files-recorded",
         "files": [
           {
-            "path": "golang.org/x/net@v0.61.0/LICENSE",
+            "path": "golang.org/x/net@v0.62.0/LICENSE",
             "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
             "bytes": 1453
           },
           {
-            "path": "golang.org/x/net@v0.61.0/PATENTS",
+            "path": "golang.org/x/net@v0.62.0/PATENTS",
             "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
             "bytes": 1303
           }
@@ -8281,7 +8281,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed SQL Server driver, ANTLR runtime and complete T-SQL grammar metadata; unchanged historical gaps preserved",
+    "reviewer": "Codex maintainer: reviewed SQL Server parser and x/net 0.62.0 evidence; unchanged historical gaps preserved",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
