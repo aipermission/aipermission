@@ -24,6 +24,17 @@ ROWCOUNT (requested limit plus one for truncation detection), TEXTSIZE 131072,
 and 500000 bytes per projected result. Output truncation is explicit and is not
 proof that a metadata listing is complete. Results preserve duplicate column
 names, exact large integers, decimal strings, binary hex and temporal offsets.
+Timezone-free date/time types do not gain a timezone during serialization.
+
+User SQL requires SQL Server 2012+ first-result description on the same connection
+before execution, with ROWCOUNT disabled during metadata inspection. XML,
+sql_variant, CLR/spatial and unknown result types fail closed; explicitly CAST
+to a supported scalar type. `max_length_bytes` reports catalog byte lengths.
+This preflight assumes trusted stable database objects: concurrent DDL or a
+hostile server can invalidate metadata, and projected output limits are not an
+unconditional driver/process heap cap. TEXTSIZE does not itself bound XML/CLR.
+Catalog actions enumerate the target database, while permitted SQL may still
+read server metadata visible to the login under SQL Server grants.
 
 See [dependencies and transport policy](DEPENDENCIES.md). Protocol tests use
 only owned disposable SQL Server fixtures, never operator databases.

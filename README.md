@@ -45,6 +45,13 @@ rather than separate product modes. The generated
 [connector catalog](docs/connectors.md) is the canonical current list and owns
 their capability summaries.
 
+SQL Server targets support direct TCP SQL authentication, including databases
+running on Windows without SSH. They reuse the shared SQL console and bounded
+read-only action pipeline; see [SQL Server setup and TLS](docs/setup/sql-server.md).
+User queries require SQL Server 2012+ result-metadata inspection; unsupported
+XML/variant/CLR results need an explicit scalar CAST. Dedicated read-only
+database grants remain essential.
+
 History and audit are encrypted, local, retention-controlled records for the
 active database. They are not an immutable external audit archive: configured
 retention can delete them, and deleting or replacing the local database removes

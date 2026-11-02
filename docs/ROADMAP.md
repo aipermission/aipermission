@@ -1,7 +1,7 @@
 # Roadmap
 
 AIPermission is a local-only, single-user permission gateway for developers and
-AI agents. The 0.2 line is connector-native: SSH, Postgres, ClickHouse,
+AI agents. The 0.2 line is connector-native: SSH, Postgres, ClickHouse, SQL Server,
 Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail all
 use the same target, credential profile, action permission, approval, history,
 audit, and project-scoping pipeline.

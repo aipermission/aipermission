@@ -18,6 +18,7 @@ templates own connector-specific forms and activity surfaces.
 | RabbitMQ | `rabbitmq` | 0.2 | Server-filtered queue browsing, bounded binding discovery and message previews, and explicit message publishing through RabbitMQ Management API profiles. Queue and binding scans report when their page or item cap may leave results incomplete. |
 | Redis / Valkey | `redis` | 0.3 | Redis-compatible key browsing, range/scan-based bounded previews, string writes, TTL updates, and destructive deletes through encrypted credential profiles. |
 | S3 | `s3` | 0.4 | S3-compatible browsing, bounded transfer queues, temporary URLs, object versions, and lifecycle controls. |
+| SQL Server | `sqlserver` | 0.2 | Direct SQL authentication, schema browsing and bounded read-only T-SQL. |
 | SSH | `ssh` | 0.3 | Persistent shell, file transfer, remote browsing, and command execution. |
 
 Connector contract versions describe the in-project connector surface; they

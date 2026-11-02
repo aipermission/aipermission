@@ -8,7 +8,7 @@ credentials, or other connector secrets.
 
 The gateway is intentionally local-only. Run it on the developer machine and
 keep the URL on `localhost`; remote systems are connector targets, not places
-to host the gateway for LAN or internet users. SSH, Postgres, ClickHouse,
+to host the gateway for LAN or internet users. SSH, Postgres, ClickHouse, SQL Server,
 Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, and Mail are built-in connectors that use the same
 target/profile/action permission model as future connectors.
 
@@ -165,7 +165,7 @@ does not claim to verify the historical anti-regression ratchet.
 - `get_vault_action_request`
 - `cancel_vault_action_request`
 
-All integration work goes through connector targets. SSH, Postgres, ClickHouse,
+All integration work goes through connector targets. SSH, Postgres, ClickHouse, SQL Server,
 Redis / Valkey, RabbitMQ, Kafka / Redpanda, S3, Docker, Kubernetes, Mail, and future connectors share the same model: target,
 credential profile, connector action, token action permission, approval,
 history, and audit.
@@ -203,6 +203,18 @@ For Postgres, call `get_connector_actions(target_ref)` to discover schema,
 table, and bounded read-only query actions. Postgres targets can connect
 directly from the gateway or over an SSH connector profile when the database is
 reachable only from a remote server.
+
+For SQL Server, discover `get_schemas`, `get_tables`, `describe_table`,
+`get_metadata` and `query_readonly` through the same tools. Targets connect
+directly over TCP with a SQL login; no Windows SSH access is needed. Use one
+SELECT or WITH SELECT, schema-qualified names, `TOP` and a small `max_rows`.
+Stored procedures, writes and cross-database table access are unsupported.
+Always permits only the advertised read actions, not arbitrary T-SQL.
+See [SQL Server setup and TLS](../../docs/setup/sql-server.md).
+SQL Server queries require first-result description (SQL Server 2012+), and
+unsupported XML/variant/CLR results must be explicitly CAST to supported scalar
+types. Do not infer UTC from timezone-free SQL date/time values, or assume a
+truncated metadata response is a complete catalog.
 
 For Redis or Valkey, call `get_connector_actions(target_ref)` to discover
 bounded key-browser actions such as `scan_keys`, `get_key`, `set_string`,

@@ -66,6 +66,7 @@ not published for those two decisions; numbering is intentionally preserved.
 - [Kafka / Redpanda Connector](setup/kafka-redpanda.md)
 - [Mail Connector](setup/mail.md)
 - [S3-Compatible Storage](setup/s3.md)
+- [SQL Server Connector](setup/sql-server.md)
 
 ## Providers
 

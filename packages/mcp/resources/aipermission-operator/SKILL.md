@@ -62,9 +62,18 @@ Check Docker service state before cleanup.
 Inspect recent kubelet errors on worker node.
 List Postgres schemas before a read-only metadata query.
 Describe ClickHouse columns before a bounded analytics query.
+Inspect SQL Server columns before a bounded SELECT TOP query.
 Peek a RabbitMQ queue after the operator approved payload inspection. Publish
 RabbitMQ messages only when the operator explicitly asked for a write.
 ```
+
+For SQL Server, inspect schemas and ordered columns before a bounded SELECT
+TOP query. Discover its actions normally; writes, procedures and external
+access are not supported. Never treat Always as arbitrary SQL permission.
+Query results reject raw XML, sql_variant and CLR/spatial types; explicitly
+CAST required values to supported scalars. Date/time values without a SQL
+timezone do not imply UTC. Metadata may be truncated, and autocomplete uses
+conservative exact-name matching rather than assuming the server's collation.
 
 For Kafka / Redpanda, discover topics before describing partitions or reading
 messages. Keep message reads bounded, prefer Prompt because payloads can be
