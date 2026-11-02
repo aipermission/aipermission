@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { editor as MonacoEditor, IDisposable } from "monaco-editor";
 import { errorMessage } from "../../../lib/errors";
-import { sqlCompletionItems } from "./sql-editor-completions";
+import type { sqlCompletionItems } from "./sql-editor-completions";
 import { applySQLEditorTheme, loadSQLMonaco } from "./sql-editor-runtime";
 import type { SQLIdentifierPolicy } from "./sql-console-data";
 
@@ -51,13 +51,13 @@ export function SQLEditor({ value, onChange, onSubmit, focusSignal, theme, table
 
   useEffect(() => {
     let canceled = false;
-    loadSQLMonaco()
-      .then((instance) => {
+    Promise.all([loadSQLMonaco(), import("./sql-editor-completions")])
+      .then(([instance, { sqlCompletionItems }]) => {
         if (canceled || !containerRef.current) return;
         setLoadError("");
         setMonaco(instance);
         providerRef.current = instance.languages.registerCompletionItemProvider("sql", {
-          triggerCharacters: [".", " ", '"'],
+          triggerCharacters: [".", " ", '"', "[", "`"],
           provideCompletionItems(model, position) {
             return {
               suggestions: sqlCompletionItems(

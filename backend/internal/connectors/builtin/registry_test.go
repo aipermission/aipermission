@@ -20,6 +20,7 @@ import (
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
 	s3connector "github.com/aipermission/aipermission/backend/internal/connectors/s3"
+	sqlserverconnector "github.com/aipermission/aipermission/backend/internal/connectors/sqlserver"
 	sshconnector "github.com/aipermission/aipermission/backend/internal/connectors/ssh"
 )
 
@@ -154,7 +155,7 @@ func TestNewRegistryIncludesBuiltInConnectors(t *testing.T) {
 	}
 
 	infos := registry.List()
-	if len(infos) != 10 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kafkaconnector.Kind || infos[3].Kind != kubernetesconnector.Kind || infos[4].Kind != mailconnector.Kind || infos[5].Kind != postgresconnector.Kind || infos[6].Kind != rabbitmqconnector.Kind || infos[7].Kind != redisconnector.Kind || infos[8].Kind != s3connector.Kind || infos[9].Kind != sshconnector.Kind {
+	if len(infos) != 11 || infos[0].Kind != clickhouseconnector.Kind || infos[1].Kind != dockerconnector.Kind || infos[2].Kind != kafkaconnector.Kind || infos[3].Kind != kubernetesconnector.Kind || infos[4].Kind != mailconnector.Kind || infos[5].Kind != postgresconnector.Kind || infos[6].Kind != rabbitmqconnector.Kind || infos[7].Kind != redisconnector.Kind || infos[8].Kind != s3connector.Kind || infos[9].Kind != sqlserverconnector.Kind || infos[10].Kind != sshconnector.Kind {
 		t.Fatalf("unexpected connector list: %#v", infos)
 	}
 }
@@ -208,6 +209,10 @@ func TestBuiltInConnectorPrepareActionsAreDeterministic(t *testing.T) {
 func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView, connectors.CredentialProfileView, map[string]map[string]any) {
 	t.Helper()
 	switch kind {
+	case sqlserverconnector.Kind:
+		return connectors.TargetView{ID: 11, Ref: "sqlserver:11:110", ConnectorKind: kind, Config: map[string]any{"host": "db.test", "database": "app"}},
+			connectors.CredentialProfileView{ID: 110, TargetID: 11, ConnectorKind: kind, Kind: "username_password", Public: map[string]any{"username": "reader"}},
+			map[string]map[string]any{"get_schemas": {}, "get_tables": {}, "describe_table": {"table": "orders"}, "get_metadata": {}, "query_readonly": {"sql": "SELECT 1"}}
 	case clickhouseconnector.Kind, dockerconnector.Kind, kubernetesconnector.Kind, kafkaconnector.Kind, mailconnector.Kind:
 		return builtInDeterminismSamplesPartOne(t, kind)
 	default:

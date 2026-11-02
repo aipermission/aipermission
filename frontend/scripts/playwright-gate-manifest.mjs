@@ -20,6 +20,8 @@ export const requiredHighRiskTitles = Object.freeze([
   "@high-risk updates project Vault permissions from the Tokens page",
   "@high-risk reviews and runs a Prompt connector action in the selected target context",
   "@high-risk keeps structured sessions isolated while switching connector profiles",
+  "@high-risk keeps clickhouse SQL sessions isolated while switching connector profiles",
+  "@high-risk keeps sqlserver SQL sessions isolated while switching connector profiles",
   "@high-risk reconnects a live console after the remote session exits",
   "@high-risk cancels an active transfer from the transfer center",
   "@high-risk persists an explicit server-only reconciliation across reload without marking execution successful",

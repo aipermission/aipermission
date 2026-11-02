@@ -177,6 +177,33 @@ it("preserves unquoted ClickHouse identifier case when matching metadata", async
   expect(result.suggestions).not.toEqual(expect.arrayContaining([expect.objectContaining({ label: "public_id", kind: 4 })]));
 });
 
+it("limits bracket-qualified completions to the selected SQL Server table", async () => {
+  const sql = "SELECT * FROM [tenant.one].[Order]]Details] AS [x] WHERE [x].";
+  render(
+    <SQLEditor
+      value={sql}
+      onChange={vi.fn()}
+      onSubmit={vi.fn()}
+      focusSignal={0}
+      theme="dark"
+      tables={[
+        { schema: "tenant.one", table: "Order]Details", column: "order_id" },
+        { schema: "dbo", table: "Unrelated", column: "unrelated_id" },
+      ]}
+      keywords={[]}
+      disabled={false}
+    />,
+  );
+  await waitFor(() => expect(monaco.editor.create).toHaveBeenCalled());
+  const model = {
+    getValue: () => sql,
+    getLineContent: () => sql,
+    getWordUntilPosition: () => ({ startColumn: sql.length + 1, endColumn: sql.length + 1 }),
+  };
+  const { suggestions } = registeredProvider().provideCompletionItems(model, { lineNumber: 1, column: sql.length + 1 });
+  expect(suggestions.filter((item) => item.kind === 4).map((item) => item.label)).toEqual(["order_id"]);
+});
+
 it("shows a bounded error when the editor chunk cannot load", async () => {
   loadSQLMonaco.mockRejectedValueOnce(new Error("editor chunk unavailable"));
 
