@@ -27,7 +27,7 @@ require (
 	github.com/twmb/franz-go/pkg/kmsg v1.15.0
 	github.com/xdg-go/scram v1.2.0
 	golang.org/x/crypto v0.58.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	mvdan.cc/sh/v3 v3.14.1

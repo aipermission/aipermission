@@ -13,6 +13,7 @@
     {
       "title": "Security",
       "items": [
+        "Updated golang.org/x/net to 0.62.0 for GO-2026-6860 in Mail HTML parsing, with a bounded allocation regression for ignored-tag text coalescing.",
         "Patched Kafka's klauspost/compress dependency to 1.20.3 for GHSA-fpmh-frq8-7rj8. A regression reproduces the prior two-block zstd panic through the actual bounded decompressor and retains normal decoding and size-limit checks.",
         "The unprivileged frontend image requires curl and libcurl 8.23.0-r0 or later for CVE-2026-92392 while retaining the stable nginx 1.30.6 base.",
         "Updated development-only Vite to 6.4.5; a real loopback server regression checks filesystem denial with transform-query suffixes."
