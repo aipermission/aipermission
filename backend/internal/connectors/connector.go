@@ -73,10 +73,18 @@ type TestableConnector interface {
 
 // CredentialProfileValidator is an optional connector contract for semantic
 // validation that cannot be expressed by the primitive credential schema.
-// Previous is nil for creates. On updates, connectors may use its public
-// metadata to decide whether omitted secret material can safely be preserved.
+// Secret contains effective values after merging saved and submitted secrets.
+// Previous is nil for creates. Implementations must not mutate these inputs.
 type CredentialProfileValidator interface {
 	ValidateCredentialProfile(kind string, public, secret map[string]any, previous *CredentialProfileView) error
+}
+
+// CredentialProfileInputValidator additionally validates mutation intent before
+// persistence. SubmittedSecret contains only this request's secret fields, not
+// preserved values. Use it when public identity changes require fresh secrets.
+// Previous is nil for creates. Implementations must not mutate these inputs.
+type CredentialProfileInputValidator interface {
+	ValidateCredentialProfileInput(kind string, public, submittedSecret map[string]any, previous *CredentialProfileView) error
 }
 
 // TargetConfigValidator is an optional connector contract for semantic target
