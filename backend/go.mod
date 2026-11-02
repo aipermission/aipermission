@@ -7,6 +7,8 @@ toolchain go1.27.3
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/SE-I-T-Digital/go-sqlcipher v0.0.0-20260614154805-8f19266d2b27
+	github.com/antlr4-go/antlr/v4 v4.13.1
+	github.com/bytebase/parser v0.0.0-20260417075056-57b6ef7a2640
 	github.com/creack/pty v1.1.24
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.18.2
@@ -52,4 +54,5 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
+	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 )

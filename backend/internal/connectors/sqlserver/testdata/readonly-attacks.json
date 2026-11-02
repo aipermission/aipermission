@@ -1,0 +1,20 @@
+[
+  "SELECT 1 AS marker -- comment\rUPDATE dbo.policy_canary SET value=2",
+  "SELECT 1; -- comment\rDELETE FROM dbo.policy_canary",
+  "SELECT 1. DELETE FROM dbo.policy_canary",
+  "SELECT 1.DELETE FROM dbo.policy_canary WHERE value=1",
+  "SELECT 1\nGRANT CONNECT TO guest\nDELETE FROM dbo.policy_canary",
+  "SELECT 1\nREVOKE CONNECT FROM guest\nDELETE FROM dbo.policy_canary",
+  "SELECT 1\nDENY CONNECT TO guest\nDELETE FROM dbo.policy_canary",
+  "SELECT 1 SHUTDOWN",
+  "SELECT 1 CHECKPOINT",
+  "SELECT 1 SETUSER",
+  "SELECT 0xSHUTDOWN",
+  "SELECT value FROM dbo.policy_canary SHUTDOWN",
+  "0%% ::00",
+  "SELECT 1 FETCH c",
+  "SELECT getdate.custom()",
+  "SELECT a.value FROM dbo.policy_canary a INNER HASH JOIN dbo.policy_canary b ON a.value=b.value",
+  "SELECT @@LOCK_TIMEOUT=0",
+  "SELECT 1 /* unclosed"
+]

@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "8643c18f029ac19b5dda143f1e1743aa5fc1a1bc4974f955ba6f1c53351ea8b4"
+      "sha256": "9b1223d8f7b3ada9a21d8311ef6169b9a0e2a01bbc0ee9b6f95893cda6daf2a2"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "50f7832226a546c931e38a8a486cac9672a4a78abaed96e16140415a66d869ed"
+      "sha256": "6e33d93fe8a0fa05ef3bf364af7e6723702ecf806e949cbdd224e93a61d619f6"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6084,6 +6084,14 @@
         "Version": "v0.0.0-20260614154805-8f19266d2b27"
       },
       {
+        "Path": "github.com/antlr4-go/antlr/v4",
+        "Version": "v4.13.1"
+      },
+      {
+        "Path": "github.com/bytebase/parser",
+        "Version": "v0.0.0-20260417075056-57b6ef7a2640"
+      },
+      {
         "Path": "github.com/creack/pty",
         "Version": "v1.1.24"
       },
@@ -6269,6 +6277,11 @@
       {
         "Path": "go.opentelemetry.io/otel/trace",
         "Version": "v1.44.0",
+        "Indirect": true
+      },
+      {
+        "Path": "golang.org/x/exp",
+        "Version": "v0.0.0-20240506185415-9bf2ced13842",
         "Indirect": true
       }
     ]
@@ -6470,6 +6483,25 @@
       }
     },
     {
+      "module": "github.com/antlr4-go/antlr/v4",
+      "version": "v4.13.1",
+      "checksums": {
+        "module": "h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=",
+        "go_mod": "h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/antlr4-go/antlr/v4@v4.13.1/LICENSE",
+            "sha256": "683fcd416d83b64781e229a3c2a598462fbf55c5c9fea54be244766b22c033cf",
+            "bytes": 1480
+          }
+        ]
+      }
+    },
+    {
       "module": "github.com/aymerick/douceur",
       "version": "v0.2.0",
       "checksums": {
@@ -6484,6 +6516,25 @@
             "path": "github.com/aymerick/douceur@v0.2.0/LICENSE",
             "sha256": "a91ec19456c4efb3d9fc22dc9c1ec60ec3701a9e8f4be511ebcf908c04288ffb",
             "bytes": 1084
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/bytebase/parser",
+      "version": "v0.0.0-20260417075056-57b6ef7a2640",
+      "checksums": {
+        "module": "h1:g4Jed1/Jv/DHBiQmEgN5ILOQDDBjFlG4N4Lp+3B4aYE=",
+        "go_mod": "h1:jeak/EfutSOAuWKvrFIT2IZunhWprM7oTFBRgZ9RCxo="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/bytebase/parser@v0.0.0-20260417075056-57b6ef7a2640/LICENSE",
+            "sha256": "05ecd2cc3a169e7f9ed0c1ceede588a51b0456694214fd4da96b0b4148237a2e",
+            "bytes": 1495
           }
         ]
       }
@@ -7615,6 +7666,30 @@
       }
     },
     {
+      "module": "golang.org/x/exp",
+      "version": "v0.0.0-20240506185415-9bf2ced13842",
+      "checksums": {
+        "module": "h1:vr/HnozRka3pE4EsMEg1lgkXJkTFJCVUX+S/ZT6wYzM=",
+        "go_mod": "h1:XtvwrStGgqGPLc4cjQfWqZHG1YFdYs6swckp8vpsjnc="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "golang.org/x/exp@v0.0.0-20240506185415-9bf2ced13842/LICENSE",
+            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+            "bytes": 1479
+          },
+          {
+            "path": "golang.org/x/exp@v0.0.0-20240506185415-9bf2ced13842/PATENTS",
+            "sha256": "96f408bfae65bf137fc2525d3ecb030271c50c1e90799f87abf8846d8dd505cc",
+            "bytes": 1303
+          }
+        ]
+      }
+    },
+    {
       "module": "golang.org/x/mod",
       "version": "v0.6.0-dev.0.20220419223038-86c51ed26bb4",
       "checksums": {
@@ -8206,7 +8281,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed SQL Server driver and dependency identities and named license evidence; unchanged historical gaps preserved",
+    "reviewer": "Codex maintainer: reviewed SQL Server driver, ANTLR runtime and complete T-SQL grammar metadata; unchanged historical gaps preserved",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
