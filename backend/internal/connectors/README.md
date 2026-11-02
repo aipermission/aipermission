@@ -76,6 +76,15 @@ Target and action input schemas must not declare secret fields. Store secret
 values in credential profiles and resolve them through `RuntimeContext.Secrets`
 only after permission and approval checks pass.
 
+Credential edits are prepared by the shared `profileinput` pipeline before any
+write. Optional `CredentialProfileValidator` receives effective secret values
+(saved values merged with submitted updates). If a public identity change
+requires newly submitted material, additionally implement
+`CredentialProfileInputValidator`: it receives canonical public fields, only
+the submitted secret fields, and the previous public profile (nil on create).
+Do not mutate validation inputs. Neither hook replaces schema validation or
+receives storage access; runtime validation does not invoke the input hook.
+
 Use the shared `integer` field type for ports, limits, counts, offsets, TTLs,
 and timeouts. It rejects fractional values and integers outside the supported
 exact range before connector-specific normalization. Reserve `number` for

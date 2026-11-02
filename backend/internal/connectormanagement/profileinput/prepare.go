@@ -74,6 +74,11 @@ func Prepare(
 	if err := connectors.ValidateCredentialSchemaValues(schema.Schema, public, secret, secretRequired); err != nil {
 		return Prepared{}, InputError{Err: err}
 	}
+	if validator, ok := connector.(connectors.CredentialProfileInputValidator); ok {
+		if err := validator.ValidateCredentialProfileInput(kind, public, request.Secret, previous); err != nil {
+			return Prepared{}, InputError{Err: err}
+		}
+	}
 	if validator, ok := connector.(connectors.CredentialProfileValidator); ok {
 		if err := validator.ValidateCredentialProfile(kind, public, secret, previous); err != nil {
 			return Prepared{}, InputError{Err: err}
