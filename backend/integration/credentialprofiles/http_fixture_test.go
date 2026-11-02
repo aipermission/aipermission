@@ -1,4 +1,4 @@
-package postgres_test
+package credentialprofiles_test
 
 import (
 	"bytes"
@@ -27,13 +27,15 @@ type managedMetadataHTTPFixture struct {
 	db      *sql.DB
 }
 
-func newManagedMetadataHTTPFixture(t *testing.T) managedMetadataHTTPFixture {
+func newManagedMetadataHTTPFixture(t *testing.T, additional ...connectors.Connector) managedMetadataHTTPFixture {
 	t.Helper()
 	const password = "MetadataFixturePassword123"
 	dataPath := filepath.Join(t.TempDir(), "aipermission.db")
 	registry := connectors.NewRegistry()
-	if err := registry.Register(postgresconnector.New()); err != nil {
-		t.Fatal(err)
+	for _, connector := range append([]connectors.Connector{postgresconnector.New()}, additional...) {
+		if err := registry.Register(connector); err != nil {
+			t.Fatal(err)
+		}
 	}
 	server := api.NewLockedServer(config.Config{
 		Host: "127.0.0.1", Port: "8080", DataPath: dataPath, GatewaySecret: "metadata-test-only",

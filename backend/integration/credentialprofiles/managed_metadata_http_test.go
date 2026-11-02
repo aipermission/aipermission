@@ -1,4 +1,4 @@
-package postgres_test
+package credentialprofiles_test
 
 import (
 	"fmt"
