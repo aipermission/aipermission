@@ -394,7 +394,7 @@ make connector-conformance
 ```
 
 The target starts digest-pinned ClickHouse, Postgres, Valkey, RabbitMQ,
-RustFS (S3), Apache Kafka, OpenSSH, Dovecot/Postfix Mail, and Kubernetes API fixtures on an internal network without published
+RustFS (S3), Apache Kafka, OpenSSH, Dovecot/Postfix Mail, SQL Server, and Kubernetes API fixtures on an internal network without published
 ports. A disposable native runner exercises real connector actions, then the
 target removes the containers, network, and volumes afterward. The runner has
 an allowlisted source snapshot excluding ignored operator files, no checkout
@@ -410,6 +410,13 @@ Service-specific tests should contain only target/profile fixture data and the
 smallest meaningful protocol action sequence. Permission, approval, history,
 and audit behavior remains covered by the generic gateway tests rather than
 being duplicated for every protocol service.
+
+SQL Server uses the Developer edition only in its owned disposable fixture.
+The harness accepts Microsoft's container EULA for that fixture, creates an
+explicit read-only SQL login, and generates a short-lived certificate. Tests
+use verified TDS TLS with its public CA, reject bad credentials and untrusted
+certificates, and verify metadata order, exact values and row limits. This
+qualifies SQL Server 2022 on Linux, not every Windows SQL Server release.
 
 The OpenSSH scenario calls connector-owned execution and SFTP implementations;
 it does not substitute a test runtime adapter or claim persistent gateway-session

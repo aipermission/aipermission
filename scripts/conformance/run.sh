@@ -24,7 +24,7 @@ diagnostics() {
   dc ps -a --format 'table {{.Service}}\t{{.State}}\t{{.Health}}' >&2 || true
   # Only this owned fixture project is inspected. Bound both line count and
   # total output; never dump container environment, mounts or operator files.
-  dc logs --no-color --tail 40 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api 2>&1 |
+  dc logs --no-color --tail 40 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api sqlserver 2>&1 |
     head -c 65536 >&2 || true
 }
 cleanup() {
@@ -49,12 +49,13 @@ tar -cf "$stage/source.tar" --null --verbatim-files-from -T "$stage/files"
 tar -xf "$stage/source.tar" -C "$stage/source"
 
 started=1
-dc build runner protocols kube-api
-if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api; then
+dc build runner protocols kube-api sqlserver sqlserver-init
+if ! dc up -d --wait --wait-timeout 120 clickhouse postgres valkey rabbitmq minio kafka protocols kube-api sqlserver; then
   diagnostics
   exit 1
 fi
 dc run --rm --no-deps -T minio-init
+dc run --rm --no-deps -T sqlserver-init
 if ! dc run --rm --no-deps -T runner; then
   diagnostics
   exit 1
