@@ -8,6 +8,7 @@ import (
 	postgresconnector "github.com/aipermission/aipermission/backend/internal/connectors/postgres"
 	rabbitmqconnector "github.com/aipermission/aipermission/backend/internal/connectors/rabbitmq"
 	redisconnector "github.com/aipermission/aipermission/backend/internal/connectors/redis"
+	sqlserverconnector "github.com/aipermission/aipermission/backend/internal/connectors/sqlserver"
 )
 
 func Register(registry *connectors.Registry) error {
@@ -18,6 +19,7 @@ func Register(registry *connectors.Registry) error {
 		postgresconnector.New(),
 		rabbitmqconnector.New(),
 		redisconnector.New(),
+		sqlserverconnector.New(),
 	} {
 		if err := registry.Register(connector); err != nil {
 			return err

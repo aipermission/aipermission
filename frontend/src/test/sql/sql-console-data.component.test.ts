@@ -72,6 +72,13 @@ it("bounds pending metadata requests and skips described or already requested ta
   expect(sqlReferenceIdentifiersMatch("USERS", false, "users", false, "exact")).toBe(false);
 });
 
+it("preserves bracket-quoted table and alias identities for metadata completion", () => {
+  expect(referencedTablesFromSQL("SELECT x.* FROM [tenant.one].[Order]]Details] AS [x]")).toEqual([
+    { schema: "tenant.one", table: "Order]Details", alias: "x", schemaQuoted: true, tableQuoted: true, aliasQuoted: true },
+  ]);
+  expect(cleanSQLIdentifier("[a]]b]")).toBe("a]b");
+});
+
 it("preserves whitespace and punctuation in catalog schema, table, and column identities", () => {
   const schema = " schema ";
   const table = ' table";\n ';

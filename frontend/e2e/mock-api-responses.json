@@ -1,5 +1,15 @@
 {
   "responses": {
+    "sqlEmptyOutput": { "rows": [] },
+    "sqlMetadataOutput": {
+      "rows": [{ "table_schema": "dbo", "table_name": "Orders", "column_name": "order_id", "ordinal_position": 1, "data_type": "int" }]
+    },
+    "sqlCompletionScenarios": [
+      { "prefix": "sel", "label": "SELECT", "expected": "select" },
+      { "prefix": "sel", "label": "SELECT", "expected": "select" },
+      { "kind": "sqlserver", "prefix": "SELECT * FROM dbo.[Or", "label": "Orders", "expected": "SELECT * FROM dbo.[Orders]" },
+      { "kind": "sqlserver", "prefix": "SELECT * FROM dbo.\"Or", "label": "Orders", "expected": "SELECT * FROM dbo.\"Orders\"" }
+    ],
     "pendingApproval": {
       "id": 42,
       "connector_kind": "ssh",

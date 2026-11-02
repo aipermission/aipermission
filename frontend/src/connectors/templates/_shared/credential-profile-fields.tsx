@@ -37,16 +37,30 @@ export function CredentialProfileFields<Form extends CredentialForm, Target exte
           ))}
         </Select>
       </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field>
-          Profile label
-          <Input value={form.profile_label} onChange={(event) => update("profile_label", event.target.value)} required />
-        </Field>
-        <Field>
-          Risk label
-          <Input value={form.risk_label} onChange={(event) => update("risk_label", event.target.value)} />
-        </Field>
-      </div>
+      <CredentialProfileLabelFields form={form} onChange={update} />
     </>
+  );
+}
+
+export function CredentialProfileLabelFields({
+  form,
+  onChange,
+}: {
+  form: Pick<CredentialForm, "profile_label" | "risk_label">;
+  onChange: (_field: "profile_label" | "risk_label", _value: string) => void;
+}) {
+  const fields = [
+    { key: "profile_label", label: "Profile label", required: true },
+    { key: "risk_label", label: "Risk label", required: false },
+  ] as const;
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {fields.map(({ key, label, required }) => (
+        <Field key={key}>
+          {label}
+          <Input value={form[key]} onChange={(event) => onChange(key, event.target.value)} required={required} />
+        </Field>
+      ))}
+    </div>
   );
 }

@@ -1,0 +1,72 @@
+import { createDatabaseConnectorModel } from "../_shared/database-connector-model";
+
+const defaults = {
+  name: "My database",
+  connection_mode: "direct",
+  transport_target_ref: "",
+  host: "",
+  port: 1433,
+  database: "",
+  tls_mode: "verify_full",
+  tls_server_name: "",
+  ca_certificate: "",
+};
+
+const model = createDatabaseConnectorModel({
+  kind: "sqlserver",
+  label: "SQL Server",
+  defaultRiskLabel: "read-only",
+  targetDefaults: defaults,
+  credentialDefaults: { target_id: "", profile_label: "readonly", username: "", password: "", risk_label: "read-only" },
+  targetForm: (target) => ({
+    connection_mode: "direct",
+    transport_target_ref: "",
+    host: target.config?.host || "",
+    port: target.config?.port || 1433,
+    database: target.config?.database || "",
+    tls_mode: String(target.config?.tls_mode || "verify_full"),
+    tls_server_name: String(target.config?.tls_server_name || ""),
+    ca_certificate: String(target.config?.ca_certificate || ""),
+  }),
+  targetConfig: ({ host, port, database, tls_mode, tls_server_name, ca_certificate }) => ({
+    connection_mode: "direct",
+    host,
+    port: Number(port),
+    database,
+    tls_mode,
+    tls_server_name: tls_mode === "verify_full" ? tls_server_name : "",
+    ca_certificate: tls_mode === "verify_full" ? ca_certificate : "",
+  }),
+  targetEndpoint: ({ target }) =>
+    `${target.config?.host || "host"}:${target.config?.port || 1433}/${target.config?.database || "database"} · direct`,
+});
+
+export const {
+  emptyForm,
+  formFromTarget,
+  activeCredential,
+  syncForm,
+  syncEditorForm,
+  submitDisabled,
+  submitLabel,
+  save,
+  deleteTarget,
+  emptyCredentialState,
+  credentialStateFromRow,
+  credentialFormProps,
+  saveCredential,
+  deleteCredential,
+  credentialRows,
+  test,
+  canEdit,
+  canDelete,
+  credentialHint,
+  targetEndpoint,
+  targetDisplayName,
+  targetSubtitle,
+  targetProfileLabel,
+  usesLiveConsole,
+  recoverableRunningActions,
+  deleteDialog,
+  operationFromError,
+} = model;

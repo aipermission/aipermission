@@ -1,3 +1,5 @@
+import { sqlContextTokens, sqlKeyword } from "./sql-lexical-context.ts";
+import type { SQLContextToken } from "./sql-lexical-context.ts";
 type SQLRecord = Record<string, unknown>;
 export type SQLIdentifierPolicy = "exact" | "lowercase-unquoted";
 export type SQLTableReference = { schema: string; table: string };
@@ -68,20 +70,27 @@ export function extractTableSuggestions(output: unknown): SQLMetadataRow[] {
 }
 
 export function referencedTablesFromSQL(sql: string): SQLReference[] {
-  const cleaned = stripSQLStringsAndComments(sql);
-  const identifier = '(?:"(?:[^"]|"")+"|`(?:[^`]|``)+`|[a-zA-Z_][\\w$]*)';
-  const pattern = new RegExp(`\\b(?:from|join)\\s+(${identifier}(?:\\s*\\.\\s*${identifier})?)(?:\\s+(?:as\\s+)?(${identifier}))?`, "gi");
+  const tokens = sqlContextTokens(sql);
   const references: SQLReference[] = [];
-  for (const match of cleaned.matchAll(pattern)) {
-    const nameParts = splitSQLQualifiedName(match[1] || "").map(parseSQLIdentifier);
-    const alias = parseSQLIdentifier(match[2] || "");
+  for (let index = 0; index < tokens.length; index++) {
+    if (!sqlKeyword(tokens[index], "from") && !sqlKeyword(tokens[index], "join")) continue;
+    index = tableSourceStart(tokens, index + 1);
+    const first = tokens[index];
+    if (first?.kind !== "identifier" || !first.complete) continue;
+    const qualified = tokens[index + 1]?.text === ".";
+    const second = qualified ? tokens[(index += 2)] : first;
+    if (second?.kind !== "identifier" || !second.complete || tokens[index + 1]?.text === ".") continue;
+    const schema = qualified ? first : null;
+    const aliasIndex = index + (sqlKeyword(tokens[index + 1], "as") ? 2 : 1);
+    const alias = tokens[aliasIndex];
+    const hasAlias = isSQLAliasToken(alias);
     const reference = {
-      schema: nameParts.length > 1 ? nameParts[0].value : "",
-      table: nameParts.length > 1 ? nameParts[1].value : nameParts[0]?.value || "",
-      alias: isSQLAlias(alias.value) ? alias.value : "",
-      schemaQuoted: nameParts.length > 1 ? nameParts[0].quoted : false,
-      tableQuoted: nameParts.length > 1 ? nameParts[1].quoted : nameParts[0]?.quoted || false,
-      aliasQuoted: isSQLAlias(alias.value) ? alias.quoted : false,
+      schema: schema ? cleanSQLIdentifier(schema.text) : "",
+      table: cleanSQLIdentifier(second.text),
+      alias: hasAlias ? cleanSQLIdentifier(alias.text) : "",
+      schemaQuoted: schema?.quoted || false,
+      tableQuoted: second.quoted,
+      aliasQuoted: Boolean(hasAlias && alias.quoted),
     };
     if (reference.table) references.push(reference);
   }
@@ -160,6 +169,7 @@ export function cleanSQLIdentifier(value: unknown): string {
   if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
     return trimmed.slice(1, -1).replaceAll("``", "`");
   }
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) return trimmed.slice(1, -1).replaceAll("]]", "]");
   return trimmed;
 }
 
@@ -195,58 +205,15 @@ function metadataHasColumns(rows: SQLMetadataRow[], reference: SQLReferenceInput
   return (rows || []).some((item) => item.column && tableMatchesReference(item, reference, identifierPolicy));
 }
 
-function stripSQLStringsAndComments(sql: string): string {
-  return String(sql || "")
-    .replace(/'([^']|'')*'/g, " ")
-    .replace(/--.*$/gm, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ");
-}
-
-function splitSQLQualifiedName(value: string): string[] {
-  const parts: string[] = [];
-  let current = "";
-  let quote = "";
-  const text = String(value || "");
-  for (let index = 0; index < text.length; index += 1) {
-    const character = text[index];
-    if (quote) {
-      current += character;
-      if (character !== quote) continue;
-      if (text[index + 1] === quote) {
-        current += text[index + 1];
-        index += 1;
-      } else {
-        quote = "";
-      }
-      continue;
-    }
-    if (character === '"' || character === "`") {
-      quote = character;
-      current += character;
-    } else if (character === ".") {
-      if (current.trim()) parts.push(current.trim());
-      current = "";
-    } else {
-      current += character;
-    }
-  }
-  if (current.trim()) parts.push(current.trim());
-  return parts;
-}
-
-function parseSQLIdentifier(value: string): { value: string; quoted: boolean } {
-  const trimmed = String(value || "").trim();
-  const quoted = (trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("`") && trimmed.endsWith("`"));
-  return { value: cleanSQLIdentifier(trimmed), quoted };
-}
-
 function canonicalSQLIdentifier(value: string, quoted: boolean, identifierPolicy: SQLIdentifierPolicy): string {
   return quoted || identifierPolicy === "exact" ? String(value || "") : normalizeSQLName(value);
 }
 
 function isSQLAlias(value: string): boolean {
-  if (!value) return false;
   return !new Set([
+    "from",
+    "select",
+    "as",
     "where",
     "join",
     "left",
@@ -263,6 +230,18 @@ function isSQLAlias(value: string): boolean {
     "union",
     "having",
   ]).has(normalizeSQLName(value));
+}
+
+function isSQLAliasToken(token: SQLContextToken | undefined): token is SQLContextToken {
+  return token?.kind === "identifier" && token.complete && (token.quoted || isSQLAlias(token.text));
+}
+
+function tableSourceStart(tokens: SQLContextToken[], index: number): number {
+  if (sqlKeyword(tokens[index], "only") && (tokens[index + 1]?.kind === "identifier" || tokens[index + 1]?.text === "(")) {
+    index++;
+    if (tokens[index]?.text === "(") index++;
+  }
+  return index;
 }
 
 function cleanCompletionValue(value: unknown): string {

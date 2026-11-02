@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { expect } from "@playwright/test";
-
+import { mockResponse } from "./mock-browser.mjs";
 export async function observeSQLBrowserRuntime(page) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -25,7 +25,6 @@ export async function observeSQLBrowserRuntime(page) {
   );
   return errors;
 }
-
 export async function verifySQLBrowserRuntime(page, testInfo, manualQueries, errors, connectorKind) {
   const editor = page.locator('[aria-label="SQL editor"] .monaco-editor');
   await expect(editor).toBeVisible();
@@ -33,7 +32,7 @@ export async function verifySQLBrowserRuntime(page, testInfo, manualQueries, err
   const expectedQueries = [];
   for (const width of [1920, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    await verifySQLKeyboard(page, editor, manualQueries, expectedQueries);
+    await verifySQLKeyboard(page, editor, manualQueries, expectedQueries, connectorKind);
     const path = testInfo.outputPath(`${connectorKind}-sql-editor-${width}.png`);
     await page.screenshot({ path, fullPage: true });
     await testInfo.attach(`${connectorKind}-sql-editor-${width}`, { path, contentType: "image/png" });
@@ -45,8 +44,7 @@ export async function verifySQLBrowserRuntime(page, testInfo, manualQueries, err
   await page.setViewportSize({ width: 1920, height: 1080 });
   expect(errors).toEqual([]);
 }
-
-async function verifySQLKeyboard(page, editor, manualQueries, expectedQueries) {
+async function verifySQLKeyboard(page, editor, manualQueries, expectedQueries, connectorKind) {
   const input = editor.getByRole("textbox", { name: "Editor content" });
   const lines = editor.locator(".view-lines");
   const form = page.locator("form").filter({ has: editor });
@@ -54,15 +52,19 @@ async function verifySQLKeyboard(page, editor, manualQueries, expectedQueries) {
   await form.getByRole("button", { name: "Last query", exact: true }).click();
   await expect(lines).toHaveText("SELECT 2", { useInnerText: true });
   await expect(input).toBeFocused();
-  for (const acceptKey of ["Enter", "Tab", "Enter", "Tab"]) {
-    await clearSQLEditor(input, lines, runButton);
-    await page.keyboard.type("sel", { delay: 50 });
-    await expect(lines).toHaveText("sel", { useInnerText: true });
-    await expect(page.locator(".suggest-widget.visible .monaco-list-row.focused").getByText("SELECT", { exact: true })).toBeVisible();
-    await input.press(acceptKey);
-    await expect(page.locator(".suggest-widget.visible")).toHaveCount(0);
-    await expect.poll(() => lines.innerText()).toBe("select");
-    await expect(input).toBeFocused();
+  for (const scenario of mockResponse("sqlCompletionScenarios").filter((item) => !item.kind || item.kind === connectorKind)) {
+    for (const acceptKey of ["Enter", "Tab"]) {
+      await clearSQLEditor(input, lines, runButton);
+      await page.keyboard.type(scenario.prefix, { delay: 50 });
+      if (scenario.kind) await input.press("ControlOrMeta+Space");
+      await expect(
+        page.locator(".suggest-widget.visible .monaco-list-row.focused").getByText(scenario.label, { exact: true }),
+      ).toBeVisible();
+      await input.press(acceptKey);
+      await expect(page.locator(".suggest-widget.visible")).toHaveCount(0);
+      await expect(lines).toHaveText(scenario.expected, { useInnerText: true });
+      await expect(input).toBeFocused();
+    }
   }
   await clearSQLEditor(input, lines, runButton);
   await page.keyboard.type("SELECT 1", { delay: 50 });
@@ -76,7 +78,6 @@ async function verifySQLKeyboard(page, editor, manualQueries, expectedQueries) {
   await expect(input).toBeFocused();
   await expect(lines).toHaveText("SELECT 1", { useInnerText: true });
 }
-
 async function clearSQLEditor(input, lines, runButton) {
   // Acceptance changes Monaco's selection; settle the empty controlled draft before typing again.
   await input.focus();
@@ -87,7 +88,6 @@ async function clearSQLEditor(input, lines, runButton) {
   await expect(lines).toHaveText("", { useInnerText: true });
   await expect(runButton).toBeDisabled();
 }
-
 async function verifySQLControlBounds(page, editor, width) {
   const form = page.locator("form").filter({ has: editor });
   const header = page.locator("header").filter({ has: page.getByRole("button", { name: "New Session", exact: true }) });

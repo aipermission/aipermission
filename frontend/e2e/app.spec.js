@@ -538,12 +538,13 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
   expect(runCount).toBe(1);
 });
 
-test("@high-risk keeps structured sessions isolated while switching connector profiles", async ({ page, apiIsolation }, testInfo) => {
-  const browserErrors = await observeSQLBrowserRuntime(page);
-  for (const [kind, label] of [
-    ["postgres", "Postgres"],
-    ["clickhouse", "ClickHouse"],
-  ]) {
+for (const [kind, label, sessionKind] of [
+  ["postgres", "Postgres", "structured"],
+  ["clickhouse", "ClickHouse", "clickhouse SQL"],
+  ["sqlserver", "SQL Server", "sqlserver SQL"],
+]) {
+  test(`@high-risk keeps ${sessionKind} sessions isolated while switching connector profiles`, async ({ page, apiIsolation }, testInfo) => {
+    const browserErrors = await observeSQLBrowserRuntime(page);
     const manualQueries = [];
     const profiles = [sqlTargetProfile(kind, 1, "admin"), sqlTargetProfile(kind, 2, "readonly")];
     await page.unroute("http://localhost:8080/api/targets");
@@ -595,13 +596,12 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
           action_name: request.action_name,
           status: "completed",
           retry_policy: { class: "read_only", guidance: "Read-only fixture." },
-          output: { rows: [] },
+          output: mockResponse(request.action_name === "get_metadata" ? "sqlMetadataOutput" : "sqlEmptyOutput"),
         },
       });
     });
 
-    if (kind === "postgres") await unlock(page);
-    else await page.goto("/");
+    await unlock(page);
     await page.locator('aside a[href="/console"]').click();
     await expect(page.getByRole("heading", { name: "analytics-db" })).toBeVisible();
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -621,8 +621,8 @@ test("@high-risk keeps structured sessions isolated while switching connector pr
     await expect(page.getByRole("heading", { name: `No active ${label} session` })).toBeHidden();
     await profileSelect.selectOption("2");
     await expect(page.getByRole("heading", { name: `No active ${label} session` })).toBeVisible();
-  }
-});
+  });
+}
 
 test("@high-risk reconnects a live console after the remote session exits", async ({ page, apiIsolation }) => {
   let socketCount = 0;
@@ -794,7 +794,7 @@ function sqlTargetProfile(kind, profileID, label) {
     connector_kind: kind,
     profile_id: profileID,
     profile_label: label,
-    config: { ...profile.config, port: kind === "postgres" ? 5432 : 9000 },
+    config: { ...profile.config, port: { postgres: 5432, clickhouse: 9000, sqlserver: 1433 }[kind] },
     public: { username: label },
   };
 }

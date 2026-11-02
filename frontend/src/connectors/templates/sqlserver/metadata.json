@@ -1,0 +1,9 @@
+{
+  "kind": "sqlserver",
+  "label": "SQL Server",
+  "icon": "database",
+  "badge_tone": "neutral",
+  "profile_lifecycle": "custom",
+  "summary": "Direct SQL authentication, schema browsing and bounded read-only T-SQL.",
+  "version": "0.2"
+}

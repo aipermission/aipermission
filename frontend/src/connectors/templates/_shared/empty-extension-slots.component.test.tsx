@@ -11,6 +11,7 @@ import { RabbitMQConnectorOperationsTemplate } from "../rabbitmq/operations";
 import { S3ConnectorRowActionsTemplate } from "../s3/list-item";
 import { S3ConnectorOperationsTemplate } from "../s3/operations";
 import { ClickHouseConnectorRowActionsTemplate } from "../clickhouse/list-item";
+import { SQLServerConnectorRowActionsTemplate } from "../sqlserver/list-item";
 
 it("leaves generic CRUD controls to the host when connectors have no extra row operations", () => {
   const { container } = render(
@@ -26,6 +27,7 @@ it("leaves generic CRUD controls to the host when connectors have no extra row o
       <S3ConnectorRowActionsTemplate />
       <S3ConnectorOperationsTemplate />
       <ClickHouseConnectorRowActionsTemplate />
+      <SQLServerConnectorRowActionsTemplate />
     </>,
   );
   expect(container).toBeEmptyDOMElement();

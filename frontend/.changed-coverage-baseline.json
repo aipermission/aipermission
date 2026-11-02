@@ -933,6 +933,12 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/_shared/database-account-fields.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/_shared/database-connector-model.ts": {
       "statements": 93.93,
       "branches": 78.21,
@@ -1025,7 +1031,7 @@
     },
     "src/connectors/templates/_shared/sql-console-data.ts": {
       "statements": 100,
-      "branches": 90.96,
+      "branches": 93.2,
       "functions": 100,
       "lines": 100
     },
@@ -1048,10 +1054,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/sql-editor-completions.ts": {
-      "statements": 75.8,
-      "branches": 60,
+      "statements": 86.73,
+      "branches": 84.25,
       "functions": 100,
-      "lines": 80.76
+      "lines": 91.13
     },
     "src/connectors/templates/_shared/sql-editor-runtime.ts": {
       "statements": 100,
@@ -1070,6 +1076,12 @@
       "branches": 69.23,
       "functions": 85.71,
       "lines": 90.9
+    },
+    "src/connectors/templates/_shared/sql-lexical-context.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/_shared/sql-query-form.tsx": {
       "statements": 100,
@@ -2204,6 +2216,54 @@
       "branches": 85.71,
       "functions": 92.85,
       "lines": 97.18
+    },
+    "src/connectors/templates/sqlserver/connector-family.tsx": {
+      "statements": 87.5,
+      "branches": 100,
+      "functions": 85.71,
+      "lines": 85.71
+    },
+    "src/connectors/templates/sqlserver/console-model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/sqlserver/console.tsx": {
+      "statements": 83.33,
+      "branches": 100,
+      "functions": 75,
+      "lines": 83.33
+    },
+    "src/connectors/templates/sqlserver/credential-family.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/sqlserver/credential-form.tsx": {
+      "statements": 100,
+      "branches": 72.72,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/sqlserver/form.tsx": {
+      "statements": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/sqlserver/list-item.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/sqlserver/model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/ssh/bulk-command-contracts.ts": {
       "statements": 100,
