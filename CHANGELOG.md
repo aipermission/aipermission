@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.75] - 2026-11-03
+
 ### Added
 
 - Added an isolated SQL Server connector with direct TCP SQL authentication, verified
@@ -28,6 +30,15 @@ and this project uses semantic versioning for public releases.
 
 - Updated golang.org/x/net to 0.62.0 for GO-2026-6860 in Mail HTML parsing, with a
   bounded allocation regression for ignored-tag text coalescing.
+- Updated the MCP SDK's transitive Hono Node adapter to 2.1.6 for GHSA-rmxm-3fg6-px4f;
+  an encoded-path regression fails against the vulnerable dependency. The bridge remains
+  stdio-only.
+- The frontend runtime explicitly requires libexpat 2.10.0-r0 or later for
+  CVE-2026-117610 and CVE-2026-118370; a fresh image scan found the older package in a
+  cached layer.
+- SQL Server execution uses checked platform-width integer conversions for ports and row
+  limits, with invalid-range and 32-bit boundary regressions; malformed query plans fail
+  before opening a connection.
 - Patched Kafka's klauspost/compress dependency to 1.20.3 for GHSA-fpmh-frq8-7rj8. A
   regression reproduces the prior two-block zstd panic through the actual bounded
   decompressor and retains normal decoding and size-limit checks.
@@ -40,15 +51,26 @@ and this project uses semantic versioning for public releases.
 
 - Refreshed the Go 1.27.3 builder image digest together with the native dependency
   inventory, frontend Lucide/jscpd patches, and immutable CodeQL 4.39.1 action pins.
+- Aligned contributor, CI and frontend builder Node.js pins at 24.22.2, and updated MCP
+  SDK 1.32.2, ClickHouse driver 2.50.0, React Router 8.5.1, Lucide 1.65.0, TypeScript
+  ESLint 8.72.1 and fake-indexeddb 6.2.7 through maintainer-authored commits.
+- SQL Server cancellation conformance observes an explicit fixture-only exclusive table
+  lock and a blocked SELECT before cancellation, rather than assuming a no-op update
+  holds the required lock.
 - Reviewed dependency license identities retain unchanged Go evidence and acknowledged
   historical gaps. Existing quality and verification budgets remain enforced.
 
 ### Notes
 
-- These source changes do not replace the published v0.2.74 tag or images. The SQL
-  Server connector is read-only: stored procedures, write SQL, managed users and
-  backup/restore are not included. No database migration or new MCP tool family is
-  introduced.
+- The SQL Server connector is read-only: stored procedures, write SQL, managed users and
+  backup/restore are not included. Use least-privilege database credentials. No database
+  migration or new MCP tool family is introduced.
+- AIPermission remains local-only and single-user. Back up the encrypted database before
+  upgrading; publish the MCP package separately. Conformance uses SQL Server 2022 on
+  Linux, not a certification of every Windows server configuration.
+- Development-only minimatch consumers retain a moderate amplification advisory pending
+  compatible upstream updates. Production npm audits pass; existing SQLCipher
+  native-update limitations remain documented.
 
 ## [0.2.74] - 2026-10-25
 
