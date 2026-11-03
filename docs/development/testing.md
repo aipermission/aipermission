@@ -332,6 +332,10 @@ The fixture target requires a Linux shell, GNU tar, Compose v2, and a local
 Unix-socket Docker endpoint; remote Docker contexts are rejected before setup.
 Compose does not load operator `.env` files for this isolated target.
 The protected check keeps its existing name for branch-protection continuity.
+SQL Server's executing-query cancellation probe holds and observes an explicit
+exclusive table lock in the disposable fixture, with snapshot reads disabled.
+The reader remains least-privilege; cancellation is asserted only after its
+actual SELECT is observed waiting on that lock, not after an assumed delay.
 Docker runs in a no-NIC QEMU guest nested inside the unprivileged runner, using
 TCG rather than KVM. The Linux/amd64 guest has its own RAM filesystem, pinned
 Docker 28.5.1 daemon, VFS storage, owned loopback OpenSSH and two offline-seeded
