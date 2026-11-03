@@ -19,11 +19,11 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "0d10760acdeeb063c410b0f567870233221a0f9149d7941d86309fc47657954f"
+      "sha256": "3205dd7338b3045088e6db46dea01243729b2f897b097889ddfb6483965dabed"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "7065f3a9ff9b3eee5065c4dc85d309e515082585296d545264e2d7f56422f2e0"
+      "sha256": "bae05a44bf8eeb4daf25b6694f540c4403bf5e62b0bf2421a567bcb3ab451f80"
     },
     {
       "path": "scripts/package.json",
@@ -4375,7 +4375,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "33254c79f60345153c7763a0f4a610a485b90c9fbdac66a1f03e0b229b0e134a"
+      "metadata_sha256": "0d197fe5a40ab4790ce71f72e22b772d30f68865c973bb1c4504da5b5ade3637"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4571,11 +4571,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/@modelcontextprotocol/sdk",
       "name": "@modelcontextprotocol/sdk",
-      "version": "1.32.1",
+      "version": "1.32.2",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.32.1.tgz",
-      "integrity": "sha512-2DdE+SJDtzLEEWzY1ZjY7Q+VcPhcV1KisD3zI4u0XZyktsjHum1mwbMI+JaulUBi2OZk+KJAi2uPXzxichPkdw==",
-      "metadata_sha256": "3f749eff99d923f8f32d2db933ba3f7325052c018598a283db491742f97e6868"
+      "resolved": "https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.32.2.tgz",
+      "integrity": "sha512-SWsVtH/0vULSQStoZ6xxH2K09Li8fXYTMC64ZeogCdpZ3XSi1eCPOByV1OpuJxuI3OcmHhosDWYyii07tpPsLw==",
+      "metadata_sha256": "e57141b2cb9f0ccc86b1c59e9831aff76c0bdd532f188565100404bb5748523a"
     },
     {
       "source": "packages/mcp/package-lock.json",
