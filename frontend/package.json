@@ -68,7 +68,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-istanbul": "4.1.12",
     "@vitest/coverage-v8": "4.1.12",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "eslint-plugin-jsx-a11y-x": "^0.2.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "espree": "^11.2.0",
