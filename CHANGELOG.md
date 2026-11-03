@@ -21,6 +21,8 @@ and this project uses semantic versioning for public releases.
   budgets.
 - Update frontend Lucide to 1.66.0 with reviewed registry integrity and license
   metadata; preserve unchanged Go/native evidence and acknowledged historical gaps.
+- Synchronize Redis delete-confirmation component tests with asynchronous mutation
+  readiness and the portaled dialog lifecycle without changing destructive-action rules.
 
 ### Notes
 
