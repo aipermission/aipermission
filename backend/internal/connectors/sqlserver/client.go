@@ -43,7 +43,10 @@ func connection(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB
 	if tlsConfig == nil {
 		encryption = msdsn.EncryptionDisabled
 	}
-	port := int(config["port"].(int64))
+	port, ok := connectors.NativeIntValue(config["port"])
+	if !ok || port < 1 || port > 65535 {
+		return nil, fmt.Errorf("%w: port must be between 1 and 65535", errConfig)
+	}
 	params := msdsn.Config{
 		Host: text(config, "host"), Port: uint64(port), Database: text(config, "database"),
 		User: text(runtime.Profile.Public, "username"), Password: password,

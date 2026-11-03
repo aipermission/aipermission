@@ -22,7 +22,10 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	query, args, limit := actionQuery(prepared)
+	query, args, limit, err := actionQuery(prepared)
+	if err != nil {
+		return connectors.ActionResult{}, err
+	}
 	if prepared.ActionName == ActionQueryReadonly {
 		query, err = compileReadonlySQL(query)
 		if err != nil {
