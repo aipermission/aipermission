@@ -122,6 +122,13 @@ HTTP/2 uploads to a malicious peer; package presence alone does not establish
 that the gateway exposes those prerequisites. Rebuild and scan the final image
 instead of relying on an nginx minor-version change to patch its dependencies.
 
+The 0.2.75 frontend runtime also enforces `libexpat>=2.10.0-r0` for
+CVE-2026-117610 and CVE-2026-118370. A fresh candidate scan identified the
+older installed package in a cached runtime layer. The explicit floor forces
+that layer to resolve a patched package, while a regression retains the floor
+and unprivileged UID101. This does not assert an exposed XML parsing path;
+the rebuilt exact image must still pass the vulnerability scan.
+
 The frontend also requires `brotli-libs>=1.2.1-r0` for CVE-2026-111497. This
 native decoder dependency is separate from the Go Brotli module and Node.js's
 bundled decoder; patching one does not patch the others. See the
