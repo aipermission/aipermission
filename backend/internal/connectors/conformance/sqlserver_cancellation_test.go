@@ -24,13 +24,20 @@ func assertSQLServerExecutingQueryCancellation(t *testing.T, runtime connectors.
 	if err := transaction.QueryRowContext(t.Context(), "SELECT @@SPID").Scan(&blocker); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := transaction.ExecContext(t.Context(), "UPDATE dbo.policy_canary SET value=value"); err != nil {
+	// Prove an explicit blocking lock rather than relying on a no-op UPDATE's
+	// optimizer-dependent row locking.
+	update, err := transaction.ExecContext(t.Context(), "UPDATE dbo.policy_canary WITH (TABLOCKX,HOLDLOCK) SET value=value+1")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if rows, err := update.RowsAffected(); err != nil || rows != 1 {
+		t.Fatalf("cancellation fixture must update exactly one row: %d, %v", rows, err)
 	}
 	// Administrative diagnostics are confined to the disposable fixture. The
 	// connector action itself still uses the least-privilege reader login.
 	observer := sqlServerFixtureDB(t, runtime, certificate, "sa", "Fixture-only-Password1!")
 	defer observer.Close()
+	assertSQLServerCancellationLock(t, observer, blocker)
 	connector := sqlserverconnector.New()
 	prepared, err := connector.PrepareAction(t.Context(), connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile,
 		ActionName: "query_readonly", Input: map[string]any{"sql": "SELECT value FROM dbo.policy_canary", "max_rows": 1}})
@@ -57,6 +64,23 @@ func assertSQLServerExecutingQueryCancellation(t *testing.T, runtime connectors.
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("executing query ignored cancellation after %s", time.Since(started))
+	}
+}
+
+func assertSQLServerCancellationLock(t *testing.T, observer *sql.DB, blocker int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	var snapshot bool
+	var locks int
+	if err := observer.QueryRowContext(ctx, `SELECT is_read_committed_snapshot_on FROM sys.databases WHERE database_id=DB_ID()`).Scan(&snapshot); err != nil || snapshot {
+		t.Fatalf("cancellation fixture requires locking READ COMMITTED: snapshot=%t, err=%v", snapshot, err)
+	}
+	if err := observer.QueryRowContext(ctx, `SELECT COUNT(*) FROM sys.dm_tran_locks
+ WHERE request_session_id=@blocker AND resource_database_id=DB_ID()
+ AND resource_type='OBJECT' AND resource_associated_entity_id=OBJECT_ID('dbo.policy_canary')
+ AND request_mode='X' AND request_status='GRANT'`, sql.Named("blocker", blocker)).Scan(&locks); err != nil || locks < 1 {
+		t.Fatalf("cancellation fixture has no granted exclusive table lock: locks=%d, err=%v", locks, err)
 	}
 }
 

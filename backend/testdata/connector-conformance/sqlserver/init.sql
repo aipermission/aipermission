@@ -1,5 +1,7 @@
 CREATE DATABASE aipermission;
 GO
+ALTER DATABASE aipermission SET READ_COMMITTED_SNAPSHOT OFF;
+GO
 USE aipermission;
 CREATE TABLE dbo.events (id bigint NOT NULL, label nvarchar(100), amount decimal(38,6), payload varbinary(8));
 INSERT dbo.events VALUES (9223372036854775807, N'fixture-sqlserver', 12345678901234567890.123456, 0xFF0012), (2,N'second',0.1,NULL);
