@@ -690,6 +690,10 @@ owned registration entry, tests, and docs, but it should not require new
 generic route handlers, permission tables, history tables, audit tables, or
 MCP tool families.
 
+Run `npm run connector-catalog` after changing connector metadata. It generates
+both the detailed catalog and the compact built-in connector list near the top
+of the root README. CI rejects stale output; do not maintain a separate list.
+
 Connector versions are part of approval-context drift checks. Bump the backend
 connector `Version()` and the frontend `metadata.json` version whenever you add
 or rename actions, change action input/output schemas, change target/profile

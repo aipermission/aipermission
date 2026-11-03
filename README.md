@@ -25,6 +25,17 @@
 
 ---
 
+## Built-In Connectors
+
+<!-- connector-overview:start -->
+<strong>ClickHouse</strong> &middot; <strong>Docker</strong> &middot; <strong>Kafka / Redpanda</strong> &middot; <strong>Kubernetes</strong> <br />
+<strong>Mail</strong> &middot; <strong>Postgres</strong> &middot; <strong>RabbitMQ</strong> &middot; <strong>Redis / Valkey</strong> <br />
+<strong>S3</strong> &middot; <strong>SQL Server</strong> &middot; <strong>SSH</strong>
+<!-- connector-overview:end -->
+
+Every connector uses the same scoped permissions, approvals, history, and audit.
+[Explore connector capabilities and setup](docs/connectors.md).
+
 ## What It Is
 
 AIPermission is a local, single-user developer gateway. You register connector

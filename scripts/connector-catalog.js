@@ -6,6 +6,9 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const templatesDir = path.join(root, "frontend/src/connectors/templates");
 const outputPath = path.join(root, "docs/connectors.md");
+const readmePath = path.join(root, "README.md");
+const overviewStart = "<!-- connector-overview:start -->";
+const overviewEnd = "<!-- connector-overview:end -->";
 
 function readConnectorMetadata() {
   return fs
@@ -67,24 +70,67 @@ function renderCatalog(connectors) {
   return lines.join("\n");
 }
 
-function expectedCatalog() {
-  return renderCatalog(readConnectorMetadata());
+function renderReadmeOverview(connectors) {
+  const names = connectors.map(({ label }) => {
+    const escaped = label
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+    return `<strong>${escaped}</strong>`;
+  });
+  const rows = [];
+  for (let index = 0; index < names.length; index += 4) {
+    rows.push(names.slice(index, index + 4).join(" &middot; "));
+  }
+  return rows.join(" <br />\n");
+}
+
+function updateReadme(source, connectors) {
+  const start = source.indexOf(overviewStart);
+  const end = source.indexOf(overviewEnd);
+  if (
+    source.split(overviewStart).length !== 2 ||
+    source.split(overviewEnd).length !== 2 ||
+    start >= end
+  ) {
+    throw new Error(
+      "README.md requires one ordered connector-overview marker pair",
+    );
+  }
+  return (
+    source.slice(0, start + overviewStart.length) +
+    "\n" +
+    renderReadmeOverview(connectors) +
+    "\n" +
+    source.slice(end)
+  );
+}
+
+function expectedDocuments() {
+  const connectors = readConnectorMetadata();
+  return [
+    [outputPath, renderCatalog(connectors)],
+    [readmePath, updateReadme(fs.readFileSync(readmePath, "utf8"), connectors)],
+  ];
 }
 
 function writeCatalog() {
-  fs.writeFileSync(outputPath, expectedCatalog());
-  console.log(`Updated ${path.relative(root, outputPath)}.`);
+  for (const [file, expected] of expectedDocuments()) {
+    fs.writeFileSync(file, expected);
+    console.log(`Updated ${path.relative(root, file)}.`);
+  }
 }
 
 function checkCatalog() {
-  const expected = expectedCatalog();
-  const current = fs.existsSync(outputPath)
-    ? fs.readFileSync(outputPath, "utf8")
-    : "";
-  if (current !== expected) {
-    throw new Error("docs/connectors.md is stale; run npm run connector-catalog");
+  for (const [file, expected] of expectedDocuments()) {
+    const current = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    if (current !== expected) {
+      throw new Error(
+        `${path.relative(root, file)} is stale; run npm run connector-catalog`,
+      );
+    }
   }
-  console.log("Generated connector catalog is current.");
+  console.log("Generated connector catalog and README overview are current.");
 }
 
 try {

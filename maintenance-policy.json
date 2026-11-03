@@ -136,6 +136,7 @@
     "scripts/ci/ci-workflow.test.js",
     "scripts/ci/compose-topology.test.js",
     "scripts/ci/documented-verification-contract.test.js",
+    "scripts/conformance/connector-catalog.test.js",
     "scripts/conformance/fixture-contract.test.js",
     "scripts/conformance/source-snapshot.test.js",
     "scripts/ci/gitleaks-history-scan.test.js",
