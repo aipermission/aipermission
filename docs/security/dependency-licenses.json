@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "7e904a81479e78ae4cdf04ac6a5ceb702880aec122c8540232086a99ec1cd00f"
+      "sha256": "e1dc3919794f9466ce3d959c8a89882218e3e2e26f12f13e282fbd2d82febda6"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "1b3cfed511215420652f416d0a907000ab1625f8782e4c48881cb2e58484634c"
+      "sha256": "24a43e6b7d9acc2cb9782e464af1d53e0924fda0e361c54b8d1e2c65af67233a"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "600a68a1401e7d8a59104b672a2edb92d70d55009d6c26e0f07ff1f148a458f3"
+      "sha256": "4fff2a4768377597ebaca0dc9f2ed53d2dee1f79b983b56ceaa22ec43f749885"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "ffb2e87cae1f3fb307de415bb94e48d4b0152ff49a81192296beb13639a21d43"
+      "sha256": "5bb2b1cc4e1bd3061f280ae9a9dbeb492f550a4089b61db53123024a578b94a4"
     },
     {
       "path": "scripts/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "16427186b3b68936566ce2ce2e53597564eb756160d107eca0a67e25763dcc0b"
+      "metadata_sha256": "c708f07673758c4f6a632b834fd4eeb913f7f73e19f66454feb4424cd4c8b160"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2471,11 +2471,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.13.0",
+      "version": "10.14.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.13.0.tgz",
-      "integrity": "sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==",
-      "metadata_sha256": "dda86a8530c3e6d3bb8270d8b543f25bddf6e30b45ef7201e236f3475a0e8dbd"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.14.0.tgz",
+      "integrity": "sha512-T0pNsxkb9IKmtQjhpK3d7nWOpFv+YHuMbTJnSVMoQblF0onvXfErrtp4V1jHtsQPan7dKaGVD0q1WCXnzMF31A==",
+      "metadata_sha256": "57efd783249e22b1498c29ea7dad8b2b55aaaa81d9f6bc5d4a80b2776628f52f"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4375,7 +4375,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "8f53221a5628111f0b19e68d5d15f6fee1a8eef5f30bd207192056f524eb76c3"
+      "metadata_sha256": "c300c3baffe703ffb65bfd6f364796f3fe3dca3429637d64a28da311332c1605"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4911,11 +4911,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.13.0",
+      "version": "10.14.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.13.0.tgz",
-      "integrity": "sha512-UohDjD4zSzEwhf58M3O7vc/ycc8O1I7dNlhtD0WxE8Px8EHNJKtUwzBqrzeGhisRuv2ag4sAYswszCJRgKXYUg==",
-      "metadata_sha256": "dda86a8530c3e6d3bb8270d8b543f25bddf6e30b45ef7201e236f3475a0e8dbd"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.14.0.tgz",
+      "integrity": "sha512-T0pNsxkb9IKmtQjhpK3d7nWOpFv+YHuMbTJnSVMoQblF0onvXfErrtp4V1jHtsQPan7dKaGVD0q1WCXnzMF31A==",
+      "metadata_sha256": "57efd783249e22b1498c29ea7dad8b2b55aaaa81d9f6bc5d4a80b2776628f52f"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8381,7 +8381,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed 0.2.75 exact npm metadata and new Go named-license evidence; historical evidence gaps preserved; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed post-0.2.75 ESLint 10.14.0 npm metadata; unchanged Go/native evidence and historical gaps preserved; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
