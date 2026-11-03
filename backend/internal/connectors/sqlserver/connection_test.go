@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"strings"
 	"testing"
@@ -28,6 +29,7 @@ func (s testSecrets) GetSecret(context.Context, string) (string, error) { return
 type testTransport struct {
 	calls   int
 	request connectors.NetworkDialRequest
+	err     error
 }
 
 func (*testTransport) ConnectorRuntimeCapability() string {
@@ -37,7 +39,29 @@ func (s *testTransport) RuntimeCapability(string) connectors.RuntimeCapability {
 func (s *testTransport) DialConnectorTCP(ctx context.Context, request connectors.NetworkDialRequest) (net.Conn, error) {
 	s.calls++
 	s.request = request
+	if s.err != nil {
+		return nil, s.err
+	}
 	return nil, ctx.Err()
+}
+
+func TestConnectionPreservesBoundaryPortsWithoutNetwork(t *testing.T) {
+	for _, port := range []int{1, 65535} {
+		t.Run(fmt.Sprint(port), func(t *testing.T) {
+			runtime := fixtureRuntime()
+			runtime.Target.Config["port"] = port
+			transport := &testTransport{err: errors.New("offline boundary fixture")}
+			runtime.Capabilities = transport
+			db, err := connection(t.Context(), runtime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer db.Close()
+			if err := db.PingContext(t.Context()); err == nil || transport.calls != 1 || transport.request.Port != port {
+				t.Fatalf("connection did not preserve port %d: calls=%d, request port=%d, err=%v", port, transport.calls, transport.request.Port, err)
+			}
+		})
+	}
 }
 
 func TestTargetValidationAndTLS(t *testing.T) {
@@ -59,6 +83,7 @@ func TestTargetValidationAndTLS(t *testing.T) {
 		value any
 	}{
 		{"host", "db\\SQLEXPRESS"}, {"host", "tcp:db"}, {"host", "db;password=other"}, {"port", 0}, {"port", 65536}, {"port", 1.5},
+		{"port", int64(math.MinInt64)}, {"port", int64(math.MaxInt32) + 1}, {"port", int64(math.MaxInt64)},
 		{"database", ""}, {"database", strings.Repeat("a", 129)}, {"tls_mode", "trust"}, {"connection_mode", "over_ssh"},
 		{"ca_certificate", "not a PEM"}, {"ca_certificate", "PRIVATE KEY"}, {"tls_server_name", "host/other"},
 	} {

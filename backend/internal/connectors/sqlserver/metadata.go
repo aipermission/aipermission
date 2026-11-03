@@ -2,6 +2,7 @@ package sqlserverconnector
 
 import (
 	"database/sql"
+	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -20,17 +21,23 @@ const columnsSQL = `SELECT s.name AS table_schema,o.name AS table_name,c.column_
  JOIN sys.types AS t ON t.user_type_id=c.user_type_id
  WHERE o.type IN ('U','V') AND o.is_ms_shipped=0`
 
-func actionQuery(action connectors.PreparedAction) (string, []any, int) {
+func actionQuery(action connectors.PreparedAction) (string, []any, int, error) {
 	switch action.ActionName {
 	case ActionGetSchemas:
-		return `SELECT name AS schema_name FROM sys.schemas WHERE schema_id<16384 AND name NOT IN ('sys','INFORMATION_SCHEMA') ORDER BY name`, nil, maxRows
+		return `SELECT name AS schema_name FROM sys.schemas WHERE schema_id<16384 AND name NOT IN ('sys','INFORMATION_SCHEMA') ORDER BY name`, nil, maxRows, nil
 	case ActionGetTables:
-		return tablesSQL, []any{sql.Named("schema", text(action.Payload, "schema"))}, maxRows
+		return tablesSQL, []any{sql.Named("schema", text(action.Payload, "schema"))}, maxRows, nil
 	case ActionDescribeTable:
-		return columnsSQL + ` AND s.name=@schema AND o.name=@table ORDER BY c.column_id`, []any{sql.Named("schema", text(action.Payload, "schema")), sql.Named("table", text(action.Payload, "table"))}, maxRows
+		return columnsSQL + ` AND s.name=@schema AND o.name=@table ORDER BY c.column_id`, []any{sql.Named("schema", text(action.Payload, "schema")), sql.Named("table", text(action.Payload, "table"))}, maxRows, nil
 	case ActionGetMetadata:
-		return columnsSQL + ` ORDER BY s.name,o.name,c.column_id`, nil, maxMetadataRows
+		return columnsSQL + ` ORDER BY s.name,o.name,c.column_id`, nil, maxMetadataRows, nil
+	case ActionQueryReadonly:
+		limit, ok := connectors.NativeIntValue(action.Payload["max_rows"])
+		if !ok || limit < 1 || limit > maxRows {
+			return "", nil, 0, fmt.Errorf("max_rows must be between 1 and %d", maxRows)
+		}
+		return text(action.Payload, "sql"), nil, limit, nil
 	default:
-		return text(action.Payload, "sql"), nil, int(action.Payload["max_rows"].(int64))
+		return "", nil, 0, fmt.Errorf("unsupported SQL Server action %q", action.ActionName)
 	}
 }

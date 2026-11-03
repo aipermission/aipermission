@@ -39,8 +39,8 @@ func TestActionContractAndPreparation(t *testing.T) {
 		if strings.Contains(string(encoded), "fixture-only") || prepared.Risk != connectors.RiskRead || connectors.EffectiveRetryPolicy(action).Class != connectors.RetryReadOnly {
 			t.Fatalf("unsafe contract: %#v", prepared)
 		}
-		query, args, limit := actionQuery(prepared)
-		if query == "" || limit < 1 {
+		query, args, limit, err := actionQuery(prepared)
+		if err != nil || query == "" || limit < 1 {
 			t.Fatalf("invalid plan for %s", action.Name)
 		}
 		if action.Name == ActionDescribeTable && (strings.Contains(query, input["table"].(string)) || len(args) != 2) {
