@@ -15,9 +15,13 @@ hashes deliberately make even formatting changes require a baseline review.
 No installed npm dependency tree is used.
 
 The untagged post-0.2.75 tooling refresh records ESLint 10.14.0 (MIT) in both
-frontend and MCP development dependencies. Runtime dependencies and the
-published 0.2.75 package remain unchanged. Go/native evidence and acknowledged
+frontend and MCP development dependencies. ESLint remains development-only;
+the published 0.2.75 MCP package is not replaced. Go/native evidence and acknowledged
 historical evidence gaps are preserved; no legal compatibility is inferred.
+
+The same maintenance batch records frontend Lucide 1.66.0 with its unchanged
+ISC declaration and exact registry integrity. It updates the icon dependency,
+not connector actions, permission rules, or the encrypted database schema.
 
 The 0.2.75 MCP maintenance refresh records `@hono/node-server` 2.1.6 (MIT)
 for [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f).
