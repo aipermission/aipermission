@@ -21,6 +21,11 @@ and verifies that encoded paths cannot bypass a protected prefix. The MCP
 bridge remains stdio-only; this does not claim an exposed HTTP static server.
 Unchanged Go evidence and acknowledged historical gaps remain preserved.
 
+The same release records MCP SDK 1.32.2 with its unchanged MIT declaration,
+registry integrity and dependency metadata. The stdio contract suite and
+minimum-supported-runtime packaged smoke tests qualify the patch; Go and
+native evidence are unchanged.
+
 The post-0.2.74 maintenance refresh records klauspost/compress 1.20.3 and its
 named license evidence for
 [GHSA-fpmh-frq8-7rj8](https://github.com/klauspost/compress/security/advisories/GHSA-fpmh-frq8-7rj8).
