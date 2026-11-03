@@ -26,6 +26,11 @@ registry integrity and dependency metadata. The stdio contract suite and
 minimum-supported-runtime packaged smoke tests qualify the patch; Go and
 native evidence are unchanged.
 
+The frontend refresh records Lucide 1.65.0 (ISC), React Router 8.5.1 (MIT),
+TypeScript ESLint parser and its aligned 8.72.1 packages (MIT), and
+fake-indexeddb 6.2.7 (Apache-2.0). License declarations are unchanged; exact
+lockfile identities are reviewed without expanding existing quality budgets.
+
 The post-0.2.74 maintenance refresh records klauspost/compress 1.20.3 and its
 named license evidence for
 [GHSA-fpmh-frq8-7rj8](https://github.com/klauspost/compress/security/advisories/GHSA-fpmh-frq8-7rj8).
