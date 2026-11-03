@@ -11,7 +11,8 @@
       "title": "Maintenance",
       "items": [
         "Update development-only ESLint to 10.14.0 in frontend and MCP through maintainer-authored changes, retaining the existing lint rules and verification budgets.",
-        "Update frontend Lucide to 1.66.0 with reviewed registry integrity and license metadata; preserve unchanged Go/native evidence and acknowledged historical gaps."
+        "Update frontend Lucide to 1.66.0 with reviewed registry integrity and license metadata; preserve unchanged Go/native evidence and acknowledged historical gaps.",
+        "Synchronize Redis delete-confirmation component tests with asynchronous mutation readiness and the portaled dialog lifecycle without changing destructive-action rules."
       ]
     },
     {
