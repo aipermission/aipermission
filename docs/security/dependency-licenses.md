@@ -14,6 +14,13 @@ lockfiles, their package manifests, `backend/go.mod`, `backend/go.sum`, and
 hashes deliberately make even formatting changes require a baseline review.
 No installed npm dependency tree is used.
 
+The 0.2.75 MCP maintenance refresh records `@hono/node-server` 2.1.6 (MIT)
+for [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f).
+An isolated filesystem regression resolves the SDK's actual static middleware
+and verifies that encoded paths cannot bypass a protected prefix. The MCP
+bridge remains stdio-only; this does not claim an exposed HTTP static server.
+Unchanged Go evidence and acknowledged historical gaps remain preserved.
+
 The post-0.2.74 maintenance refresh records klauspost/compress 1.20.3 and its
 named license evidence for
 [GHSA-fpmh-frq8-7rj8](https://github.com/klauspost/compress/security/advisories/GHSA-fpmh-frq8-7rj8).

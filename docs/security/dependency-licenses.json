@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "e3d36e4840cfc1cf2264608e76a7fb0a07e7ca757e93bb9f01b9c63b23fbe3b3"
+      "sha256": "7065f3a9ff9b3eee5065c4dc85d309e515082585296d545264e2d7f56422f2e0"
     },
     {
       "path": "scripts/package.json",
@@ -4491,11 +4491,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/@hono/node-server",
       "name": "@hono/node-server",
-      "version": "2.0.12",
+      "version": "2.1.6",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@hono/node-server/-/node-server-2.0.12.tgz",
-      "integrity": "sha512-eWpQYr67tqJLeaSUl0Q+TquuYfUdTibpOJlUMV2FfUP7+KqCC5TufnwnlXL6mobZBJbGAYRd7ZvEBDCbLInjhg==",
-      "metadata_sha256": "c0b90325b2173e0d9681cac62d34e750b01ea2d4f459c1fe20f541d2e8b465ad"
+      "resolved": "https://registry.npmjs.org/@hono/node-server/-/node-server-2.1.6.tgz",
+      "integrity": "sha512-p/KH9MnfNcsm3sR6x4lNgm5j+QN4Et8srKredl9DZfXiyZ1UQ3aQ2YVpFLbqktYN5JI+DB+VZFKM2PqE5hLKjQ==",
+      "metadata_sha256": "f2c1a2b28af929a593220e102560775b25a644a96662243905d3281dc410a425"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8281,7 +8281,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed SQL Server parser and x/net 0.62.0 evidence; unchanged historical gaps preserved",
+    "reviewer": "Codex maintainer: reviewed 0.2.75 exact npm metadata and new Go named-license evidence; historical evidence gaps preserved; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

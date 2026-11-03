@@ -22,6 +22,7 @@
     "test/security/ip-address.test.js",
     "test/security/proxy-address.test.js",
     "test/security/runtime.test.js",
+    "test/security/static-path.test.js",
     "test/security/uri-parser.test.js",
     "test/security/zod.test.js",
     "test/server.test.js",
