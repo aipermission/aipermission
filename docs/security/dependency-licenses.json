@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "e1dc3919794f9466ce3d959c8a89882218e3e2e26f12f13e282fbd2d82febda6"
+      "sha256": "3251d693373f3ca2b01e292ebf021fb2c80d67f05198f909f92fec168e9e8f75"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "24a43e6b7d9acc2cb9782e464af1d53e0924fda0e361c54b8d1e2c65af67233a"
+      "sha256": "af9fd32f040392ed63c2660bc60e786c55f026bea8edfc2d286c0e69e393479b"
     },
     {
       "path": "packages/mcp/package.json",
@@ -55,7 +55,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "c708f07673758c4f6a632b834fd4eeb913f7f73e19f66454feb4424cd4c8b160"
+      "metadata_sha256": "83c7a8a999668f5e12e4b9ad1d59fdbf4eee34e6615c43775aa4c06bea1a560a"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3331,11 +3331,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.65.0",
+      "version": "1.66.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.65.0.tgz",
-      "integrity": "sha512-roSdtzudEY39i2hn5LLjA8toYfhF2z4S10WSqZF4ubXpHlOmNTvaxMxZLdJfQDi6pEifQWX+cRmYihKSsvAxfA==",
-      "metadata_sha256": "3f0edee0f7d3b2a2dfd0846512a60ef9540021b82815c9736153b5cacdbb276c"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.66.0.tgz",
+      "integrity": "sha512-8zjbi/Us+ETXqfBwmXF/FHrWGIqOdE6zT1yUdRJLQVoptomSkB0zdFWVIM667t9K8djWDaXdkBkqi2qVTuDNiw==",
+      "metadata_sha256": "5c407e6f9affe2a190cf70bd39fd4b8783652f01c8e3ecc764a0994dd1f938b2"
     },
     {
       "source": "frontend/package-lock.json",
@@ -8381,7 +8381,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed post-0.2.75 ESLint 10.14.0 npm metadata; unchanged Go/native evidence and historical gaps preserved; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed post-0.2.75 ESLint 10.14.0 and Lucide 1.66.0 npm metadata; unchanged Go/native evidence and historical gaps preserved; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
