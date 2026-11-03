@@ -9,6 +9,25 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Show all built-in connectors near the top of README using the canonical
+  metadata-driven catalog generator; CI rejects a stale overview.
+
+### Maintenance
+
+- Update development-only ESLint to 10.14.0 in frontend and MCP through
+  maintainer-authored changes, retaining the existing lint rules and verification
+  budgets.
+- Update frontend Lucide to 1.66.0 with reviewed registry integrity and license
+  metadata; preserve unchanged Go/native evidence and acknowledged historical gaps.
+
+### Notes
+
+- These are untagged source changes after 0.2.75. Existing release tags, published
+  container images and the npm package are not replaced; source users must rebuild to
+  consume the updated frontend dependency.
+
 ## [0.2.75] - 2026-11-03
 
 ### Added
