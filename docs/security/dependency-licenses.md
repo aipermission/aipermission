@@ -31,6 +31,13 @@ TypeScript ESLint parser and its aligned 8.72.1 packages (MIT), and
 fake-indexeddb 6.2.7 (Apache-2.0). License declarations are unchanged; exact
 lockfile identities are reviewed without expanding existing quality budgets.
 
+ClickHouse driver 2.50.0 retains its Apache-2.0 named evidence. Its updated
+decimal dependency retains MIT evidence; OpenTelemetry 1.47.0 retains
+Apache-2.0 evidence. Brotli 1.2.6 retains MIT and its bundled flate BSD evidence.
+The exact new checksums and named-file hashes are captured without changing
+the 38 acknowledged historical evidence gaps. Protocol conformance remains a
+separate required release gate, not a conclusion of license metadata review.
+
 The post-0.2.74 maintenance refresh records klauspost/compress 1.20.3 and its
 named license evidence for
 [GHSA-fpmh-frq8-7rj8](https://github.com/klauspost/compress/security/advisories/GHSA-fpmh-frq8-7rj8).

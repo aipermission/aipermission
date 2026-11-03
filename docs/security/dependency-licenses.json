@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "24d947c834932083d8e41d00cdc303316b0fcc032a238c8393e51f6e927cea72"
+      "sha256": "69cb48cc15243ba8b6233a891c7a8cabd1eb4ba8ea582bed45037752ce3eb47b"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "ad3ac27e33e2ec98439693d2e1c1f203f4c42b6a2dfdf63015bc404202b4dede"
+      "sha256": "cdb97416b612b17f76fc8207609b6175bf7ce8aba25e33e741a97979bbe0a249"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6077,7 +6077,7 @@
     "Require": [
       {
         "Path": "github.com/ClickHouse/clickhouse-go/v2",
-        "Version": "v2.48.0"
+        "Version": "v2.50.0"
       },
       {
         "Path": "github.com/SE-I-T-Digital/go-sqlcipher",
@@ -6186,7 +6186,7 @@
       },
       {
         "Path": "github.com/andybalholm/brotli",
-        "Version": "v1.2.2",
+        "Version": "v1.2.6",
         "Indirect": true
       },
       {
@@ -6256,7 +6256,7 @@
       },
       {
         "Path": "github.com/shopspring/decimal",
-        "Version": "v1.4.0",
+        "Version": "v1.5.0",
         "Indirect": true
       },
       {
@@ -6271,12 +6271,12 @@
       },
       {
         "Path": "go.opentelemetry.io/otel",
-        "Version": "v1.44.0",
+        "Version": "v1.47.0",
         "Indirect": true
       },
       {
         "Path": "go.opentelemetry.io/otel/trace",
-        "Version": "v1.44.0",
+        "Version": "v1.47.0",
         "Indirect": true
       },
       {
@@ -6427,12 +6427,31 @@
         "module": "h1:auzd4VkapQYhQF8F2Gog7s3x78Bi1JZmByxGbrw3C+4=",
         "go_mod": "h1:lBjUCPRG6RpRQdMbkXq+JV8rY0/O5lw+Z7jShgReFjM="
       },
-      "requirement": "direct",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "github.com/!click!house/clickhouse-go/v2@v2.48.0/LICENSE",
+            "sha256": "27099b82691d1d17cb18138319e2a4f9980ef59c1186c9b02a3273c757c0f91b",
+            "bytes": 11389
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/ClickHouse/clickhouse-go/v2",
+      "version": "v2.50.0",
+      "checksums": {
+        "module": "h1:cX9TLBOdNVbecglF/c8KkbtZQpov84u+AtpwAA6Gv8g=",
+        "go_mod": "h1:2mzC9OqL8g+vZgmdOoRQ9iEp2BxIsV5hKA1m7DBVU+M="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/!click!house/clickhouse-go/v2@v2.50.0/LICENSE",
             "sha256": "27099b82691d1d17cb18138319e2a4f9980ef59c1186c9b02a3273c757c0f91b",
             "bytes": 11389
           }
@@ -6465,7 +6484,7 @@
         "module": "h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=",
         "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
       },
-      "requirement": "indirect",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
@@ -6476,6 +6495,30 @@
           },
           {
             "path": "github.com/andybalholm/brotli@v1.2.2/flate/LICENSE",
+            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+            "bytes": 1479
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/andybalholm/brotli",
+      "version": "v1.2.6",
+      "checksums": {
+        "module": "h1:ftYnfj6usCp+UGV5kSJ3+chpMQgU+gJf/AxsUQ52REI=",
+        "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/andybalholm/brotli@v1.2.6/LICENSE",
+            "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+            "bytes": 1084
+          },
+          {
+            "path": "github.com/andybalholm/brotli@v1.2.6/flate/LICENSE",
             "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
             "bytes": 1479
           }
@@ -7303,12 +7346,31 @@
         "module": "h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=",
         "go_mod": "h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME="
       },
-      "requirement": "indirect",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "github.com/shopspring/decimal@v1.4.0/LICENSE",
+            "sha256": "b92ba0f6ee02f2309628bfdadb123668a17c016e475ba477b857d33470d9d625",
+            "bytes": 2245
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/shopspring/decimal",
+      "version": "v1.5.0",
+      "checksums": {
+        "module": "h1:HxSWk31RmJv0EyY4oLiGQB9u7WPludUwPBdvQZnYFPc=",
+        "go_mod": "h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/shopspring/decimal@v1.5.0/LICENSE",
             "sha256": "b92ba0f6ee02f2309628bfdadb123668a17c016e475ba477b857d33470d9d625",
             "bytes": 2245
           }
@@ -7560,12 +7622,31 @@
         "module": "h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/6gtIk=",
         "go_mod": "h1:oLl1jrMQAVo6v3GAggN+1VH9VIz9iUSvW53sW1Q8PIE="
       },
-      "requirement": "indirect",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "go.opentelemetry.io/otel/trace@v1.44.0/LICENSE",
+            "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
+            "bytes": 12892
+          }
+        ]
+      }
+    },
+    {
+      "module": "go.opentelemetry.io/otel/trace",
+      "version": "v1.47.0",
+      "checksums": {
+        "module": "h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrFNWSrM=",
+        "go_mod": "h1:jNaSLa2PZEYFG6fRjJABAu+bw4FS08uDmPg28lTghu0="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "go.opentelemetry.io/otel/trace@v1.47.0/LICENSE",
             "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
             "bytes": 12892
           }
@@ -7579,12 +7660,31 @@
         "module": "h1:JjwHmHpA4iZ3wBxluu2fbbE7j4kqlE8jXyAyPXH7HqU=",
         "go_mod": "h1:BMgjTHL9WPRlRjL2oZCBTL4whCGtXch2H4BhOPIAyYc="
       },
-      "requirement": "indirect",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "go.opentelemetry.io/otel@v1.44.0/LICENSE",
+            "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
+            "bytes": 12892
+          }
+        ]
+      }
+    },
+    {
+      "module": "go.opentelemetry.io/otel",
+      "version": "v1.47.0",
+      "checksums": {
+        "module": "h1:j7ALJ/zgkS7Z6aeJW09p8VC9804bC+PpeTfCD4XPnOM=",
+        "go_mod": "h1:8wS9O2qfXrYrzp6hIF/HOYJJf/wIhFPhR2xLuP+iXQU="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "go.opentelemetry.io/otel@v1.47.0/LICENSE",
             "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
             "bytes": 12892
           }
