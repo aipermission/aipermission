@@ -36,7 +36,7 @@ func compileReadonlySQL(query string) (compiled string, err error) {
 	}
 	query, err = prepareSQLLexicalInput(query)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("query_readonly lexical input: %w", err)
 	}
 	errors := &sqlSyntaxErrors{DefaultErrorListener: antlr.NewDefaultErrorListener()}
 	lexer := tsql.NewTSqlLexer(antlr.NewInputStream(query))
