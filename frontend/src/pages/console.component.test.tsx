@@ -6,6 +6,9 @@ import type { ComponentProps } from "react";
 import type { GatewayContext } from "../lib/gateway-context";
 import type { ConsoleWorkspacePanel } from "../components/console/console-workspace-panel";
 import { gatewayTargetFixture } from "../test/connector-inventory-fixtures";
+import { apiGet } from "../lib/api";
+
+vi.mock("../lib/api", async (original) => ({ ...(await original<typeof import("../lib/api")>()), apiGet: vi.fn(async () => []) }));
 
 let workspaceProps: ComponentProps<typeof ConsoleWorkspacePanel> | undefined;
 const media = vi.hoisted(() => ({ wide: false }));
@@ -22,9 +25,16 @@ beforeEach(() => {
   media.wide = false;
 });
 
-it("does not dispatch live-session controls before a runtime session exists", async () => {
+it("keeps a bare console route unselected without loading target actions or attaching existing sessions", async () => {
   media.wide = true;
-  const context = gateway();
+  const context = gateway({
+    targets: resource([
+      gatewayTargetFixture({ connector_kind: "sqlserver", ref: "sqlserver:1:10", target_id: 1, profile_id: 10 }),
+      gatewayTargetFixture({ connector_kind: "ssh", ref: "ssh:2:20", target_id: 2, profile_id: 20, runtime_id: 2 }),
+    ]),
+    liveConsoleTargets: resource([{ id: 2, name: "ops" }]),
+    consoleSessions: resource([{ id: 9, runtime_id: 2, status: "connected", transcript: "" }]),
+  });
   render(
     <MemoryRouter initialEntries={["/console"]}>
       <Routes>
@@ -34,6 +44,11 @@ it("does not dispatch live-session controls before a runtime session exists", as
       </Routes>
     </MemoryRouter>,
   );
+  expect(workspaceProps?.targetView.selectedTarget).toBeNull();
+  expect(workspaceProps?.targetView.selectedRuntimeTarget).toBeNull();
+  expect(workspaceProps?.connectorView.Console).toBeNull();
+  expect(apiGet).not.toHaveBeenCalled();
+  expect(context.attachConsoleSession).not.toHaveBeenCalled();
   await act(async () => {
     if (!workspaceProps) throw new Error("Console workspace did not render");
     workspaceProps.actions.endLiveSession();

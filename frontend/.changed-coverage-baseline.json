@@ -118,8 +118,8 @@
       "lines": 100
     },
     "src/components/console/console-target-sidebar.tsx": {
-      "statements": 88.34,
-      "branches": 71.12,
+      "statements": 88.5,
+      "branches": 76.92,
       "functions": 82.05,
       "lines": 94.93
     },
@@ -233,7 +233,7 @@
     },
     "src/components/console/use-console-target-selection.ts": {
       "statements": 91.17,
-      "branches": 75,
+      "branches": 77.14,
       "functions": 92,
       "lines": 97.95
     },

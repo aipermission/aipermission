@@ -39,6 +39,9 @@ test("runs approval, stale rejection, lock, and restart against the real backend
     );
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await page.locator('aside a[href="/console"]').click();
+    await expect(page.getByText("Select a target.", { exact: true })).toBeVisible();
+    await page.goto(`/console?target=${encodeURIComponent(fixture.targetRef)}`);
+    await expect(page.getByText("e2e-target", { exact: true }).first()).toBeVisible();
   });
 
   await test.step("approve a Prompt connector action and persist its completion", async () => {
