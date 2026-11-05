@@ -51,6 +51,23 @@ UPDATE %s SET value=value+100 WHERE id=1;`, fixture.table, fixture.table)
 	if value := fixture.value(t); value != 1 {
 		t.Fatalf("uncertain script was replayed or its later batch ran: %d", value)
 	}
+	for _, prefix := range []string{
+		"RAISERROR(N'owned-batch-error',16,1) WITH NOWAIT; WAITFOR DELAY '00:00:01';",
+		"INSERT INTO " + fixture.table + " VALUES (1,99);",
+		"SELECT SERVERPROPERTY('ProductMajorVersion');",
+	} {
+		if _, err := fixture.observer.ExecContext(ctx, "UPDATE "+fixture.table+" SET value=0 WHERE id=1"); err != nil {
+			t.Fatal(err)
+		}
+		prepared := prepareSQLExecution(t, fixture.sqlExecutionFixture, map[string]any{
+			"sql": prefix + " UPDATE " + fixture.table + " SET value=7 WHERE id=1;\nGO\nUPDATE " + fixture.table + " SET value=100 WHERE id=1;",
+		})
+		result, err := fixture.connector.ExecuteAction(ctx, fixture.runtime, prepared)
+		assertSQLExecutionUnknown(t, result, err)
+		if value := fixture.value(t); value != 7 {
+			t.Fatalf("current batch was interrupted or a later batch ran: prefix=%q value=%d", prefix, value)
+		}
+	}
 }
 
 func testSQLServerSQLExecutionCancellation(t *testing.T) {

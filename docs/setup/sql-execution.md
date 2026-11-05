@@ -52,6 +52,11 @@ separate executions.
   commands, shell escapes and substitutions are unsupported. Strings, quoted
   identifiers, comments and Unicode are not rewritten into another script.
   `EXEC` and procedure definitions execute under the profile's SQL grants.
+  Statement errors and unsupported result types are recorded while the current
+  batch is drained to its native end; later `GO` batches are not sent. A lost
+  transport, cancellation or deadline can still interrupt the active batch.
+  Unsupported result sets are omitted and marked truncated, not silently
+  presented as complete; the action reports an uncertain outcome.
 - The script controls its transactions. There is no blanket automatic COMMIT,
   whole-script rollback guarantee, or migration rollback tool. Earlier batches,
   explicit commits, routines and external effects may persist after a later

@@ -11,6 +11,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 	"github.com/golang-sql/sqlexp"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 const executionTransactionSQL = "SELECT @@TRANCOUNT, XACT_STATE()"
@@ -79,7 +80,7 @@ func consumeExecutionMessages(ctx context.Context, cancel context.CancelFunc, ro
 			err = errors.Join(err, cause)
 		}
 		cancel()
-		err = errors.Join(err, <-done)
+		err = errors.Join(err, <-done, sink.failure)
 	}()
 	for {
 		var event sqlexp.RawMessage
@@ -111,6 +112,7 @@ func consumeExecutionMessages(ctx context.Context, cancel context.CancelFunc, ro
 type executionSink struct {
 	*sqlexecute.Collector
 	sync.Mutex
+	failure error
 }
 
 // Notices can arrive while Next is blocked. Drain the driver's bounded message
@@ -140,12 +142,35 @@ func pumpExecutionMessages(ctx context.Context, messages *sqlexp.ReturnMessage, 
 			if message.Error == nil {
 				return fmt.Errorf("SQL Server returned an empty server error")
 			}
-			return message.Error
+			if !recoverableExecutionError(message.Error) {
+				return message.Error
+			}
+			// Statement errors do not necessarily terminate a SQL Server batch.
+			// Observe its native end before withholding the next GO batch.
+			sink.Lock()
+			if sink.failure == nil {
+				sink.failure = message.Error
+			}
+			sink.Unlock()
 		default:
 			return fmt.Errorf("SQL Server returned an unsupported native message")
 		}
 	}
 	return nil
+}
+
+func recoverableExecutionError(err error) bool {
+	var fatal mssql.ServerError
+	var statement mssql.Error
+	if errors.As(err, &fatal) || !errors.As(err, &statement) || statement.Class >= 20 {
+		return false
+	}
+	for _, reported := range statement.All {
+		if reported.Class >= 20 {
+			return false
+		}
+	}
+	return true
 }
 
 // This precedes connector Next, not the pinned driver's eager row allocations.
@@ -157,14 +182,22 @@ func consumeExecutionRows(ctx context.Context, rows driver.Rows, sink *execution
 		return fmt.Errorf("SQL Server result type metadata is unavailable")
 	}
 	kinds := make([]string, len(columns))
+	unsupported := false
 	for i := range columns {
 		kinds[i] = types.ColumnTypeDatabaseTypeName(i)
 		if !supportedExecutionType(kinds[i]) {
-			return unsupportedResultType()
+			unsupported = true
 		}
 	}
 	sink.Lock()
 	err := sink.BeginResult(columns)
+	if unsupported && err == nil {
+		sink.OmitCurrentResult()
+		sink.Notice("Result omitted: CAST unsupported native values to supported scalar types.")
+		if sink.failure == nil {
+			sink.failure = unsupportedResultType()
+		}
+	}
 	sink.Unlock()
 	if err != nil {
 		return err
