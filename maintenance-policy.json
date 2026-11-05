@@ -406,6 +406,7 @@
     "internal/connectors/s3": 75,
     "internal/connectors/s3/apiadapter": 42,
     "internal/connectors/s3/sigv4": 59,
+    "internal/connectors/sqlexecute": 90,
     "internal/connectors/sqlresult": 58,
     "internal/connectors/sqlsafe": 63,
     "internal/connectors/ssh": 76,
