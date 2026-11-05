@@ -9,7 +9,7 @@ import type { SQLConsoleProps } from "../../connectors/templates/_shared/use-sql
 
 // async-owner: src/connectors/templates/_shared/use-sql-metadata.ts
 
-vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../lib/api", () => ({ apiPost: vi.fn(), apiGet: vi.fn(async () => []), currentWorkspaceBinding: () => "sql-test" }));
 const post = vi.mocked(apiPost);
 
 const config = {

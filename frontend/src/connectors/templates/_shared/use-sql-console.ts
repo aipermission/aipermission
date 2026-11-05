@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { components } from "../../../../types/generated-openapi";
-import { apiPost } from "../../../lib/api";
+import { apiPost, currentWorkspaceBinding } from "../../../lib/api";
 import { errorMessage } from "../../../lib/errors";
 import { useRequestGuard } from "../../../lib/request-guard";
+import { stableRequestSignature } from "../../../lib/local-action-retry/records";
+import type { GatewayTarget } from "../../../lib/gateway-contracts/core-resource-contracts";
 import { connectorActionResultResponse, requireCompletedConnectorAction } from "./action-result";
 import {
   actionInputSQL,
@@ -12,6 +14,7 @@ import {
   recentSQLQueries,
 } from "./sql-console-config";
 import { useSQLMetadata } from "./use-sql-metadata";
+import { useSQLExecution } from "./use-sql-execution";
 import type { SQLConsoleConfigInput } from "./sql-console-config";
 import type { SQLTableReference } from "./sql-console-data";
 
@@ -22,26 +25,46 @@ export type SQLActivitySession = { active: boolean; startedAt: string };
 export type SQLConsoleProps = {
   config?: SQLConsoleConfigInput;
   target: { ref: string; name: string; config?: { host?: string; port?: number; database?: string } };
-  approvals?: { data?: SQLActivityItem[] };
+  executionIdentity?: Pick<GatewayTarget, "config" | "project_id" | "updated_at" | "profile_kind" | "profile_label" | "public">;
+  approvals?: { state?: string; data?: SQLActivityItem[] };
   session?: SQLActivitySession | null;
   onRefreshActivity?: () => unknown;
 };
 export type SQLConsoleController = ReturnType<typeof useSQLConsole>;
 type ActionResponse = Parameters<typeof requireCompletedConnectorAction>[0];
 
-export function useSQLConsole({ config, target, approvals, session, onRefreshActivity }: SQLConsoleProps) {
+export function useSQLConsole({ config, target, executionIdentity, approvals, session, onRefreshActivity }: SQLConsoleProps) {
   const connector = useMemo(() => normalizeSQLConsoleConfig(config), [config]);
   const activeSession = useMemo(() => session || { active: false, startedAt: "" }, [session]);
   const [selectedID, setSelectedID] = useState<number | string | null>(null);
   const [sql, setSQL] = useState("");
   const [maxRows, setMaxRows] = useState<number | string>(100);
-  const [runState, setRunState] = useState<{ state: "idle" | "running" | "error"; error: string }>({ state: "idle", error: "" });
+  const [runState, setRunState] = useState<{ state: string; error: string; message?: string }>({ state: "idle", error: "" });
   const [editorFocusTick, setEditorFocusTick] = useState(0);
   const [resultView, setResultView] = useState(false);
   const [leftPanel, setLeftPanel] = useState<"browser" | "requests">("browser");
   const [browserSearch, setBrowserSearch] = useState("");
-  const requestScope = JSON.stringify([target.ref, activeSession.active, activeSession.startedAt, connector.queryAction]);
+  const requestScope = JSON.stringify([
+    currentWorkspaceBinding(),
+    target.ref,
+    stableRequestSignature([target.config, executionIdentity]),
+    activeSession.active,
+    activeSession.startedAt,
+    connector.queryAction,
+    connector.executionAction,
+  ]);
   const requestGuard = useRequestGuard(requestScope);
+  const { runExecution, ...execution } = useSQLExecution({
+    scope: requestScope,
+    actionName: connector.executionAction,
+    approvalState: approvals?.state,
+    requestGuard,
+    targetRef: target.ref,
+    product: connector.label,
+    setState: setRunState,
+    onRefreshActivity,
+    onSelected: setSelectedID,
+  });
   const queryOwner = useMemo(() => ({ requestScope }), [requestScope]);
   const queryOwnerRef = useRef<object | null>(null);
   const pendingQueryRef = useRef<symbol | null>(null);
@@ -62,6 +85,7 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
   const recentQueries = useMemo(() => recentSQLQueries(rawItems, connector), [rawItems, connector]);
   const selected = useMemo(() => selectActivity(items, selectedID), [items, selectedID]);
   const { metadata, requestTableColumns } = useSQLMetadata({
+    scope: requestScope,
     activeSession,
     connector,
     onRefreshActivity,
@@ -82,6 +106,15 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     if (!activeSession.active || !sql.trim() || queryOwnerRef.current !== queryOwner || pendingQueryRef.current !== null) return;
     const token = Symbol("sql-query");
     pendingQueryRef.current = token;
+    if (execution.executionMode) {
+      try {
+        await runExecution(sql, maxRows);
+      } finally {
+        if (pendingQueryRef.current === token) pendingQueryRef.current = null;
+        if (queryOwnerRef.current === queryOwner) setEditorFocusTick((current) => current + 1);
+      }
+      return;
+    }
     const request = requestGuard.begin("query");
     setRunState({ state: "running", error: "" });
     try {
@@ -152,10 +185,13 @@ export function useSQLConsole({ config, target, approvals, session, onRefreshAct
     browserTables,
     items,
     recentQueries,
+    ...execution,
     runQuery,
     loadSQL,
-    prepareTableQuery: (table: SQLTableReference | null) =>
-      loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : ""),
+    prepareTableQuery: (table: SQLTableReference | null) => {
+      execution.setExecutionMode(false);
+      loadSQL(table?.table ? connector.tableQuery(table, Math.min(Number(maxRows) || 100, 100)) : "");
+    },
   };
 }
 

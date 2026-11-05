@@ -1024,10 +1024,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/sql-console-config.ts": {
-      "statements": 86.74,
-      "branches": 73.68,
-      "functions": 93.1,
-      "lines": 91.3
+      "statements": 90.8,
+      "branches": 83.8,
+      "functions": 96.55,
+      "lines": 95.89
     },
     "src/connectors/templates/_shared/sql-console-data.ts": {
       "statements": 100,
@@ -1071,6 +1071,18 @@
       "functions": 100,
       "lines": 100
     },
+    "src/connectors/templates/_shared/sql-execution-controls.tsx": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/connectors/templates/_shared/sql-execution-output.tsx": {
+      "statements": 100,
+      "branches": 66.66,
+      "functions": 100,
+      "lines": 100
+    },
     "src/connectors/templates/_shared/sql-left-panel.tsx": {
       "statements": 90.9,
       "branches": 69.23,
@@ -1090,10 +1102,10 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/sql-request-detail.tsx": {
-      "statements": 80,
-      "branches": 55,
+      "statements": 100,
+      "branches": 73.33,
       "functions": 100,
-      "lines": 80
+      "lines": 100
     },
     "src/connectors/templates/_shared/sql-result-output.tsx": {
       "statements": 100,
@@ -1138,10 +1150,16 @@
       "lines": 100
     },
     "src/connectors/templates/_shared/use-sql-console.ts": {
-      "statements": 90.52,
-      "branches": 72,
-      "functions": 86.95,
-      "lines": 91.89
+      "statements": 92.45,
+      "branches": 80.35,
+      "functions": 91.66,
+      "lines": 93.9
+    },
+    "src/connectors/templates/_shared/use-sql-execution.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
     },
     "src/connectors/templates/_shared/use-sql-metadata.ts": {
       "statements": 82.85,

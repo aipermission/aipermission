@@ -18,6 +18,7 @@ export type SQLMetadataState = {
 type MetadataConnector = ReturnType<typeof normalizeSQLConsoleConfig>;
 type RequestGuard = ReturnType<typeof createRequestGuard>;
 type MetadataProps = {
+  scope: string;
   activeSession: { active: boolean; startedAt: string };
   connector: MetadataConnector;
   onRefreshActivity?: () => unknown;
@@ -27,11 +28,11 @@ type MetadataProps = {
 };
 const emptyMetadata: SQLMetadataState = { state: "idle", tables: [], error: "", truncated: false };
 
-export function useSQLMetadata({ activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef }: MetadataProps) {
+export function useSQLMetadata({ scope, activeSession, connector, onRefreshActivity, requestGuard, sql, targetRef }: MetadataProps) {
   const [metadata, setMetadata] = useState(emptyMetadata);
   const owner = useMemo(
-    () => ({ targetRef, active: activeSession.active, startedAt: activeSession.startedAt, connector }),
-    [targetRef, activeSession.active, activeSession.startedAt, connector],
+    () => ({ scope, targetRef, active: activeSession.active, startedAt: activeSession.startedAt, connector }),
+    [scope, targetRef, activeSession.active, activeSession.startedAt, connector],
   );
   const [requestedTable, setRequestedTable] = useState<{ reference: SQLTableReference; owner: object } | null>(null);
   const metadataRowsRef = useRef<SQLMetadataRow[]>([]);
@@ -60,7 +61,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
     columnRequestsRef.current = new Set<string>();
     metadataRowsRef.current = [];
     if (!activeSession.active) setMetadata(emptyMetadata);
-  }, [activeSession.active, activeSession.startedAt, targetRef, connector]);
+  }, [scope, activeSession.active, activeSession.startedAt, targetRef, connector]);
 
   useEffect(() => {
     metadataRowsRef.current = metadata.tables;
@@ -94,7 +95,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
       })
       .finally(() => request.complete());
     return () => requestGuard.invalidate("metadata");
-  }, [activeSession.active, activeSession.startedAt, connector, requestGuard, targetRef]);
+  }, [scope, activeSession.active, activeSession.startedAt, connector, requestGuard, targetRef]);
 
   useEffect(() => {
     if (!activeSession.active || requestedTable?.owner !== owner) return;
@@ -112,7 +113,7 @@ export function useSQLMetadata({ activeSession, connector, onRefreshActivity, re
       }
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [activeSession.active, activeSession.startedAt, connector, requestGuard, sql, targetRef]);
+  }, [scope, activeSession.active, activeSession.startedAt, connector, requestGuard, sql, targetRef]);
 
   return { metadata, requestTableColumns: (reference: SQLTableReference) => setRequestedTable({ reference, owner }) };
 }

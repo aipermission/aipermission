@@ -3,10 +3,14 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { ActivityStatusBadge, formatConnectorTime, ResultViewToggle } from "./sql-console-chrome";
 import { ActivityBlock, SQLOutputBlock } from "./sql-result-output";
+import { SQLExecutionOutput } from "./sql-execution-output";
 import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
 export function SQLRequestDetail({ controller, styles, theme }: SQLConsoleViewProps) {
   const selected = controller.selected;
+  const executionView = Boolean(
+    controller.resultView && controller.connector.executionAction && selected?.action_name === controller.connector.executionAction,
+  );
   if (!selected)
     return (
       <section className={`grid h-full min-h-0 place-items-center rounded-lg border p-6 text-sm ${styles.border} ${styles.muted}`}>
@@ -54,8 +58,17 @@ export function SQLRequestDetail({ controller, styles, theme }: SQLConsoleViewPr
         </div>
         {selected.error ? <Notice tone="bad">{selected.error}</Notice> : null}
       </header>
-      <div className={`h-full min-h-0 overflow-hidden p-3 ${controller.resultView ? "" : "grid gap-3 xl:grid-cols-2"}`}>
-        {controller.resultView ? (
+      <div
+        className={`h-full min-h-0 p-3 ${executionView ? "overflow-auto" : "overflow-hidden"} ${controller.resultView ? "" : "grid gap-3 xl:grid-cols-2"}`}
+      >
+        {executionView ? (
+          <SQLExecutionOutput
+            key={selected.id}
+            value={selected.output ?? selected.display_text ?? {}}
+            theme={theme}
+            filenamePrefix={controller.connector.filenamePrefix}
+          />
+        ) : controller.resultView ? (
           <SQLOutputBlock
             title="Rows"
             value={selected.output ?? selected.display_text ?? {}}

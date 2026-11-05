@@ -396,6 +396,9 @@
     "/api/connector-action-approvals": {
       "json": []
     },
+    "/api/connector-action-approvals?target_ref=*&action_name=execute_sql&active=true": {
+      "json": []
+    },
     "/api/connector-action-approvals?status=outcome_unknown": {
       "headers": {
         "X-AIPermission-Workspace": "browser-fixture-workspace",

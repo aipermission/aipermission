@@ -41,4 +41,19 @@ describe("SQL console config", () => {
     expect(normalizeSQLConsoleConfig({ identifierPolicy: "exact" }).identifierPolicy).toBe("exact");
     expect(normalizeSQLConsoleConfig({ identifierPolicy: "unknown" }).identifierPolicy).toBe("lowercase-unquoted");
   });
+
+  it("requires explicit execution opt-in without changing read or metadata actions", () => {
+    expect(normalizeSQLConsoleConfig().executionAction).toBeUndefined();
+    expect(normalizeSQLConsoleConfig({ executionAction: "  " }).executionAction).toBeUndefined();
+    const config = normalizeSQLConsoleConfig({ executionAction: "execute_sql" });
+    expect(config.executionAction).toBe("execute_sql");
+    expect(config.queryAction).toBe("query_readonly");
+    expect(config.metadataAction).toBe("query_readonly");
+    expect(config.keywords).toEqual(
+      expect.arrayContaining(["insert into", "update", "delete from", "create", "alter", "drop", "commit", "rollback", "savepoint"]),
+    );
+    expect(normalizeSQLConsoleConfig().keywords).not.toContain("update");
+    expect(config.keywords).not.toContain("exec");
+    expect(config.keywords).not.toContain("call");
+  });
 });

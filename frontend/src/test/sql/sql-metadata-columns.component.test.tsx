@@ -7,7 +7,7 @@ import { connectorActionFixture, connectorActionRequest } from "../connector-act
 
 // async-owner: src/connectors/templates/_shared/use-sql-metadata.ts
 
-vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../lib/api", () => ({ apiPost: vi.fn(), apiGet: vi.fn(async () => []), currentWorkspaceBinding: () => "sql-test" }));
 const post = vi.mocked(apiPost);
 const table = { schema: " Public ", table: " Users.With.Dot " };
 const listed = { rows: [{ table_schema: table.schema, table_name: table.table }] };

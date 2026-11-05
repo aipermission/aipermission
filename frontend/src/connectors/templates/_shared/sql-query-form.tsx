@@ -3,6 +3,7 @@ import { CopyButton } from "../../../components/ui/copy-button";
 import { Notice } from "../../../components/ui/notice";
 import { metadataStatusText } from "./sql-console-config";
 import { SQLEditor } from "./sql-editor";
+import { SQLExecutionControls } from "./sql-execution-controls";
 import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
 type QueryController = Pick<
@@ -18,6 +19,12 @@ type QueryController = Pick<
   | "editorFocusTick"
   | "metadata"
   | "connector"
+  | "executionMode"
+  | "setExecutionMode"
+  | "timeoutSeconds"
+  | "setTimeoutSeconds"
+  | "executionLocked"
+  | "executionStatus"
 >;
 export type SQLQueryFormProps = Omit<SQLConsoleViewProps, "controller"> & { controller: QueryController };
 
@@ -28,7 +35,9 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
       <div className="grid min-w-0 gap-2 sm:flex sm:items-center sm:justify-between sm:gap-3">
         <div className="min-w-0 sm:flex-1">
           <p className="text-xs font-semibold">SQL</p>
-          <p className={`truncate text-xs ${styles.muted}`}>{metadataStatusText(controller.metadata, controller.connector)}</p>
+          <p className={`truncate text-xs ${styles.muted}`}>
+            {controller.executionMode ? "Write/admin SQL" : metadataStatusText(controller.metadata, controller.connector)}
+          </p>
         </div>
         <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
           <CopyButton
@@ -53,7 +62,7 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
             </Button>
           ) : null}
           <label className="flex items-center gap-2 text-xs font-semibold">
-            Max rows
+            {controller.executionMode ? "Returned-row cap" : "Max rows"}
             <input
               type="number"
               min="1"
@@ -66,6 +75,7 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
           </label>
         </div>
       </div>
+      <SQLExecutionControls controller={controller} styles={styles} running={running} />
       <div className="grid min-w-0 grid-cols-1 gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
         <SQLEditor
           value={controller.sql}
@@ -78,11 +88,16 @@ export function SQLQueryForm({ controller, styles, theme }: SQLQueryFormProps) {
           identifierPolicy={controller.connector.identifierPolicy}
           disabled={running}
         />
-        <Button type="submit" className="h-full min-h-10 px-5" disabled={!controller.sql.trim() || running}>
-          {running ? "Running" : "Run SQL (Ctrl+Enter)"}
+        <Button
+          type="submit"
+          className="h-full min-h-10 px-5"
+          disabled={!controller.sql.trim() || running || (controller.executionMode && controller.executionLocked)}
+        >
+          {running ? "Running" : controller.executionMode ? "Execute SQL" : "Run SQL (Ctrl+Enter)"}
         </Button>
       </div>
       {controller.runState.error ? <Notice tone="bad">{controller.runState.error}</Notice> : null}
+      {controller.runState.message ? <Notice>{controller.runState.message}</Notice> : null}
       {controller.recentQueries.length > 0 ? <RecentQueries controller={controller} mutedClass={styles.muted} theme={theme} /> : null}
     </form>
   );
