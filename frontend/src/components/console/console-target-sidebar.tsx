@@ -300,24 +300,6 @@ export function groupConsoleTargetsByProject<Target extends ConsoleNavigationTar
   return [...groups.values()];
 }
 
-export function defaultConsoleTargetRef(
-  targets: ConsoleNavigationTarget[],
-  unreadMessages: Pick<RuntimeMessage, "runtime_id">[],
-  pendingConnectorApprovals: readonly Pick<ConnectorApproval, "target_ref">[],
-): string {
-  if (!targets.length) return "";
-  const pendingConnector = pendingConnectorApprovals.find((approval) => targets.some((target) => target.ref === approval.target_ref));
-  if (pendingConnector) return pendingConnector.target_ref;
-  const unread = unreadMessages.find((message) =>
-    targets.some((target) => target.runtime_id && Number(target.runtime_id) === Number(message.runtime_id)),
-  );
-  if (unread) {
-    const target = targets.find((item) => item.runtime_id && Number(item.runtime_id) === Number(unread.runtime_id));
-    if (target) return target.ref;
-  }
-  return targets[0].ref;
-}
-
 // Malformed native config must not prevent navigation to its contained console error.
 function presentationRead<Value>(read: () => Value): Value | undefined {
   try {

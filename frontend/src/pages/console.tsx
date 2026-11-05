@@ -60,7 +60,6 @@ export function ConsolePage() {
   const pendingConnectorApprovals = approvalDialog.pendingApprovals;
   const targetSelection = useConsoleTargetSelection({
     messages,
-    pendingApprovals: pendingConnectorApprovals,
     selectedTargetRef,
     setSearchParams,
     targets,

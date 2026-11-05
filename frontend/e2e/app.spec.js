@@ -453,13 +453,13 @@ for (const { width, height } of responsiveViewportMatrix) {
     } else {
       await page.locator('aside a[href="/console"]').click();
     }
-
     await page.getByRole("button", { name: "Connectors", exact: true }).click();
     const targetsDrawer = page.getByRole("dialog", { name: "Connectors" });
     await expect(targetsDrawer).toBeVisible();
     await expect(targetsDrawer.getByText("worker-1", { exact: true })).toBeVisible();
-    await targetsDrawer.getByRole("button", { name: "Close drawer" }).click();
-
+    await expect(page).toHaveURL(/\/console$/);
+    await targetsDrawer.getByRole("button", { name: /^worker-1 / }).click();
+    await expect(targetsDrawer).toBeHidden();
     await page.getByRole("button", { name: "Tokens", exact: true }).click();
     const tokensDrawer = page.getByRole("dialog", { name: "Tokens" });
     await expect(tokensDrawer).toBeVisible();
@@ -526,7 +526,7 @@ test("@high-risk reviews and runs a Prompt connector action in the selected targ
   });
 
   await unlock(page);
-  await page.locator('aside a[href="/console"]').click();
+  await page.goto("/console?target=ssh%3A1%3A1");
 
   const dialog = page.getByRole("dialog", { name: "ssh action approval" });
   await expect(dialog).toBeVisible();
@@ -600,9 +600,9 @@ for (const [kind, label, sessionKind] of [
         },
       });
     });
-
     await unlock(page);
-    await page.locator('aside a[href="/console"]').click();
+    await page.goto(`/console?target=${kind}%3A2%3A1`);
+
     await expect(page.getByRole("heading", { name: "analytics-db" })).toBeVisible();
     await page.setViewportSize({ width: 1920, height: 1080 });
     const workspaceHeader = page.locator("header").filter({ has: page.getByRole("heading", { name: "analytics-db" }) });
@@ -647,9 +647,9 @@ test("@high-risk reconnects a live console after the remote session exits", asyn
     });
     socket.send(JSON.stringify({ type: "snapshot", status: "connected", data: "ready\r\n" }));
   });
-
   await unlock(page);
-  await page.locator('aside a[href="/console"]').click();
+  await page.goto("/console?target=ssh%3A1%3A1");
+
   await expect.poll(() => socketCount).toBe(1);
   await page.getByRole("textbox", { name: "Terminal input" }).press("x");
   await expect.poll(() => clientSocketReady).toBe(true);

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { connectorTargetKey, profilesForConnectorTarget } from "../../lib/connector-permissions";
 import {
   consoleTargetRows,
-  defaultConsoleTargetRef,
   groupConsoleTargetsByProject,
   targetDisplayName,
   targetSubtitle,
@@ -10,7 +9,6 @@ import {
 } from "./console-target-sidebar";
 import { isUnreadMessage } from "./helpers";
 import type { ConsoleNavigationTarget } from "./console-target-sidebar";
-import type { ConnectorApproval } from "../../lib/gateway-contracts/security-contracts";
 import type { RuntimeMessage } from "../../lib/gateway-contracts/activity-resource-contracts";
 
 type SelectionTarget = ConsoleNavigationTarget & {
@@ -26,7 +24,6 @@ type SelectionTarget = ConsoleNavigationTarget & {
 type Message = Pick<RuntimeMessage, "direction" | "consumed_at" | "runtime_id">;
 type Props<Target, MessageItem extends Message> = {
   messages: { data: MessageItem[] };
-  pendingApprovals: readonly Pick<ConnectorApproval, "target_ref">[];
   selectedTargetRef: string;
   setSearchParams: (_params: { target: string }, _options?: { replace: boolean }) => void;
   targets: { data: Target[] } | null;
@@ -34,7 +31,6 @@ type Props<Target, MessageItem extends Message> = {
 
 export function useConsoleTargetSelection<Target extends SelectionTarget, MessageItem extends Message = Message>({
   messages,
-  pendingApprovals,
   selectedTargetRef,
   setSearchParams,
   targets,
@@ -44,15 +40,10 @@ export function useConsoleTargetSelection<Target extends SelectionTarget, Messag
   const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const targetItems = useMemo<Target[]>(() => targets?.data || [], [targets?.data]);
   const unreadMessages = useMemo(() => messages.data.filter(isUnreadMessage), [messages.data]);
-  const defaultTargetRef = useMemo(
-    () => defaultConsoleTargetRef(targetItems, unreadMessages, pendingApprovals),
-    [pendingApprovals, targetItems, unreadMessages],
+  const selectedTarget = useMemo(
+    () => (selectedTargetRef ? targetItems.find((target) => target.ref === selectedTargetRef) || null : null),
+    [selectedTargetRef, targetItems],
   );
-  const selectedTarget = useMemo(() => {
-    if (targetItems.length === 0) return null;
-    const exact = selectedTargetRef ? targetItems.find((target) => target.ref === selectedTargetRef) : null;
-    return exact || targetItems.find((target) => target.ref === defaultTargetRef) || targetItems[0];
-  }, [defaultTargetRef, selectedTargetRef, targetItems]);
   const selectedProfiles = useMemo<Target[]>(() => profilesForConnectorTarget(targetItems, selectedTarget), [selectedTarget, targetItems]);
   const targetRows = useMemo<Target[]>(
     () => consoleTargetRows(targetItems, selectedTarget, profileByTarget),
@@ -77,13 +68,6 @@ export function useConsoleTargetSelection<Target extends SelectionTarget, Messag
     });
   }, [search, targetItems, targetRows]);
   const groups = useMemo(() => groupConsoleTargetsByProject(filteredTargets), [filteredTargets]);
-
-  useEffect(() => {
-    if (targetItems.length === 0 || !defaultTargetRef) return;
-    if (!selectedTargetRef || !targetItems.some((target) => target.ref === selectedTargetRef)) {
-      setSearchParams({ target: selectedTarget?.ref || defaultTargetRef }, { replace: true });
-    }
-  }, [defaultTargetRef, selectedTarget, selectedTargetRef, setSearchParams, targetItems]);
 
   useEffect(() => {
     if (!selectedTarget?.profile_id) return;

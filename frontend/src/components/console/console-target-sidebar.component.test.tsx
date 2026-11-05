@@ -5,7 +5,6 @@ import {
   ConsoleTargetSidebar,
   ConsoleStatusDot,
   consoleTargetRows,
-  defaultConsoleTargetRef,
   groupConsoleTargetsByProject,
   targetDisplayName,
   targetSubtitle,
@@ -44,11 +43,9 @@ describe("console target navigation", () => {
     expect(rows[1].ref).toBe("redis:8:13");
   });
 
-  it("groups unassigned connectors and prioritizes pending or unread targets", () => {
+  it("groups assigned and unassigned connectors", () => {
     const groups = groupConsoleTargetsByProject([admin, cache]);
     expect(groups.map((group) => group.name)).toEqual(["My Project", "Ungrouped"]);
-    expect(defaultConsoleTargetRef([admin, cache], [], [{ target_ref: cache.ref }])).toBe(cache.ref);
-    expect(defaultConsoleTargetRef([admin, cache], [{ runtime_id: 9 }], [])).toBe(cache.ref);
   });
 });
 
@@ -111,12 +108,20 @@ function renderSidebar(overrides: Partial<ComponentProps<typeof ConsoleTargetSid
 
 it("renders a selectable connector with its profile and accessible status", async () => {
   const user = userEvent.setup();
-  const { onSelect } = renderSidebar();
+  const onSearch = vi.fn();
+  const onToggleProject = vi.fn();
+  const { onSelect, onCompactChange } = renderSidebar({ selectedTarget: null, onSearch, onToggleProject });
   expect(screen.getByText("Database")).toBeVisible();
   expect(screen.getByText("Admin")).toBeVisible();
   expect(screen.getByLabelText("Target ready")).toBeInTheDocument();
   await user.click(screen.getByText("Database"));
   expect(onSelect).toHaveBeenCalledWith(target);
+  await user.type(screen.getByPlaceholderText("Search connectors"), "d");
+  expect(onSearch).toHaveBeenCalledWith("d");
+  await user.click(screen.getByText("My Project"));
+  expect(onToggleProject).toHaveBeenCalledWith("3");
+  await user.click(screen.getByTitle("Collapse connectors"));
+  expect(onCompactChange).toHaveBeenCalledWith(true);
 });
 
 it("preserves compact navigation without the search field", async () => {

@@ -274,6 +274,30 @@ it.each([new Error("Catalog unavailable"), null])("reports a current action cata
   });
 });
 
+it("ignores a stale catalog rejection after an explicit selection refresh", async () => {
+  let reject!: (_error: Error) => void;
+  vi.mocked(apiGet)
+    .mockReturnValueOnce(
+      new Promise((_resolve, fail) => {
+        reject = fail;
+      }),
+    )
+    .mockResolvedValueOnce({ items: [] });
+  const { result } = renderHook(() => useConnectorPermissions());
+  const target = { target_id: 3, profile_id: 7 };
+  let first: Promise<unknown> | undefined;
+  act(() => {
+    first = result.current.loadConnectorActions(target);
+  });
+  await act(async () => result.current.loadConnectorActions(target));
+  await act(async () => {
+    reject(new Error("Stale catalog"));
+    await first;
+  });
+  expect(result.current.connectorPermissionState.error).toBeNull();
+  expect(result.current.connectorPermissionState.actionsByTargetRef["connector:3:7"]).toEqual([]);
+});
+
 it("returns an empty failed non-strict refresh while retaining the authoritative previous grants", async () => {
   vi.mocked(apiGet)
     .mockResolvedValueOnce(snapshot([permission()], "r1"))
