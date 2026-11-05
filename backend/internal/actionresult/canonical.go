@@ -7,13 +7,14 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/jsonnumber"
+	"github.com/aipermission/aipermission/backend/internal/jsonshape"
 )
 
 const (
 	MaxEncodedBytes = 4 << 20
-	MaxDepth        = 32
-	MaxNodes        = 100_000
-	MaxStringBytes  = 1 << 20
+	MaxDepth        = jsonshape.MaxDepth
+	MaxNodes        = jsonshape.MaxNodes
+	MaxStringBytes  = jsonshape.MaxStringBytes
 )
 
 var (
@@ -58,13 +59,11 @@ func Canonicalize(value any, limits Limits) (any, error) {
 	if err := decoder.Decode(&canonical); err != nil {
 		return nil, fmt.Errorf("%w: decode canonical value", ErrInvalidValue)
 	}
-	nodes := 0
-	if err := validateCanonical(canonical, 1, &nodes, limits); err != nil {
+	if err := validateCanonical(canonical, limits); err != nil {
 		return nil, err
 	}
 	canonical = jsonnumber.PublicValue(canonical)
-	nodes = 0
-	if err := validateCanonical(canonical, 1, &nodes, limits); err != nil {
+	if err := validateCanonical(canonical, limits); err != nil {
 		return nil, err
 	}
 	projected, err := json.Marshal(canonical)
@@ -91,41 +90,10 @@ func normalizedLimits(limits Limits) Limits {
 	return limits
 }
 
-func validateCanonical(value any, depth int, nodes *int, limits Limits) error {
-	if depth > limits.Depth {
-		return fmt.Errorf("%w: value exceeds maximum depth %d", ErrInvalidValue, limits.Depth)
+func validateCanonical(value any, limits Limits) error {
+	_, err := jsonshape.Measure(value, jsonshape.Limits{Depth: limits.Depth, Nodes: limits.Nodes, StringBytes: limits.StringBytes})
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrInvalidValue, err)
 	}
-	(*nodes)++
-	if *nodes > limits.Nodes {
-		return fmt.Errorf("%w: value exceeds maximum node count %d", ErrInvalidValue, limits.Nodes)
-	}
-
-	switch typed := value.(type) {
-	case nil, bool, json.Number:
-		return nil
-	case string:
-		if len(typed) > limits.StringBytes {
-			return fmt.Errorf("%w: value contains a string larger than %d bytes", ErrInvalidValue, limits.StringBytes)
-		}
-		return nil
-	case []any:
-		for _, item := range typed {
-			if err := validateCanonical(item, depth+1, nodes, limits); err != nil {
-				return err
-			}
-		}
-		return nil
-	case map[string]any:
-		for key, item := range typed {
-			if len(key) > limits.StringBytes {
-				return fmt.Errorf("%w: value contains an object key larger than %d bytes", ErrInvalidValue, limits.StringBytes)
-			}
-			if err := validateCanonical(item, depth+1, nodes, limits); err != nil {
-				return err
-			}
-		}
-		return nil
-	default:
-		return fmt.Errorf("%w: canonical value contains an unsupported type", ErrInvalidValue)
-	}
+	return nil
 }
