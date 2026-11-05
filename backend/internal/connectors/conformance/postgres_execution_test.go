@@ -40,6 +40,7 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("open_transaction_cleanup", testPostgresSQLExecutionTransaction)
 	t.Run("implicit_transaction_rollback", testPostgresSQLImplicitRollback)
 	t.Run("committed_prefix_error_no_replay", testPostgresSQLExecutionError)
+	t.Run("lost_committed_reply_no_replay", testPostgresSQLLostReply)
 	t.Run("committed_prefix_cancellation_no_replay", testPostgresSQLExecutionCancellation)
 }
 
