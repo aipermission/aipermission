@@ -267,7 +267,12 @@ browse_remote_files
 start_file_download
 ```
 
-Postgres actions include schema/table inspection and bounded read-only queries.
+Postgres actions include schema/table inspection, bounded `query_readonly`, and
+the separately authorized `execute_sql` mutation action. SQL Server exposes the
+same read/execute distinction. `execute_sql` supports data/schema changes and
+routines, always has write authority, and is non-idempotent; it does not weaken
+either connector's read policy. See [Explicit SQL Execution](../setup/sql-execution.md)
+for scripts, multiple results, partial changes and reconciliation requirements.
 `get_tables.schema` and `describe_table.schema`/`table` are exact catalog names,
 not SQL identifier expressions. Preserve case, whitespace, quotes and punctuation
 from metadata; do not trim them or add SQL quoting. An absent/empty optional

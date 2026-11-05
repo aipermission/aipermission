@@ -57,11 +57,15 @@ rather than separate product modes. The generated
 their capability summaries.
 
 SQL Server targets support direct TCP SQL authentication, including databases
-running on Windows without SSH. They reuse the shared SQL console and bounded
-read-only action pipeline; see [SQL Server setup and TLS](docs/setup/sql-server.md).
-User queries require SQL Server 2012+ result-metadata inspection; unsupported
-XML/variant/CLR results need an explicit scalar CAST. Dedicated read-only
-database grants remain essential.
+running on Windows without SSH. Postgres and SQL Server share a SQL console
+with protected read-only queries and a separately authorized `execute_sql`
+action for writes, migrations and routines. See
+[SQL Server setup and TLS](docs/setup/sql-server.md) and
+[Explicit SQL Execution](docs/setup/sql-execution.md).
+SQL Server read queries require SQL Server 2012+ result-metadata inspection;
+unsupported XML/variant/CLR results need an explicit scalar CAST. Use separate
+least-privilege profiles for read and write workflows; write permission is not
+a SQL sandbox or a guarantee of whole-script atomicity.
 
 History and audit are encrypted, local, retention-controlled records for the
 active database. They are not an immutable external audit archive: configured

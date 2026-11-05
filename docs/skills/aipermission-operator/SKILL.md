@@ -68,8 +68,18 @@ RabbitMQ messages only when the operator explicitly asked for a write.
 ```
 
 For SQL Server, inspect schemas and ordered columns before a bounded SELECT
-TOP query. Discover its actions normally; writes, procedures and external
-access are not supported. Never treat Always as arbitrary SQL permission.
+TOP query. Discover its actions normally. Postgres and SQL Server keep
+`query_readonly` separate from `execute_sql`: only explicitly authorized
+`execute_sql` permits writes, schema changes and routines. It is always write
+authority, even for SELECT text, and is non-idempotent. Use a profile with only
+the required SQL grants; routines may affect other databases or external state.
+Keep the full script and request identity stable for approval and reconciliation.
+Never automatically replay an unknown outcome or assume all script changes
+rolled back. Retained-row limits do not limit changed rows. Each action uses
+one fresh connection; transactions do not span console executions. SQL Server
+supports bounded standalone GO separators, not GO repeats/SQLCMD directives;
+Postgres uses native statement lists, not psql meta-commands. Prefer Prompt;
+Always on execute_sql deliberately permits autonomous broad SQL execution.
 Query results reject raw XML, sql_variant and CLR/spatial types; explicitly
 CAST required values to supported scalars. Date/time values without a SQL
 timezone do not imply UTC. Metadata may be truncated, and autocomplete uses

@@ -957,6 +957,17 @@ security boundary.
 
 ## Postgres Safety Boundary
 
+Postgres and SQL Server share an explicit `execute_sql` contract implemented
+by `connectors/sqlexecute`: input/output bounds, a write/non-idempotent action,
+action-scoped lifecycle and conservative post-dispatch unknown outcomes.
+Each connector owns native SQL dispatch, result/procedure handling and any
+script separator parsing. Core/MCP/permissions must not inspect SQL text or
+branch on the connector kind. The shared frontend SQL console opts into the
+execution capability through its connector-owned configuration. Keep metadata
+actions and `query_readonly` protections unchanged; never turn arbitrary SQL
+into a read action by keyword heuristics. See
+[Explicit SQL Execution](../setup/sql-execution.md).
+
 The built-in Postgres connector is intentionally conservative. `query_readonly`
 rejects obvious write statements, enforces a SQL size limit, executes with a
 read-only transaction, permits only an audited set of read-only `pg_catalog`

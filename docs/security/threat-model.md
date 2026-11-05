@@ -228,6 +228,21 @@ still reveal server metadata allowed by database grants, beyond catalog actions
 which enumerate only the target database.
 See the [SQL Server boundary](../setup/sql-server.md#read-boundary).
 
+### Explicit SQL Mutation Authority
+
+Postgres and SQL Server `execute_sql` are separate write actions, not exceptions
+to `query_readonly`. Full scripts remain immutable approval material and use
+the same token/profile, drift, history, audit and non-idempotent retry pipeline.
+The action can modify data, schema, permissions or external state within the
+SQL login's grants; arbitrary routines are not certified read-only or confined
+to the configured database. Prefer separate least-privilege execution profiles.
+Output truncation limits retained data, not the number of rows a mutation may
+change. Script transactions are not a whole-action atomicity guarantee:
+explicit commits, earlier batches and external effects may survive a later
+error. Once dispatch may have occurred, failed observation is conservative
+`outcome_unknown`; no automatic replay or TLS downgrade is introduced.
+See [Explicit SQL Execution](../setup/sql-execution.md).
+
 ### Process Memory And Local State
 
 Risk: a local process compromise reads backend memory or restarts the gateway to clear counters.

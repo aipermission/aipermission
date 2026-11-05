@@ -704,6 +704,15 @@ rejected. Operators should still use dedicated
 least-privilege database roles and prefer `approval_required` for ad-hoc
 queries over sensitive data.
 
+Postgres and SQL Server also expose the explicitly authorized `execute_sql`
+action through these same routes. It always has write authority and a
+non-idempotent retry policy, including for SELECT text submitted in that mode.
+Data/schema changes and routines may commit before a later error; dispatched
+failures are conservatively `outcome_unknown`, not automatic rollback or safe
+retry. See [Explicit SQL Execution](../setup/sql-execution.md) for the bounded
+input/result contract and action-scoped transaction semantics. Existing read
+permissions do not grant this new action.
+
 Postgres network cleanup is bounded independently of the action context:
 rollback and connection close each receive up to five seconds after cancellation
 or a query error. Cleanup preserves the original query outcome and always

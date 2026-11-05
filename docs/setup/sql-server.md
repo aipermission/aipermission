@@ -65,7 +65,7 @@ policy; this is not a claim about the database's collation. Use the spelling
 shown in the schema browser. Column storage lengths are `max_length_bytes`
 (including SQL Server's `-1` marker for MAX types), not character counts.
 
-The same five actions are discoverable through `get_connector_actions`:
+The same actions are discoverable through `get_connector_actions`:
 
 | Action | Purpose |
 | --- | --- |
@@ -74,6 +74,7 @@ The same five actions are discoverable through `get_connector_actions`:
 | `describe_table` | Inspect ordered columns; omitted schema means `dbo`. |
 | `get_metadata` | Load bounded table/column metadata for autocomplete. |
 | `query_readonly` | Execute one reviewed SELECT or WITH SELECT statement. |
+| `execute_sql` | Explicit write/admin execution for data changes, schema migrations and routines. |
 
 Example action input:
 
@@ -99,10 +100,13 @@ Use a dedicated login with only the required SELECT permissions. Avoid `sa`,
 SQL Server does not supply Postgres-style read-only transactions;
 `ApplicationIntent=ReadOnly` is not a write-prevention mechanism.
 
-This version rejects writes, stored procedures/EXEC, multi-statement batches,
+The `query_readonly` action rejects writes, stored procedures/EXEC, multi-statement batches,
 SELECT INTO, sequence consumption, table functions, linked/cross-database
 table references, hints and unreviewed functions/syntax. Always permission
-does not unlock those operations. Operator-defined views, synonyms and CLR
+does not unlock those operations on the read action. Use the separately
+authorized `execute_sql` action when writes, migrations or routines are needed;
+see [Explicit SQL Execution](sql-execution.md) for scope, result and retry rules.
+Operator-defined views, synonyms and CLR
 objects still require database-side privilege review; SQL validation cannot
 certify their implementation. Backup/restore and managed-user creation are
 not included.
