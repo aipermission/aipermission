@@ -2,6 +2,7 @@ package sqlresult
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -29,6 +30,22 @@ func TestBoundValuePreservesUTF8WithinCellLimit(t *testing.T) {
 	text, ok := value.(string)
 	if !ok || !truncated || len(text) > 8 || !utf8.ValidString(text) {
 		t.Fatalf("bounded value = %#v, truncated=%v", value, truncated)
+	}
+}
+
+func TestBoundValueNonFiniteNumbersAreCompleteText(t *testing.T) {
+	for _, value := range []any{math.NaN(), math.Inf(1), math.Inf(-1), float32(math.NaN()), float32(math.Inf(1))} {
+		bounded, truncated := BoundValue(value, 64, "...")
+		if _, ok := bounded.(string); !ok || truncated {
+			t.Fatalf("complete nonfinite value mislabeled: %v %v", bounded, truncated)
+		}
+		if _, err := json.Marshal(bounded); err != nil {
+			t.Fatal(err)
+		}
+		_, cut := BoundValue(value, 1, "...")
+		if !cut {
+			t.Fatal("actually shortened representation must be marked truncated")
+		}
 	}
 }
 

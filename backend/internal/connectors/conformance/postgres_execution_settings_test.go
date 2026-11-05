@@ -35,3 +35,20 @@ func testPostgresSQLExecutionSettings(t *testing.T) {
 		}
 	})
 }
+
+func testPostgresNonFiniteValues(t *testing.T) {
+	f := newPostgresExecutionFixture(t)
+	runSQLExecution(t, f.sqlExecutionFixture, fmt.Sprintf("ALTER TABLE %s ADD n float8, ADD p float8, ADD m float8, ADD a float8[], ADD b float4[]; UPDATE %s SET n='NaN',p='Infinity',m='-Infinity',a=ARRAY['NaN'::float8,NULL,'Infinity','-Infinity'],b=ARRAY['NaN'::float4,NULL];", f.table, f.table), 10)
+	for _, action := range []string{"query_readonly", "execute_sql"} {
+		result := executeAction(t, f.connector, f.runtime, action, map[string]any{"sql": "SELECT n,p,m,a,b FROM " + f.table})
+		encoded, err := json.Marshal(result.Output)
+		if err != nil || strings.Contains(string(encoded), `"truncated":true`) {
+			t.Fatalf("%s mislabeled complete floats: %s %v", action, encoded, err)
+		}
+		for _, want := range []string{`"n":"NaN"`, `"p":"+Inf"`, `"m":"-Inf"`, `"a":["NaN",null,"+Inf","-Inf"]`, `"b":["NaN",null]`} {
+			if !strings.Contains(string(encoded), want) {
+				t.Fatalf("%s lost %s: %s", action, want, encoded)
+			}
+		}
+	}
+}

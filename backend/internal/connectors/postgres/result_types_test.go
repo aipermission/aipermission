@@ -21,6 +21,8 @@ func TestPostgresNativeCodecsKeepInfinityAndNestedNumbers(t *testing.T) {
 		{pgtype.TimestampOID, "-infinity", "-infinity"},
 		{pgtype.TimestamptzOID, "infinity", "infinity"},
 		{pgtype.DateArrayOID, "{infinity,-infinity}", []any{"infinity", "-infinity"}},
+		{pgtype.Float8ArrayOID, "{NaN,NULL,Infinity,-Infinity}", []any{"NaN", nil, "+Inf", "-Inf"}},
+		{pgtype.Float4ArrayOID, "{NaN,NULL,Infinity,-Infinity}", []any{"NaN", nil, "+Inf", "-Inf"}},
 		{pgtype.JSONOID, `{"n":9007199254740993,"decimal":12345678901234567890.123456789,"safe":42}`, map[string]any{"n": "9007199254740993", "decimal": "12345678901234567890.123456789", "safe": json.Number("42")}},
 		{pgtype.JSONBOID, `{"nested":[9007199254740993]}`, map[string]any{"nested": []any{"9007199254740993"}}},
 		{pgtype.JSONArrayOID, `{"9007199254740993"}`, []any{"9007199254740993"}},

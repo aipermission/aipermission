@@ -90,7 +90,7 @@ func normalizePostgresValue(value any) any {
 		}
 		return typed
 	default:
-		return typed
+		return sqlresult.NormalizeNonFinite(typed)
 	}
 }
 

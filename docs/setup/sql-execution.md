@@ -102,6 +102,9 @@ Row retention also accounts for the shared JSON node and depth limits, including
 the surrounding result envelopes. Oversized arrays or deeply nested values
 cause rows to be omitted with `truncated` set; remaining SQL still completes and
 its command acknowledgements remain available.
+Non-finite floating-point values, including native array elements, are
+represented as complete text (`NaN`, `+Inf` or `-Inf`). Array structure and NULLs
+remain intact; conversion alone does not mean the output was truncated.
 The shared boundary checks the 500,000-byte output cap again after credential
 redaction and exact-number projection. If that expansion exceeds the cap, the
 output is withheld and the dispatched action reports `outcome_unknown`, never
