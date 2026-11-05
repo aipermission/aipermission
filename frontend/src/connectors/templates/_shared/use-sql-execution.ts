@@ -15,12 +15,12 @@ export function useSQLExecution({ scope, actionName, approvalState, onSelected, 
   const actions = useMemo(() => (actionName ? [actionName] : []), [actionName]);
   const owner = useConnectorMutationOwnership(options.targetRef, actions, actionName ? approvalState : undefined);
   const [mode, setMode] = useState({ scope, execute: false });
-  const [timeout, setTimeout] = useState<{ scope: string; value: number | string }>({ scope, value: 30 });
+  const [timeoutConfig, setTimeoutConfig] = useState<{ scope: string; value: number | string }>({ scope, value: 30 });
   const executionMode = Boolean(actionName && mode.scope === scope && mode.execute);
-  const timeoutSeconds = timeout.scope === scope ? timeout.value : 30;
+  const timeoutSeconds = timeoutConfig.scope === scope ? timeoutConfig.value : 30;
   useLayoutEffect(() => {
     setMode({ scope, execute: false });
-    setTimeout({ scope, value: 30 });
+    setTimeoutConfig({ scope, value: 30 });
   }, [scope]);
   const owned = owner.ownerRef.current?.scope === `${currentWorkspaceBinding()}:${options.targetRef}` ? owner.ownerRef.current : null;
   const unresolved = owner.unresolved?.target_ref === options.targetRef ? owner.unresolved : null;
@@ -29,7 +29,7 @@ export function useSQLExecution({ scope, actionName, approvalState, onSelected, 
     !actionName || !owner.locked
       ? ""
       : requestID
-        ? `SQL execution request #${requestID} is pending or its outcome is unknown. Do not rerun the script.`
+        ? `SQL execution request #${requestID} is pending or its outcome is unknown. Do not rerun the script. Track it in History; reconcile unknown outcomes in Settings > Unresolved server requests.`
         : owned
           ? "SQL execution is in flight or its outcome is unconfirmed. Do not rerun the script."
           : "SQL execution is locked while checking for unresolved requests.";
@@ -69,7 +69,7 @@ export function useSQLExecution({ scope, actionName, approvalState, onSelected, 
     executionMode,
     setExecutionMode: (execute: boolean) => setMode({ scope, execute }),
     timeoutSeconds,
-    setTimeoutSeconds: (value: number | string) => setTimeout({ scope, value }),
+    setTimeoutSeconds: (value: number | string) => setTimeoutConfig({ scope, value }),
     executionLocked: owner.locked,
     executionStatus,
     runExecution,
