@@ -99,6 +99,7 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext, options ...
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
 	established.Store(true)
+	configurePostgresTypes(conn.TypeMap())
 	if err := configurePostgresSession(ctx, conn, timeout); err != nil {
 		_ = cleanup.Run(ctx, conn.Close)
 		return nil, err

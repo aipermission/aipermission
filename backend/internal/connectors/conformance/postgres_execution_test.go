@@ -1,9 +1,12 @@
 package conformance_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/aipermission/aipermission/backend/internal/actionresult"
 )
 
 func TestPostgresExecutionRealService(t *testing.T) {
@@ -17,6 +20,7 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("multiple_result_sets", func(t *testing.T) {
 		assertSQLExecutionMultipleResults(t, newPostgresExecutionFixture(t).sqlExecutionFixture)
 	})
+	t.Run("exact_json_and_infinity", testPostgresSQLExecutionValues)
 	t.Run("row_cap_drains_later_mutations", func(t *testing.T) {
 		fixture := newPostgresExecutionFixture(t)
 		assertSQLExecutionRowCap(t, fixture.sqlExecutionFixture, "\n")
@@ -29,6 +33,34 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("open_transaction_cleanup", testPostgresSQLExecutionTransaction)
 	t.Run("committed_prefix_error_no_replay", testPostgresSQLExecutionError)
 	t.Run("committed_prefix_cancellation_no_replay", testPostgresSQLExecutionCancellation)
+}
+
+func testPostgresSQLExecutionValues(t *testing.T) {
+	fixture := newPostgresExecutionFixture(t)
+	runSQLExecution(t, fixture.sqlExecutionFixture, fmt.Sprintf(`ALTER TABLE %s
+ADD COLUMN inf date, ADD COLUMN neg timestamptz, ADD COLUMN big bigint,
+ADD COLUMN dec numeric, ADD COLUMN nested jsonb, ADD COLUMN json_array json[];
+UPDATE %s SET inf='infinity', neg='-infinity', big=9223372036854775807,
+dec=12345678901234567890.123456789,
+nested='{"n":9007199254740993,"nested":[12345678901234567890.123456789]}',
+json_array=ARRAY['9007199254740993'::json];`, fixture.table, fixture.table), 100)
+	sql := "SELECT inf, neg, big, dec, nested, json_array FROM " + fixture.table
+	for _, action := range []string{"query_readonly", "execute_sql"} {
+		result := executeAction(t, fixture.connector, fixture.runtime, action, map[string]any{"sql": sql})
+		projected, err := actionresult.Canonicalize(result.Output, actionresult.DefaultLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(projected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{`"inf":"infinity"`, `"neg":"-infinity"`, `"big":"9223372036854775807"`, `"dec":"12345678901234567890.123456789"`, `"n":"9007199254740993"`, `"nested":["12345678901234567890.123456789"]`, `"json_array":["9007199254740993"]`} {
+			if !strings.Contains(string(encoded), want) {
+				t.Fatalf("%s lost exact native value %s: %s", action, want, encoded)
+			}
+		}
+	}
 }
 
 func testPostgresSQLExecutionProcedure(t *testing.T) {
