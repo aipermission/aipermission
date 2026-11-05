@@ -27,7 +27,7 @@ func Definition(label string) connectors.ActionDefinition {
 			{Name: "max_rows", Label: "Maximum returned rows", Type: connectors.FieldInteger, Default: 100},
 			{Name: "timeout_seconds", Label: "Execution timeout", Type: connectors.FieldInteger, Default: 30},
 		}},
-		OutputHint:    connectors.OutputHint{Format: "json", MaxRows: MaxRows, MaxBytes: MaxOutputBytes},
+		OutputHint:    connectors.OutputHint{Format: "json", MaxRows: MaxRows, MaxBytes: MaxOutputBytes, FinalMaxBytes: MaxOutputBytes},
 		RetryPolicy:   connectors.RetryPolicy{Class: connectors.RetryNonIdempotent},
 		MaxInputBytes: 8*MaxSQLBytes + 4096,
 	}

@@ -209,6 +209,11 @@ redacted projection again. The global boundary rejects output above 4 MiB,
 deeper than 32 levels, larger than 100,000 nodes, or containing a string or
 object key above 1 MiB. Connector-specific `OutputHint` limits should normally
 be much smaller and remain part of the connector's own execution contract.
+An action can also declare `OutputHint.FinalMaxBytes` (at least 4 bytes) to
+require a smaller hard cap on its final `Output` JSON, including redaction and
+numeric projection growth. This opt-in limit is enforced by the shared boundary;
+`MaxBytes` alone remains a rendering/connector hint. Over-limit post-dispatch
+output is withheld, not silently trimmed into a misleading successful result.
 
 The canonical redacted value is the single projection reused by encrypted
 history and the MCP result. A connector must not depend on concrete Go types

@@ -258,7 +258,8 @@ func equalActionDefinition(left ActionDefinition, right ActionDefinition) bool {
 		!reflect.DeepEqual(EffectiveRetryPolicy(left), EffectiveRetryPolicy(right)) ||
 		left.OutputHint.Format != right.OutputHint.Format ||
 		left.OutputHint.MaxRows != right.OutputHint.MaxRows ||
-		left.OutputHint.MaxBytes != right.OutputHint.MaxBytes {
+		left.OutputHint.MaxBytes != right.OutputHint.MaxBytes ||
+		left.OutputHint.FinalMaxBytes != right.OutputHint.FinalMaxBytes {
 		return false
 	}
 	if len(left.OutputHint.SensitiveFields) != len(right.OutputHint.SensitiveFields) {

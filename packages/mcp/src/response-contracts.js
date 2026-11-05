@@ -96,6 +96,7 @@ const outputHintSchema = z
     temporary_capability_fields: z.array(z.string()).optional(),
     max_rows: nonNegativeInteger.optional(),
     max_bytes: nonNegativeInteger.optional(),
+    final_max_bytes: z.number().int().min(4).max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .strict();
 const retryPolicySchema = z

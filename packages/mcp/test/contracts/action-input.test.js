@@ -20,6 +20,22 @@ test("action catalogs preserve bounded published input limits", () => {
   }
 });
 
+test("action catalogs preserve the declared final redacted output cap", () => {
+  for (const final_max_bytes of [4, 500000]) {
+    const response = { items: [{ ...action, output_hint: { final_max_bytes } }] };
+    assert.deepEqual(projectGatewaySuccess(responseContracts.connectorActions, response), response);
+  }
+  for (const final_max_bytes of [0, -1, 3, 4.5, "500000", null]) {
+    assert.throws(
+      () =>
+        projectGatewaySuccess(responseContracts.connectorActions, {
+          items: [{ ...action, output_hint: { final_max_bytes } }],
+        }),
+      /contract validation/,
+    );
+  }
+});
+
 test("action catalogs preserve explicit empty payload metadata", () => {
   const field = { name: "content", label: "Content", type: "multiline", allow_empty: true };
   const response = { items: [{ ...action, input_schema: { fields: [field] } }] };

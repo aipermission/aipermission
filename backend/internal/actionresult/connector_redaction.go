@@ -2,7 +2,9 @@ package actionresult
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/boundedtext"
@@ -107,6 +109,9 @@ func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result conn
 		return connectors.ActionResult{}, err
 	}
 	result.Output = redacted
+	if err := validateFinalOutputBytes(redacted, hints); err != nil {
+		return connectors.ActionResult{}, err
+	}
 	if result.Metadata != nil {
 		redactedMetadata, err := r.ValueWithCredentialBoundary(ctx, result.Metadata, sensitiveFields, capabilityFields, boundary)
 		if err != nil {
@@ -115,6 +120,23 @@ func (r *Redactor) ResultWithCredentialBoundary(ctx context.Context, result conn
 		result.Metadata, _ = redactedMetadata.(map[string]any)
 	}
 	return result, nil
+}
+
+func validateFinalOutputBytes(output any, hints []connectors.OutputHint) error {
+	limit := 0
+	for _, hint := range hints {
+		if hint.FinalMaxBytes > 0 && (limit == 0 || hint.FinalMaxBytes < limit) {
+			limit = hint.FinalMaxBytes
+		}
+	}
+	if limit == 0 {
+		return nil
+	}
+	encoded, err := json.Marshal(output)
+	if err != nil || len(encoded) > limit {
+		return fmt.Errorf("%w: final redacted output exceeds %d bytes", ErrInvalidOutput, limit)
+	}
+	return nil
 }
 
 func (r *Redactor) Input(ctx context.Context, input map[string]any, sensitiveInputFields []string) (map[string]any, error) {
