@@ -14,6 +14,9 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("input_contract", func(t *testing.T) {
 		assertSQLExecutionInputContract(t, newPostgresExecutionFixture(t).sqlExecutionFixture)
 	})
+	t.Run("duplicate_column_names", func(t *testing.T) {
+		assertSQLExecutionDuplicateNames(t, newPostgresExecutionFixture(t).sqlExecutionFixture)
+	})
 	t.Run("ddl_dml_readback", func(t *testing.T) {
 		assertSQLExecutionLifecycle(t, newPostgresExecutionFixture(t).sqlExecutionFixture, "", 1)
 	})

@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+func assertSQLExecutionDuplicateNames(t *testing.T, fixture sqlExecutionFixture) {
+	out := runSQLExecution(t, fixture, "SELECT 1 AS id, 2 AS id, 3 AS id_2;", 10)
+	assertSQLExecutionValue(t, out, 0, "id", "1")
+	assertSQLExecutionValue(t, out, 0, "id_3", "2")
+	assertSQLExecutionValue(t, out, 0, "id_2", "3")
+}
+
 func assertSQLExecutionLifecycle(t *testing.T, fixture sqlExecutionFixture, separator string, batches int) {
 	t.Helper()
 	script := fmt.Sprintf(`ALTER TABLE %s ADD note varchar(100);%s

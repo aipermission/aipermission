@@ -171,6 +171,12 @@ func BoundValue(value any, limit int, suffix string) (any, bool) {
 
 func uniqueColumns(columns []string) []string {
 	result := make([]string, 0, len(columns))
+	reserved := make(map[string]bool, len(columns))
+	for _, column := range columns {
+		if column != "" {
+			reserved[column] = true
+		}
+	}
 	used := make(map[string]struct{}, len(columns))
 	for index, column := range columns {
 		base := column
@@ -178,11 +184,15 @@ func uniqueColumns(columns []string) []string {
 			base = fmt.Sprintf("column_%d", index+1)
 		}
 		candidate := base
-		for suffix := 2; ; suffix++ {
-			if _, exists := used[candidate]; !exists {
-				break
+		_, duplicate := used[candidate]
+		if column == "" || duplicate {
+			for suffix := 2; ; suffix++ {
+				_, exists := used[candidate]
+				if !exists && !reserved[candidate] {
+					break
+				}
+				candidate = fmt.Sprintf("%s_%d", base, suffix)
 			}
-			candidate = fmt.Sprintf("%s_%d", base, suffix)
 		}
 		used[candidate] = struct{}{}
 		result = append(result, candidate)

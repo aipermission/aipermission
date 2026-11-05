@@ -12,6 +12,9 @@ func TestSQLServerExecutionRealService(t *testing.T) {
 	t.Run("input_contract", func(t *testing.T) {
 		assertSQLExecutionInputContract(t, newSQLServerExecutionFixture(t).sqlExecutionFixture)
 	})
+	t.Run("duplicate_column_names", func(t *testing.T) {
+		assertSQLExecutionDuplicateNames(t, newSQLServerExecutionFixture(t).sqlExecutionFixture)
+	})
 	t.Run("ddl_dml_readback", func(t *testing.T) {
 		assertSQLExecutionLifecycle(t, newSQLServerExecutionFixture(t).sqlExecutionFixture, "\nGO\n", 2)
 	})
