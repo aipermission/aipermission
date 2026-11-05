@@ -1,23 +1,27 @@
 FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS build
 
-WORKDIR /src
+WORKDIR /src/backend
 ENV CGO_ENABLED=1
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends libssl-dev \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY go.mod go.sum* ./
+COPY backend/go.mod backend/go.sum* ./
+COPY third_party /src/third_party
 RUN go mod download
 
-COPY cmd ./cmd
-COPY internal ./internal
+COPY backend/cmd ./cmd
+COPY backend/internal ./internal
 
 RUN go build -o /out/aipermission ./cmd/aipermission
 
+FROM node:24.22.2-bookworm-slim@sha256:01d566e8d94d8c619591d78652babfccd3c6992a3dffa9ed5ab39e11cf6c70e9 AS verification-node
+
 FROM build AS test
 
-# Contributor-only CLI dependency; the production runtime does not inherit it.
+# Contributor-only verification dependencies; production does not inherit them.
+COPY --from=verification-node /usr/local/bin/node /usr/local/bin/node
 ARG TARGETARCH
 RUN test "$TARGETARCH" = amd64 \
 	&& apt-get update \
@@ -50,7 +54,7 @@ RUN apt-get update \
 	&& chown -R aipermission:nogroup /app
 
 COPY --from=build /out/aipermission /usr/local/bin/aipermission
-COPY entrypoint.sh /entrypoint.sh
+COPY backend/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 EXPOSE 8080

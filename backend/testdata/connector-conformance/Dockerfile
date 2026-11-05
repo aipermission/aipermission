@@ -13,6 +13,7 @@ RUN apt-get update \
 
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
+COPY third_party /src/third_party
 RUN go mod download
 COPY backend/cmd ./cmd
 COPY backend/internal ./internal

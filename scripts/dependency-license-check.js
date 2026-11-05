@@ -26,7 +26,7 @@ function check(root = path.resolve(__dirname, ".."), file = inventoryPath) {
   same(inventory.sources, inputs.sources, "Dependency source identity");
   same(inventory.npm, inputs.npm, "npm dependency metadata");
   same(inventory.native, inputs.native, "Native dependency reference");
-  const records = goRecords(inputs.sums, inventory.go_mod);
+  const records = goRecords(inputs.sums, inventory.go_mod, inputs.patches);
   if (!Array.isArray(inventory.go)) throw new Error("Missing Go inventory");
   same(
     inventory.go.map(({ evidence, ...record }) => record),

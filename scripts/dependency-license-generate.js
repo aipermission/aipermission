@@ -54,7 +54,7 @@ function generate(root, cache, goBinary = "go") {
       env: { ...process.env, GOPROXY: "off", GOSUMDB: "off", GOTOOLCHAIN: "local", GOWORK: "off", GOFLAGS: "" },
     }),
   );
-  const go = goRecords(inputs.sums, goMod).map((record) => ({ ...record, evidence: collectEvidence(cache, record) }));
+  const go = goRecords(inputs.sums, goMod, inputs.patches).map((record) => ({ ...record, evidence: collectEvidence(cache, record) }));
   return {
     schema_version: 1,
     boundary,

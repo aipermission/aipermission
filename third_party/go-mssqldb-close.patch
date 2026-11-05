@@ -1,0 +1,253 @@
+diff --git a/mssql.go b/mssql.go
+index b24d739..b5888dc 100644
+--- a/mssql.go
++++ b/mssql.go
+@@ -13,6 +13,7 @@ import (
+ 	"net"
+ 	"reflect"
+ 	"strings"
++	"sync"
+ 	"time"
+ 	"unicode"
+ 
+@@ -239,6 +240,8 @@ func (c *Connector) RegisterCekProvider(name string, provider aecmk.ColumnEncryp
+ }
+ 
+ type Conn struct {
++	closeOnce      sync.Once
++	closeErr       error
+ 	connector      *Connector
+ 	sess           *tdsSession
+ 	transactionCtx context.Context
+@@ -444,7 +447,6 @@ func (d *Driver) open(ctx context.Context, dsn string) (*Conn, error) {
+ 	return d.connect(ctx, c, params)
+ }
+ 
+-
+ func failoverPartnerParams(params msdsn.Config) *msdsn.Config {
+ 	if params.FailOverPartner == "" {
+ 		return nil
+@@ -488,8 +490,21 @@ func (d *Driver) connect(ctx context.Context, c *Connector, params msdsn.Config)
+ }
+ 
+ func (c *Conn) Close() error {
+-	c.sess.buf.bufClose()
+-	return c.sess.buf.transport.Close()
++	c.closeOnce.Do(func() {
++		c.sess.readerMu.Lock()
++		c.sess.readerClosed = true
++		if c.sess.readAbort != nil {
++			c.sess.readAbort()
++		}
++		done := c.sess.readDone
++		c.sess.readerMu.Unlock()
++		c.closeErr = c.sess.buf.transport.Close()
++		if done != nil {
++			<-done
++		}
++		c.sess.buf.bufClose()
++	})
++	return c.closeErr
+ }
+ 
+ type Stmt struct {
+diff --git a/tds.go b/tds.go
+index b1f79d8..47d7b58 100644
+--- a/tds.go
++++ b/tds.go
+@@ -11,6 +11,7 @@ import (
+ 	"os"
+ 	"sort"
+ 	"strings"
++	"sync"
+ 	"time"
+ 	"unicode/utf16"
+ 	"unicode/utf8"
+@@ -203,7 +204,10 @@ type tdsSession struct {
+ 	encoding        msdsn.EncodeParameters
+ 	// readDone is closed when the current processSingleResponse goroutine
+ 	// completes. startResponseReader waits on this to prevent concurrent buffer reads.
+-	readDone chan struct{}
++	readDone     chan struct{}
++	readerMu     sync.Mutex
++	readerClosed bool
++	readAbort    context.CancelFunc
+ }
+ 
+ type alwaysEncryptedSettings struct {
+diff --git a/token.go b/token.go
+index 834cb26..a730601 100644
+--- a/token.go
++++ b/token.go
+@@ -994,7 +994,7 @@ func parseReturnValue(r *tdsBuffer, s *tdsSession) (nv namedValue) {
+ 	return
+ }
+ 
+-func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenStruct, outs outputs) {
++func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenStruct, outs outputs, abort <-chan struct{}) {
+ 	defer func() {
+ 		if err := recover(); err != nil {
+ 			sess.LogF(ctx, msdsn.LogErrors, "intercepted panic: %v", err)
+@@ -1009,7 +1009,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 				_ = sqlexp.ReturnMessageEnqueue(ctx, outs.msgq, sqlexp.MsgError{Error: derr})
+ 
+ 			}
+-			ch <- err
++			sendResponseToken(ch, err, abort)
+ 		}
+ 		close(ch)
+ 	}()
+@@ -1024,7 +1024,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 			// the named pipe provider returns a raw win32 error so fake an OpError
+ 			err = &net.OpError{Op: "Read", Err: err}
+ 		}
+-		ch <- err
++		sendResponseToken(ch, err, abort)
+ 		return
+ 	}
+ 	if packet_type != packReply {
+@@ -1037,27 +1037,27 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 		sess.LogF(ctx, msdsn.LogDebug, "got token %v", token)
+ 		switch token {
+ 		case tokenSSPI:
+-			ch <- parseSSPIMsg(sess.buf)
++			sendResponseToken(ch, parseSSPIMsg(sess.buf), abort)
+ 			return
+ 		case tokenFedAuthInfo:
+-			ch <- parseFedAuthInfo(sess.buf)
++			sendResponseToken(ch, parseFedAuthInfo(sess.buf), abort)
+ 			return
+ 		case tokenReturnStatus:
+ 			returnStatus := parseReturnStatus(sess.buf)
+-			ch <- returnStatus
++			sendResponseToken(ch, returnStatus, abort)
+ 		case tokenLoginAck:
+ 			loginAck := parseLoginAck(sess.buf)
+-			ch <- loginAck
++			sendResponseToken(ch, loginAck, abort)
+ 		case tokenFeatureExtAck:
+ 			featureExtAck := parseFeatureExtAck(sess.buf)
+-			ch <- featureExtAck
++			sendResponseToken(ch, featureExtAck, abort)
+ 		case tokenTabName:
+ 			parseTabName(sess.buf)
+ 		case tokenColInfo:
+ 			parseColInfo(sess.buf)
+ 		case tokenOrder:
+ 			order := parseOrder(sess.buf)
+-			ch <- order
++			sendResponseToken(ch, order, abort)
+ 		case tokenDoneInProc:
+ 			done := parseDoneInProc(sess.buf)
+ 
+@@ -1069,7 +1069,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 				}
+ 			}
+ 
+-			ch <- done
++			sendResponseToken(ch, done, abort)
+ 
+ 			if outs.msgq != nil {
+ 				// For now we ignore ctx->Done errors that ReturnMessageEnqueue might return
+@@ -1096,7 +1096,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 			}
+ 			sess.LogF(ctx, msdsn.LogDebug, "got DONE or DONEPROC status=%d", done.Status)
+ 			if done.Status&doneSrvError != 0 {
+-				ch <- ServerError{done.getError()}
++				sendResponseToken(ch, ServerError{done.getError()}, abort)
+ 				if outs.msgq != nil {
+ 					sess.LogF(ctx, msdsn.LogDebug, "queueing MsgNextResultSet after tokenDone with doneSrvError")
+ 					_ = sqlexp.ReturnMessageEnqueue(ctx, outs.msgq, sqlexp.MsgNextResultSet{})
+@@ -1112,7 +1112,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 
+ 			}
+ 
+-			ch <- done
++			sendResponseToken(ch, done, abort)
+ 
+ 			colsReceived = false
+ 			if outs.msgq != nil {
+@@ -1130,7 +1130,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 			}
+ 		case tokenColMetadata:
+ 			columns = parseColMetadata72(sess.buf, sess)
+-			ch <- columns
++			sendResponseToken(ch, columns, abort)
+ 			colsReceived = true
+ 			if outs.msgq != nil {
+ 				_ = sqlexp.ReturnMessageEnqueue(ctx, outs.msgq, sqlexp.MsgNext{})
+@@ -1140,18 +1140,18 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 			row := make([]interface{}, len(columns))
+ 			err = parseRow(ctx, sess.buf, sess, columns, row)
+ 			if err != nil {
+-				ch <- err
++				sendResponseToken(ch, err, abort)
+ 				return
+ 			}
+-			ch <- row
++			sendResponseToken(ch, row, abort)
+ 		case tokenNbcRow:
+ 			row := make([]interface{}, len(columns))
+ 			err = parseNbcRow(ctx, sess.buf, sess, columns, row)
+ 			if err != nil {
+-				ch <- err
++				sendResponseToken(ch, err, abort)
+ 				return
+ 			}
+-			ch <- row
++			sendResponseToken(ch, row, abort)
+ 		case tokenEnvChange:
+ 			processEnvChg(ctx, sess)
+ 		case tokenError:
+@@ -1177,7 +1177,7 @@ func processSingleResponse(ctx context.Context, sess *tdsSession, ch chan tokenS
+ 					err = scanIntoOut(name, nv.Value, ov)
+ 					if err != nil {
+ 						fmt.Println("scan error", err)
+-						ch <- err
++						sendResponseToken(ch, err, abort)
+ 					}
+ 				}
+ 			}
+@@ -1202,17 +1202,39 @@ type tokenProcessor struct {
+ // startResponseReader waits for any previous reader goroutine to finish,
+ // then launches a new one that writes tokens to tokChan.
+ func (sess *tdsSession) startResponseReader(ctx context.Context, tokChan chan tokenStruct, outs outputs) {
+-	if sess.readDone != nil {
+-		<-sess.readDone
++	sess.readerMu.Lock()
++	previous := sess.readDone
++	sess.readerMu.Unlock()
++	if previous != nil {
++		<-previous
+ 	}
++	sess.readerMu.Lock()
++	defer sess.readerMu.Unlock()
++	if sess.readerClosed {
++		close(tokChan)
++		return
++	}
++	ctx, cancel := context.WithCancel(ctx)
++	abort := make(chan struct{})
++	sess.readAbort = func() { cancel(); close(abort) }
+ 	readDone := make(chan struct{})
+ 	sess.readDone = readDone
+ 	go func() {
+ 		defer close(readDone)
+-		processSingleResponse(ctx, sess, tokChan, outs)
++		defer cancel()
++		processSingleResponse(ctx, sess, tokChan, outs, abort)
+ 	}()
+ }
+ 
++// Ordinary query cancellation still delivers attention/completion tokens.
++// Only connection shutdown may discard tokens to release a blocked reader.
++func sendResponseToken(ch chan tokenStruct, token tokenStruct, abort <-chan struct{}) {
++	select {
++	case ch <- token:
++	case <-abort:
++	}
++}
++
+ func startReading(sess *tdsSession, ctx context.Context, outs outputs) *tokenProcessor {
+ 	tokChan := make(chan tokenStruct, 5)
+ 	sess.startResponseReader(ctx, tokChan, outs)

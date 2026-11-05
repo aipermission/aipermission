@@ -35,7 +35,7 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "69cb48cc15243ba8b6233a891c7a8cabd1eb4ba8ea582bed45037752ce3eb47b"
+      "sha256": "804c65d25c56bca9936b14705d92155a2323817dd48d6d0785f9c4b1d9630fc4"
     },
     {
       "path": "backend/go.sum",
@@ -44,6 +44,10 @@
     {
       "path": "docs/security/native-dependencies.json",
       "sha256": "8ec5a94c0d53daa155304551b3c621d36b531d662aa1faacf98a3df71d51a741"
+    },
+    {
+      "path": "third_party/go-mssqldb-upstream.json",
+      "sha256": "c57357a80519f4f2de691ef2e69b90285c7d29db506542046cae0ef0f3a9b634"
     }
   ],
   "npm": [
@@ -6284,6 +6288,16 @@
         "Version": "v0.0.0-20240506185415-9bf2ced13842",
         "Indirect": true
       }
+    ],
+    "Replace": [
+      {
+        "Old": {
+          "Path": "github.com/microsoft/go-mssqldb"
+        },
+        "New": {
+          "Path": "../third_party/go-mssqldb"
+        }
+      }
     ]
   },
   "go": [
@@ -7186,6 +7200,11 @@
         "go_mod": "h1:CYgwG5AMXFojbjTg+GNP5G/y6uz1BhTyZaPqQWzkGnQ="
       },
       "requirement": "direct",
+      "local_patch": {
+        "path": "../third_party/go-mssqldb",
+        "manifest": "third_party/go-mssqldb-upstream.json",
+        "sha256": "c57357a80519f4f2de691ef2e69b90285c7d29db506542046cae0ef0f3a9b634"
+      },
       "evidence": {
         "status": "files-recorded",
         "files": [
@@ -8381,7 +8400,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed post-0.2.75 ESLint 10.14.0 and Lucide 1.66.0 npm metadata; unchanged Go/native evidence and historical gaps preserved; no legal compatibility assertion",
+    "reviewer": "Codex: pinned driver source/metadata review, not legal compliance",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

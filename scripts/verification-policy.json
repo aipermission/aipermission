@@ -267,7 +267,9 @@
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
         "GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0",
-        "\"$(go env GOPATH)/bin/govulncheck\" ./..."
+        "\"$(go env GOPATH)/bin/govulncheck\" ./...",
+        "go test -race -count=3 .",
+        "bash ../scripts/scan-go-vulnerabilities.sh \"$(go env GOPATH)/bin/govulncheck\""
       ],
       "command_working_directories": {
         "go test -coverprofile=coverage.out ./...": "backend",
@@ -278,7 +280,9 @@
         "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
         "GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...": "backend",
         "go install golang.org/x/vuln/cmd/govulncheck@v1.3.0": "backend",
-        "\"$(go env GOPATH)/bin/govulncheck\" ./...": "backend"
+        "\"$(go env GOPATH)/bin/govulncheck\" ./...": "backend",
+        "go test -race -count=3 .": "third_party/go-mssqldb",
+        "bash ../scripts/scan-go-vulnerabilities.sh \"$(go env GOPATH)/bin/govulncheck\"": "backend"
       }
     },
     {
