@@ -14,11 +14,11 @@ templates own connector-specific forms and activity surfaces.
 | Kafka / Redpanda | `kafka` | 0.4 | Kafka-compatible metadata, bounded message inspection, guarded single-message publish, and inactive-group offset control through direct or SSH-transported profiles. |
 | Kubernetes | `kubernetes` | 0.3 | Read-heavy Kubernetes cluster browser with bounded logs. Prompt is recommended for rollout restart; explicit Always grants remain available. Selected namespace profiles probe a namespaced resource and list configured namespaces without cluster-wide namespace-list permission. |
 | Mail | `mail` | 0.2 | Bounded IMAP browsing, explicit read state changes, guarded mailbox moves, and SMTP send/reply actions. |
-| Postgres | `postgres` | 0.3 | Schema inspection and bounded read-only SQL through database credential profiles. |
+| Postgres | `postgres` | 0.3 | Schema browsing, protected read queries and separately authorized SQL execution. |
 | RabbitMQ | `rabbitmq` | 0.2 | Server-filtered queue browsing, bounded binding discovery and message previews, and explicit message publishing through RabbitMQ Management API profiles. Queue and binding scans report when their page or item cap may leave results incomplete. |
 | Redis / Valkey | `redis` | 0.3 | Redis-compatible key browsing, range/scan-based bounded previews, string writes, TTL updates, and destructive deletes through encrypted credential profiles. |
 | S3 | `s3` | 0.4 | S3-compatible browsing, bounded transfer queues, temporary URLs, object versions, and lifecycle controls. |
-| SQL Server | `sqlserver` | 0.2 | Direct SQL authentication, schema browsing and bounded read-only T-SQL. |
+| SQL Server | `sqlserver` | 0.2 | Direct SQL authentication, schema browsing and separately authorized T-SQL execution. |
 | SSH | `ssh` | 0.3 | Persistent shell, file transfer, remote browsing, and command execution. |
 
 Connector contract versions describe the in-project connector surface; they

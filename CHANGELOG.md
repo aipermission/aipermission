@@ -9,6 +9,16 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Added
+
+- Postgres and SQL Server expose separately authorized execute_sql for data changes,
+  schema migrations and routines through the existing connector permission, approval,
+  history, audit and MCP pipeline; protected read-only actions remain unchanged.
+- The shared SQL console provides explicit read-only/execution modes, configurable
+  execution deadlines and bounded multiple-result views. SQL Server supports reviewed
+  standalone GO batches; Postgres uses native statement-list and dollar-quoted routine
+  handling.
+
 ### Changed
 
 - Show all built-in connectors near the top of README using the canonical
@@ -26,6 +36,10 @@ and this project uses semantic versioning for public releases.
 
 ### Notes
 
+- SQL execution is broad, potentially destructive and non-idempotent. Scripts control
+  their transactions; partial commits and external routine effects may survive failure.
+  Post-dispatch errors remain outcome_unknown and require reconciliation, never
+  automatic replay. TLS defaults are not weakened.
 - These are untagged source changes after 0.2.75. Existing release tags, published
   container images and the npm package are not replaced; source users must rebuild to
   consume the updated frontend dependency.

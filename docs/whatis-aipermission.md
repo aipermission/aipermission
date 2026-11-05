@@ -438,6 +438,13 @@ still important: the connector guard is not a substitute for database grants.
 Field-level masking is not currently provided by this action; configure
 database views or grants when sensitive columns must remain hidden.
 
+Postgres and SQL Server also expose a separately authorized `execute_sql`
+action for data changes, schema migrations and routines. It uses the same
+permission/approval/history pipeline but never inherits the read action's
+authority or read-only guarantees. Full scripts may be destructive or partly
+committed; unknown outcomes must be reconciled before another attempt.
+See [Explicit SQL Execution](setup/sql-execution.md).
+
 The Postgres console loads its schema browser through `get_tables` when a
 session starts. Expanding a table or referencing it in SQL loads its columns
 through `describe_table`. These metadata requests use the same connector

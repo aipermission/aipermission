@@ -67,6 +67,7 @@ not published for those two decisions; numbering is intentionally preserved.
 - [Mail Connector](setup/mail.md)
 - [S3-Compatible Storage](setup/s3.md)
 - [SQL Server Connector](setup/sql-server.md)
+- [Explicit SQL Execution](setup/sql-execution.md)
 
 ## Providers
 
