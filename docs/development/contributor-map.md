@@ -156,7 +156,7 @@ currently supports Linux amd64; the production image does not include this
 contributor-only CLI. From the repository root:
 
 ```bash
-docker build --target test -t aipermission-backend-dev ./backend
+docker build --target test -f backend/Dockerfile -t aipermission-backend-dev .
 docker run --rm --mount type=bind,src="$PWD",dst=/repository,readonly \
   --workdir /repository/backend aipermission-backend-dev sh -c 'umask 0022; go test ./...'
 ```

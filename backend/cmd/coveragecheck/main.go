@@ -633,6 +633,7 @@ func readProductionPackages(input io.Reader) (productionPackages, error) {
 func readProductionPackagesAt(input io.Reader, backendRoot string) (productionPackages, error) {
 	decoder := json.NewDecoder(input)
 	packages := productionPackages{}
+	verifiedDependency := localDependencyVerifier(backendRoot)
 	for {
 		var item struct {
 			ImportPath string
@@ -661,7 +662,10 @@ func readProductionPackagesAt(input io.Reader, backendRoot string) (productionPa
 		backendPackage := item.ImportPath == backendModulePath || strings.HasPrefix(item.ImportPath, backendModulePath+"/")
 		if !backendPackage {
 			if repositoryLocal {
-				return nil, fmt.Errorf("repository-local production dependency %q uses an external module path", item.ImportPath)
+				verified, err := verifiedDependency(item.ImportPath, item.Dir)
+				if err != nil || !verified {
+					return nil, fmt.Errorf("repository-local production dependency %q is not a verified third-party snapshot: %v", item.ImportPath, err)
+				}
 			}
 			continue
 		}

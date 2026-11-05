@@ -57,7 +57,7 @@ jobs:
         id: candidates
         run: |
           set -Eeuo pipefail
-          bash scripts/build-container-candidate.sh backend ./backend
+          bash scripts/build-container-candidate.sh backend . --file backend/Dockerfile
           bash scripts/build-container-candidate.sh frontend ./frontend --build-arg VITE_API_URL= --build-arg VITE_MCP_API_URL=
 
       - name: Scan both exact candidate digests

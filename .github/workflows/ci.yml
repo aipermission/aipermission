@@ -121,6 +121,9 @@ jobs:
       - name: Race test
         working-directory: backend
         run: go test -race ./...
+      - name: Patched driver lifecycle
+        working-directory: third_party/go-mssqldb
+        run: go test -race -count=3 .
       - name: Vet
         working-directory: backend
         run: go vet ./...
@@ -136,6 +139,9 @@ jobs:
       - name: Govulncheck
         working-directory: backend
         run: '"$(go env GOPATH)/bin/govulncheck" ./...'
+      - name: Patched and pinned upstream vulnerability scan
+        working-directory: backend
+        run: 'bash ../scripts/scan-go-vulnerabilities.sh "$(go env GOPATH)/bin/govulncheck"'
 
   backend-windows-runtime:
     name: Backend Windows Runtime

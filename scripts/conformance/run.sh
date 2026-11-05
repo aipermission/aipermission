@@ -42,7 +42,7 @@ trap 'exit 143' TERM
 # operator files. Never mount the working repository, .env, or .git in a runner.
 mkdir "$stage/source"
 git ls-files -z --cached --others --exclude-standard -- \
-  backend/go.mod backend/go.sum backend/cmd backend/internal \
+  backend/go.mod backend/go.sum backend/cmd backend/internal third_party \
   backend/testdata/connector-conformance \
   scripts/verification-policy.json > "$stage/files"
 tar -cf "$stage/source.tar" --null --verbatim-files-from -T "$stage/files"

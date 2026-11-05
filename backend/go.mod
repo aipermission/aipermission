@@ -4,6 +4,8 @@ go 1.26.0
 
 toolchain go1.27.3
 
+replace github.com/microsoft/go-mssqldb => ../third_party/go-mssqldb
+
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.50.0
 	github.com/SE-I-T-Digital/go-sqlcipher v0.0.0-20260614154805-8f19266d2b27

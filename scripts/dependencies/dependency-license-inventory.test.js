@@ -305,6 +305,7 @@ process.stdout.write(process.env.LICENSE_TEST_GO_RESULT);
 
   // The actual hygiene entry point must reject license drift with native pins intact.
   const integration = path.join(temporary, "hygiene");
+  fs.cpSync(path.join(root, "third_party"), path.join(integration, "third_party"), { recursive: true });
   const committed = JSON.parse(fs.readFileSync(path.join(root, inventoryPath)));
   for (const file of [
     ...committed.sources.map((source) => source.path),
@@ -314,6 +315,7 @@ process.stdout.write(process.env.LICENSE_TEST_GO_RESULT);
     "scripts/native-dependency-check.js",
     "scripts/dependency-license-check.js",
     "scripts/dependency-license-inputs.js",
+    "scripts/dependencies/patched-driver.js",
   ]) {
     const destination = path.join(integration, file);
     fs.mkdirSync(path.dirname(destination), { recursive: true });

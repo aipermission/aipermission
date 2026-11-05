@@ -127,6 +127,8 @@
   "toolingTestFiles": [
     "scripts/dependencies/dependency-major-report.test.js",
     "scripts/dependencies/dependency-license-inventory.test.js",
+    "scripts/dependencies/patched-driver.test.js",
+    "scripts/dependencies/patched-driver-vulnerability.test.js",
     "scripts/frontend/coverage-config.test.mjs",
     "scripts/frontend/coverage-git-state.test.mjs",
     "scripts/frontend/monaco-sanitizer.test.mjs",

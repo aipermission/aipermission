@@ -3,7 +3,8 @@ name: aipermission
 services:
   backend:
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: aipermission-backend
     restart: unless-stopped
     environment:
@@ -22,7 +23,8 @@ services:
     profiles:
       - migrate
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: aipermission-migration
     command: ["aipermission"]
     environment:

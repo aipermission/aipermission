@@ -1,6 +1,7 @@
 const { createHash } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { checkPatchedDriver, metadataPath } = require("./dependencies/patched-driver");
 
 const inventoryPath = "docs/security/dependency-licenses.json";
 const npmRoots = ["frontend", "packages/mcp", "scripts"];
@@ -111,43 +112,119 @@ function npmRecords(lock, source) {
 }
 
 function readInputs(root) {
-  const raw = Object.fromEntries(sourcePaths.map((file) => [file, fs.readFileSync(path.join(root, file))]));
-  const native = object(JSON.parse(raw[nativePath]), "native dependency reference");
-  if (native.schema_version !== 1 || !native.sqlcipher) throw new Error("Invalid native dependency reference");
+  const patches = fs.existsSync(path.join(root, metadataPath))
+    ? [checkPatchedDriver(root)]
+    : [];
+  const raw = Object.fromEntries(
+    sourcePaths.map((file) => [file, fs.readFileSync(path.join(root, file))]),
+  );
+  const native = object(
+    JSON.parse(raw[nativePath]),
+    "native dependency reference",
+  );
+  if (native.schema_version !== 1 || !native.sqlcipher)
+    throw new Error("Invalid native dependency reference");
   object(native.sqlcipher, "native dependency component");
-  for (const directory of npmRoots) object(JSON.parse(raw[`${directory}/package.json`]), `${directory}/package.json`);
+  for (const directory of npmRoots)
+    object(
+      JSON.parse(raw[`${directory}/package.json`]),
+      `${directory}/package.json`,
+    );
   return {
-    sources: sourcePaths.map((file) => ({ path: file, sha256: sha256(raw[file]) })),
-    npm: npmRoots.flatMap((directory) => npmRecords(JSON.parse(raw[`${directory}/package-lock.json`]), `${directory}/package-lock.json`)),
+    sources: [...sourcePaths, ...patches.map((patch) => patch.manifest)].map(
+      (file) => ({
+        path: file,
+        sha256: sha256(raw[file] || fs.readFileSync(path.join(root, file))),
+      }),
+    ),
+    patches,
+    npm: npmRoots.flatMap((directory) =>
+      npmRecords(
+        JSON.parse(raw[`${directory}/package-lock.json`]),
+        `${directory}/package-lock.json`,
+      ),
+    ),
     sums: parseGoSum(raw["backend/go.sum"].toString("utf8")),
     native: { path: nativePath, sha256: sha256(raw[nativePath]) },
   };
 }
 
-function goRecords(sums, goMod) {
+function goRecords(sums, goMod, patches = []) {
   object(goMod, "Go parser output");
   nonempty(goMod.Module?.Path, "Go main module");
-  if (!Array.isArray(goMod.Require) || !goMod.Require.length) throw new Error("Missing Go requirements");
-  for (const field of ["Replace", "Exclude", "Retract"])
-    if (goMod[field] != null && (!Array.isArray(goMod[field]) || goMod[field].length))
-      throw new Error(`Unsupported go.mod ${field}; owner must extend inventory support`);
+  if (!Array.isArray(goMod.Require) || !goMod.Require.length)
+    throw new Error("Missing Go requirements");
+  for (const field of ["Exclude", "Retract"])
+    if (
+      goMod[field] != null &&
+      (!Array.isArray(goMod[field]) || goMod[field].length)
+    )
+      throw new Error(
+        `Unsupported go.mod ${field}; owner must extend inventory support`,
+      );
+  if (goMod.Replace != null && !Array.isArray(goMod.Replace))
+    throw new Error("Unsupported go.mod Replace");
+  const replacements = goMod.Replace || [];
+  if (
+    replacements.length !== patches.length ||
+    replacements.some(
+      (item) =>
+        !patches.some(
+          (patch) =>
+            item.Old?.Path === patch.module &&
+            !item.Old.Version &&
+            item.New?.Path === patch.path &&
+            !item.New.Version &&
+            goMod.Require.some(
+              (requirement) =>
+                requirement.Path === patch.module &&
+                requirement.Version === patch.version,
+            ),
+        ),
+    )
+  ) {
+    throw new Error(
+      "Unsupported go.mod Replace; a verified pinned driver snapshot is required",
+    );
+  }
   const requirements = new Map();
   const requiredPaths = new Set();
   for (const requirement of goMod.Require) {
     object(requirement, "Go requirement");
-    if (requirement.Indirect !== undefined && typeof requirement.Indirect !== "boolean") throw new Error("Invalid Go indirect flag");
+    if (
+      requirement.Indirect !== undefined &&
+      typeof requirement.Indirect !== "boolean"
+    )
+      throw new Error("Invalid Go indirect flag");
     const key = moduleIdentity(requirement.Path, requirement.Version);
-    if (requiredPaths.has(requirement.Path)) throw new Error(`Duplicate Go requirement: ${key}`);
+    if (requiredPaths.has(requirement.Path))
+      throw new Error(`Duplicate Go requirement: ${key}`);
     requiredPaths.add(requirement.Path);
     requirements.set(key, requirement.Indirect ? "indirect" : "direct");
   }
   const records = sums.map((record) => ({
     ...record,
-    requirement: requirements.get(moduleIdentity(record.module, record.version)) || "sum-only",
+    requirement:
+      requirements.get(moduleIdentity(record.module, record.version)) ||
+      "sum-only",
+    ...Object.fromEntries(
+      patches
+        .filter(
+          (patch) =>
+            patch.module === record.module && patch.version === record.version,
+        )
+        .map((patch) => [
+          "local_patch",
+          { path: patch.path, manifest: patch.manifest, sha256: patch.sha256 },
+        ]),
+    ),
   }));
   for (const key of requirements.keys()) {
-    const record = records.find((item) => moduleIdentity(item.module, item.version) === key);
-    if (!record?.checksums.module || !record.checksums.go_mod) throw new Error(`Missing required Go checksums: ${key}`);
+    const record = records.find(
+      (item) => moduleIdentity(item.module, item.version) === key,
+    );
+    if (!record?.checksums.module || !record.checksums.go_mod)
+      throw new Error(`Missing required Go checksums: ${key}`);
   }
   return records;
 }

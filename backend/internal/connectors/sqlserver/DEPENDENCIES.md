@@ -4,6 +4,17 @@ The connector uses Microsoft's `github.com/microsoft/go-mssqldb` driver at the
 exact version in `go.mod`. Its BSD-3-Clause license and the named license files
 of its dependencies are recorded in the reviewed dependency inventory.
 
+Connection shutdown uses the maintained, source-pinned
+[driver lifecycle patch](../../../../third_party/README.md). Its readable patch,
+upstream checksums and reviewed source manifest are committed together. Shutdown
+closes transport and joins the response reader before returning its buffer;
+it never retries SQL. Both the patched graph and original upstream version are
+scanned for vulnerabilities. Remove the replacement only after an upstream
+release supplies and passes the same lifecycle regressions.
+The linked patch notes also record why socket-close without driver-close was
+rejected: it provides no queue/reader join and can retain goroutines and buffers.
+Ordinary Rows/Rowsq cancellation alone does not establish buffer ownership.
+
 Use `NewConnectorConfig`, not an interpolated DSN. The connector supplies the
 reviewed generic TCP transport and an explicit port. SQL Browser discovery,
 alternate protocols, Windows integrated authentication, connection-string
@@ -66,8 +77,9 @@ output budget. TEXTSIZE and metadata checks do not provide a universal driver
 heap guarantee. Execution rejects unsupported types when metadata is available
 and bounds retained/serialized output under trusted database/schema/grants
 assumptions. Arbitrary dynamic/procedure results cannot all be predescribed;
-the existing single-SELECT read preflight remains unchanged. No dependency
-fork or pre-materialization heap guarantee is part of this execution contract.
+the existing single-SELECT read preflight remains unchanged. No universal
+pre-materialization heap guarantee is part of this execution contract. The
+lifecycle patch addresses buffer ownership, not eager result allocation.
 
 The shared regression corpus includes parser/server lexical differences and
 non-SELECT statements. Read-policy tests use a login that can modify only an

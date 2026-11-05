@@ -1,0 +1,14 @@
+.git
+.env
+**/node_modules
+**/dist
+**/coverage
+**/test-results
+**/playwright-report
+backend/bin
+backend/tmp
+data
+*.db
+*.aipdb
+*.aipbackup
+gateway.secret
