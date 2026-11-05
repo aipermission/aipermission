@@ -1,8 +1,11 @@
 package sqlserverconnector
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/connectortest"
@@ -19,10 +22,13 @@ func TestExecutionSQLAcceptsBroadAuthorityWithoutRewriting(t *testing.T) {
 		"GRANT SELECT ON dbo.t TO public;",
 		"SELECT \"a\"\"b\", [GO], N'GO\n:r literal' FROM dbo.t;",
 		"/* \u65e5\u672c /* nested */ comment */ SELECT 1; -- \u00e7\u0131\u011f\n",
+		"RAISERROR(N'owned-batch-error',16,1) WITH NOWAIT; WAITFOR DELAY '00:00:01'; UPDATE dbo.[t] SET value=7 WHERE id=1;\nGO\nUPDATE dbo.[t] SET value=100 WHERE id=1;",
+		"INSERT INTO dbo.[t] VALUES (1,99); UPDATE dbo.[t] SET value=7 WHERE id=1;\nGO\nUPDATE dbo.[t] SET value=100 WHERE id=1;",
+		"SELECT SERVERPROPERTY('ProductMajorVersion'); UPDATE dbo.[t] SET value=7 WHERE id=1;\nGO\nUPDATE dbo.[t] SET value=100 WHERE id=1;",
 	} {
 		t.Run(script, func(t *testing.T) {
-			batches, err := compileExecutionSQL(script)
-			if err != nil || len(batches) != 1 || batches[0] != script {
+			batches, err := compileExecutionSQL(t.Context(), script)
+			if err != nil || strings.Join(batches, "GO") != script {
 				t.Fatalf("SQL changed: %#v, %v", batches, err)
 			}
 		})
@@ -34,7 +40,7 @@ func TestExecutionGOBatchesPreserveApprovalByteSlices(t *testing.T) {
 	second := " -- separator comment\r\nCREATE PROCEDURE dbo.p AS SELECT N'GO';\r\n"
 	third := "\nEXEC dbo.p; /*\u0131*/\n"
 	script := first + "gO" + second + "GO" + third
-	batches, err := compileExecutionSQL(script)
+	batches, err := compileExecutionSQL(t.Context(), script)
 	if err != nil || len(batches) != 3 {
 		t.Fatalf("batches=%#v, err=%v", batches, err)
 	}
@@ -44,7 +50,7 @@ func TestExecutionGOBatchesPreserveApprovalByteSlices(t *testing.T) {
 		}
 	}
 	trailing := "SELECT 1;\nGO -- \u65e5\u672c\n"
-	batches, err = compileExecutionSQL(trailing)
+	batches, err = compileExecutionSQL(t.Context(), trailing)
 	if err != nil || len(batches) != 2 || batches[0] != "SELECT 1;\n" || batches[1] != " -- \u65e5\u672c\n" {
 		t.Fatalf("trailing comments lost: %#v %v", batches, err)
 	}
@@ -59,7 +65,7 @@ func TestExecutionSQLRejectsClientDirectivesAndBoundedMalformedInput(t *testing.
 		"SELECT 1 " + strings.Repeat("/*", 17) + strings.Repeat("*/", 17),
 		strings.Repeat("SELECT 1;\nGO\n", 33), strings.Repeat(";", 8193), strings.Repeat("x", sqlexecute.MaxSQLBytes+1),
 	} {
-		if batches, err := compileExecutionSQL(script); err == nil {
+		if batches, err := compileExecutionSQL(t.Context(), script); err == nil {
 			t.Fatalf("accepted %q as %#v", script[:min(len(script), 80)], batches)
 		}
 	}
@@ -84,8 +90,43 @@ func TestExecutionSQLLimitsAndCanonicalPreparation(t *testing.T) {
 		}
 	}
 	for _, script := range []string{strings.Repeat("SELECT 1;\nGO\n", 32), "SELECT 1;" + strings.Repeat(" ", sqlexecute.MaxSQLBytes-len("SELECT 1;"))} {
-		if _, err := compileExecutionSQL(script); err != nil {
+		if _, err := compileExecutionSQL(t.Context(), script); err != nil {
 			t.Fatalf("rejected boundary: %v", err)
 		}
+	}
+}
+
+func TestExecutionParserWorkAndCancellationAreBounded(t *testing.T) {
+	chain := "IF @a = 0 PRINT 0;\n" + strings.Repeat("ELSE IF @a = 0 PRINT 0;\n", 75) + "ELSE PRINT 1;\n"
+	script := "DECLARE @a int = 1;\n" + strings.Repeat(chain, 10)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	defer cancel()
+	started := time.Now()
+	batches, err := compileExecutionSQL(ctx, script)
+	if err != nil || len(batches) != 1 || batches[0] != script || time.Since(started) > time.Second {
+		t.Fatalf("bounded valid parser input: batches=%d err=%v elapsed=%v", len(batches), err, time.Since(started))
+	}
+	t.Logf("18350-byte ambiguous script parsed in %s", time.Since(started))
+	canceled, stop := context.WithCancel(t.Context())
+	stop()
+	if _, err := compileExecutionSQL(canceled, script); !errors.Is(err, context.Canceled) {
+		t.Fatalf("parser ignored cancellation: %v", err)
+	}
+}
+
+func TestExecutionTokenStreamStopsAtWorkOrContextBoundary(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	for _, stream := range []*executionTokenStream{
+		{ctx: t.Context(), operations: executionParserOperations}, {ctx: ctx},
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("parser work continued after its boundary")
+				}
+			}()
+			stream.check()
+		}()
 	}
 }

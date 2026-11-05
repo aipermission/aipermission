@@ -49,6 +49,10 @@ canonical approval payload, not a rewritten read/write classification.
 
 Scripts have a 64000-byte UTF-8 limit, at most 32 nonempty batches, 8192 visible
 tokens, 32 parenthesis levels, 16 comment levels and 256 parser rule levels.
+Parsing uses SLL prediction with a bounded LL fallback, at most 500000 total token-stream operations
+and a one-second budget (or the earlier caller deadline). Cancellation stops
+parsing as well as execution; unsupported syntax fails closed. Syntax validation
+runs during preparation and once again at dispatch, not twice at dispatch.
 GO must occupy its own line, optionally surrounded by whitespace or comments.
 GO repeat counts (including GO 1), leading/repeated empty GO batches, SQLCMD
 directives (`:r`, `:connect`, `:setvar`, `!!`) and unquoted SQLCMD substitutions

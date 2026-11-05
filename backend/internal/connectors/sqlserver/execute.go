@@ -13,7 +13,7 @@ import (
 )
 
 func executeSQL(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
-	batches, err := compileExecutionSQL(text(action.Payload, "sql"))
+	batches, err := compileExecutionSQL(ctx, text(action.Payload, "sql"))
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}

@@ -61,7 +61,7 @@ func (Connector) PrepareAction(ctx context.Context, req connectors.ActionRequest
 	if req.ActionName == ActionExecuteSQL {
 		prepared, err := sqlexecute.Prepare(req, Kind, Label)
 		if err == nil {
-			_, err = compileExecutionSQL(text(prepared.Payload, "sql"))
+			_, err = compileExecutionSQL(ctx, text(prepared.Payload, "sql"))
 		}
 		return prepared, err
 	}

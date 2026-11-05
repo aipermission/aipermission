@@ -1,6 +1,8 @@
 package sqlserverconnector
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -13,12 +15,29 @@ import (
 // The parse shadow has exactly one rune per original rune. Only original byte
 // slices are dispatched; neither the read-only projection nor an AST printer
 // may rewrite an approved script.
-func compileExecutionSQL(script string) (batches []string, err error) {
+func compileExecutionSQL(ctx context.Context, script string) (batches []string, err error) {
+	defer func() {
+		if errors.Is(err, context.DeadlineExceeded) {
+			err = fmt.Errorf("execute_sql T-SQL validation deadline exceeded; no SQL was sent; simplify the script or retry validation under lower load: %w", err)
+		}
+	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	initializeSQLGrammar()
+	ctx, cancel := context.WithTimeout(ctx, executionParserTimeout)
+	defer cancel()
 	defer func() {
 		if recover() != nil {
 			batches, err = nil, fmt.Errorf("execute_sql exceeded supported T-SQL syntax complexity")
+			if cause := context.Cause(ctx); cause != nil {
+				err = cause
+			}
 		}
 	}()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(script) > sqlexecute.MaxSQLBytes || strings.TrimSpace(script) == "" || !utf8.ValidString(script) || strings.ContainsRune(script, 0) {
 		return nil, fmt.Errorf("execute_sql requires valid T-SQL up to %d bytes", sqlexecute.MaxSQLBytes)
 	}
@@ -35,16 +54,32 @@ func compileExecutionSQL(script string) (batches []string, err error) {
 	if err := boundExecutionTokens(stream.GetAllTokens()); err != nil || errors.failed {
 		return nil, fmt.Errorf("execute_sql contains invalid or excessive T-SQL tokens")
 	}
-	parser := tsql.NewTSqlParser(stream)
-	parser.RemoveErrorListeners()
-	parser.AddErrorListener(errors)
-	parser.AddParseListener(&executionDepth{BaseParseTreeListener: &antlr.BaseParseTreeListener{}})
-	root := parser.Tsql_file()
+	bounded := &executionTokenStream{CommonTokenStream: stream, ctx: ctx}
+	root := parseExecutionRoot(bounded, errors, antlr.PredictionModeSLL)
+	if errors.failed {
+		// Some valid grammar alternatives need full context. Both attempts share
+		// the same work/deadline budget; fallback never renews an exhausted budget.
+		errors.failed = false
+		bounded.Seek(0)
+		root = parseExecutionRoot(bounded, errors, antlr.PredictionModeLL)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if errors.failed {
 		return nil, fmt.Errorf("execute_sql requires a complete supported T-SQL script")
 	}
 	separators := executionSeparators(shadow, stream.GetAllTokens(), root.AllGo_statement())
 	return splitExecutionBatches(script, shadow, offsets, separators)
+}
+
+func parseExecutionRoot(stream antlr.TokenStream, errors *sqlSyntaxErrors, mode int) tsql.ITsql_fileContext {
+	parser := tsql.NewTSqlParser(stream)
+	parser.GetInterpreter().SetPredictionMode(mode)
+	parser.RemoveErrorListeners()
+	parser.AddErrorListener(errors)
+	parser.AddParseListener(&executionDepth{BaseParseTreeListener: &antlr.BaseParseTreeListener{}})
+	return parser.Tsql_file()
 }
 
 func executionLexicalInput(script string) ([]rune, []int, error) {

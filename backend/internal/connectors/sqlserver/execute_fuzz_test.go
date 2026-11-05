@@ -28,7 +28,7 @@ func FuzzExecutionSQL(f *testing.F) {
 		if len(script) > sqlexecute.MaxSQLBytes+1 {
 			return
 		}
-		batches, err := compileExecutionSQL(script)
+		batches, err := compileExecutionSQL(t.Context(), script)
 		if err != nil {
 			return
 		}
@@ -42,7 +42,7 @@ func FuzzExecutionSQL(f *testing.F) {
 		}
 		assertExecutionByteProvenance(t, script, batches)
 		for _, suffix := range []string{"\nGO 1", "\nGO 2"} {
-			if _, err := compileExecutionSQL(script + suffix); err == nil {
+			if _, err := compileExecutionSQL(t.Context(), script+suffix); err == nil {
 				t.Fatalf("accepted a GO repeat after %q", script)
 			}
 		}
