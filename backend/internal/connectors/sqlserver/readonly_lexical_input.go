@@ -60,7 +60,7 @@ func sqlQuotedEnd(query string, start int) (int, error) {
 		}
 		return i + 1, nil
 	}
-	return 0, fmt.Errorf("query_readonly requires closed string and identifier delimiters")
+	return 0, fmt.Errorf("SQL requires closed string and identifier delimiters")
 }
 
 func sqlCommentEnd(query string, start int) (int, error) {
@@ -78,8 +78,8 @@ func sqlCommentEnd(query string, start int) (int, error) {
 			}
 		}
 		if depth > 16 {
-			return 0, fmt.Errorf("query_readonly comment nesting exceeds 16 levels")
+			return 0, fmt.Errorf("SQL comment nesting exceeds 16 levels")
 		}
 	}
-	return 0, fmt.Errorf("query_readonly requires closed block comments")
+	return 0, fmt.Errorf("SQL requires closed block comments")
 }
