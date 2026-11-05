@@ -209,8 +209,8 @@ func TestGetHelpAndActionList(t *testing.T) {
 		t.Fatalf("action list: %v", err)
 	}
 	connectortest.AssertActionListStable(t, connector, target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "username_password"})
-	if len(actions) != 4 {
-		t.Fatalf("expected 4 actions, got %d", len(actions))
+	if len(actions) != 5 {
+		t.Fatalf("expected 5 actions, got %d", len(actions))
 	}
 	for index, want := range []string{ActionGetSchemas, ActionGetTables, ActionDescribeTable, ActionQueryReadonly} {
 		if actions[index].Name != want || actions[index].Risk != connectors.RiskRead {
@@ -559,6 +559,7 @@ func TestPrepareUnsupportedAction(t *testing.T) {
 func TestExecuteActionRequiresNetworkTransport(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target: connectors.TargetView{
+			ID: 1, Ref: "postgres:1:2",
 			ConnectorKind: Kind,
 			Config: map[string]any{
 				"connection_mode":      "over_ssh",
@@ -568,9 +569,9 @@ func TestExecuteActionRequiresNetworkTransport(t *testing.T) {
 				"database":             "app",
 			},
 		},
-		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Profile: connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: Kind, Kind: "username_password", Public: map[string]any{"username": "app"}},
 		Secrets: fakeSecrets{"password": "secret"},
-	}, connectors.PreparedAction{ActionName: ActionQueryReadonly})
+	}, connectors.PreparedAction{ConnectorKind: Kind, TargetRef: "postgres:1:2", ProfileID: 2, Risk: connectors.RiskRead, ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
 	if !errors.Is(err, ErrMissingTransport) {
 		t.Fatalf("expected ErrMissingTransport, got %v", err)
 	}
@@ -579,6 +580,7 @@ func TestExecuteActionRequiresNetworkTransport(t *testing.T) {
 func TestExecuteActionRequiresCredentialSecrets(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target: connectors.TargetView{
+			ID: 1, Ref: "postgres:1:2",
 			ConnectorKind: Kind,
 			Config: map[string]any{
 				"connection_mode": "direct",
@@ -587,9 +589,9 @@ func TestExecuteActionRequiresCredentialSecrets(t *testing.T) {
 				"database":        "app",
 			},
 		},
-		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Profile: connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: Kind, Kind: "username_password", Public: map[string]any{"username": "app"}},
 		Secrets: fakeSecrets{},
-	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
+	}, connectors.PreparedAction{ConnectorKind: Kind, TargetRef: "postgres:1:2", ProfileID: 2, Risk: connectors.RiskRead, ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
 	if !errors.Is(err, ErrMissingSecret) {
 		t.Fatalf("expected ErrMissingSecret, got %v", err)
 	}
@@ -615,12 +617,13 @@ func TestConnectPreservesCredentialProviderFailure(t *testing.T) {
 func TestExecuteActionValidatesTargetConfigBeforeDial(t *testing.T) {
 	_, err := New().ExecuteAction(context.Background(), connectors.RuntimeContext{
 		Target: connectors.TargetView{
+			ID: 1, Ref: "postgres:1:2",
 			ConnectorKind: Kind,
 			Config:        map[string]any{"connection_mode": "direct", "database": "app"},
 		},
-		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "app"}},
+		Profile: connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: Kind, Kind: "username_password", Public: map[string]any{"username": "app"}},
 		Secrets: fakeSecrets{"password": "secret"},
-	}, connectors.PreparedAction{ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
+	}, connectors.PreparedAction{ConnectorKind: Kind, TargetRef: "postgres:1:2", ProfileID: 2, Risk: connectors.RiskRead, ActionName: ActionQueryReadonly, Payload: map[string]any{"sql": "select 1"}})
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("expected ErrInvalidConfig, got %v", err)
 	}

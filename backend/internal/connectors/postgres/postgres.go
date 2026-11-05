@@ -13,6 +13,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
+	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
 	"github.com/jackc/pgx/v5"
 )
@@ -26,6 +27,7 @@ const (
 	ActionGetTables     = "get_tables"
 	ActionDescribeTable = "describe_table"
 	ActionQueryReadonly = "query_readonly"
+	ActionExecuteSQL    = sqlexecute.Action
 
 	defaultMaxRows = 100
 	maxRows        = 1000
@@ -51,7 +53,7 @@ var (
 )
 
 // Connector describes Postgres as a connector-shaped target with bounded
-// metadata and read-only query actions.
+// metadata, protected reads, and explicit SQL execution actions.
 type Connector struct{}
 
 func New() Connector {
@@ -225,7 +227,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 	}
 	return connectors.ConnectorHelp{
 		Title:       title,
-		Summary:     "Inspect Postgres metadata and run bounded read-only SQL through AIPermission approval rules.",
+		Summary:     "Inspect Postgres metadata, run protected reads, or explicitly execute SQL through AIPermission approval rules.",
 		Connector:   Label,
 		ConnectorID: Kind,
 		Usage: []string{
@@ -233,12 +235,15 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use describe_table for columns before querying application data.",
 			"Schema-qualify application tables in query_readonly, for example public.orders.",
 			"Use query_readonly only for SELECT, WITH, SHOW, or EXPLAIN-style reads and include a short reason.",
+			"Use execute_sql for writes, migrations, CALL/DO, or multiple statements; review the full script before approval.",
 			"Prefer small max_rows values and ask for approval before reading sensitive business data.",
 		},
 		Warnings: []string{
 			"Postgres credential profiles decide what the database itself allows; prefer dedicated read-only roles.",
 			"Read-only queries accept approved unqualified or pg_catalog function names; database.schema.function qualification is not supported.",
 			"query_readonly is designed for reads, not migrations or writes.",
+			"execute_sql is not a sandbox: scripts control transactions and may partially commit. Reconcile uncertain outcomes before any new attempt.",
+			"execute_sql has the selected role's server-granted authority; stored routines and external effects are not confined to the configured database.",
 			"Redaction is best-effort. Do not intentionally query secrets unless the operator approved that access.",
 		},
 	}, nil
@@ -327,6 +332,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			}},
 			OutputHint: connectors.OutputHint{Format: "json", MaxRows: maxRows, MaxBytes: maxOutputBytes},
 		},
+		sqlexecute.Definition(Label),
 	}, nil
 }
 
@@ -348,6 +354,10 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 	}
 
 	switch req.ActionName {
+	case ActionExecuteSQL:
+		prepared, err := sqlexecute.Prepare(req, Kind, Label)
+		prepared.Dependencies = base.Dependencies
+		return prepared, err
 	case ActionGetSchemas:
 		base.Risk = connectors.RiskRead
 		base.Title = "List Postgres schemas"
@@ -424,8 +434,11 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 }
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
-	if runtime.Target.ConnectorKind != Kind {
-		return connectors.ActionResult{}, fmt.Errorf("target connector kind must be %s", Kind)
+	if err := validateExecutionAction(runtime, action); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if action.ActionName == ActionExecuteSQL {
+		return executeSQL(ctx, runtime, action)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)

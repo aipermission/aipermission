@@ -384,6 +384,7 @@ func builtInDeterminismSamplesPartTwo(t *testing.T, kind string) (connectors.Tar
 			postgresconnector.ActionGetTables:     {"schema": "public", "include_system": false},
 			postgresconnector.ActionDescribeTable: {"schema": "public", "table": "users"},
 			postgresconnector.ActionQueryReadonly: {"sql": "select 1", "max_rows": 1},
+			postgresconnector.ActionExecuteSQL:    {"sql": "SELECT 1", "max_rows": 1, "timeout_seconds": 30},
 		}
 	case redisconnector.Kind:
 		return connectors.TargetView{

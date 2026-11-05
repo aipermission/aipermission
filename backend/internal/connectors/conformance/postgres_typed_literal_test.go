@@ -63,10 +63,16 @@ func TestPostgresUnicodeTypedLiteralRealService(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "schema-qualified typed literals") {
 				t.Fatalf("typed literal admitted during preparation: %v", err)
 			}
-			_, err = connector.ExecuteAction(t.Context(), runtime, connectors.PreparedAction{
-				ActionName: postgresconnector.ActionQueryReadonly,
-				Payload:    map[string]any{"sql": query, "max_rows": 5},
+			prepared, err := connector.PrepareAction(t.Context(), connectors.ActionRequest{
+				Target: runtime.Target, Profile: runtime.Profile, ActionName: postgresconnector.ActionQueryReadonly,
+				Input: map[string]any{"sql": "SELECT 1 AS literal_control", "max_rows": 5},
 			})
+			if err != nil {
+				t.Fatalf("prepare valid typed literal revalidation control: %v", err)
+			}
+			// Preserve valid identity/risk while probing persisted SQL revalidation.
+			prepared.Payload["sql"] = query
+			_, err = connector.ExecuteAction(t.Context(), runtime, prepared)
 			if err == nil || !strings.Contains(err.Error(), "schema-qualified typed literals") {
 				t.Fatalf("typed literal admitted at execution: %v", err)
 			}

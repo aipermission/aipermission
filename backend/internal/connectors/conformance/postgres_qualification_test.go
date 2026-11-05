@@ -41,10 +41,16 @@ func assertMultipartFunctionQualificationRejected(t *testing.T, connector connec
 		if err == nil || !strings.Contains(err.Error(), "function qualification") {
 			t.Fatalf("custom qualified function admitted: prepared=%#v err=%v", prepared, err)
 		}
-		_, err = connector.ExecuteAction(t.Context(), runtime, connectors.PreparedAction{
-			ActionName: postgresconnector.ActionQueryReadonly,
-			Payload:    map[string]any{"sql": query, "max_rows": 5},
+		prepared, err = connector.PrepareAction(t.Context(), connectors.ActionRequest{
+			Target: runtime.Target, Profile: runtime.Profile, ActionName: postgresconnector.ActionQueryReadonly,
+			Input: map[string]any{"sql": "SELECT 1 AS qualification_control", "max_rows": 5},
 		})
+		if err != nil {
+			t.Fatalf("prepare valid qualification revalidation control: %v", err)
+		}
+		// Preserve valid identity/risk while probing persisted SQL revalidation.
+		prepared.Payload["sql"] = query
+		_, err = connector.ExecuteAction(t.Context(), runtime, prepared)
 		if err == nil || !strings.Contains(err.Error(), "function qualification") {
 			t.Fatalf("runtime revalidation admitted qualified function: %v", err)
 		}
