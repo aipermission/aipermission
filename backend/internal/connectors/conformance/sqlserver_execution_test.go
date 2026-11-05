@@ -30,9 +30,11 @@ func TestSQLServerExecutionRealService(t *testing.T) {
 	})
 	t.Run("procedure_exec_drop", testSQLServerSQLExecutionProcedure)
 	t.Run("go_quoted_strings", testSQLServerSQLExecutionGO)
+	t.Run("physical_session_across_go", testSQLServerSQLExecutionSession)
 	t.Run("readonly_profile", testSQLServerSQLExecutionReadonly)
 	t.Run("open_transaction_cleanup", testSQLServerSQLExecutionTransaction)
 	t.Run("committed_prefix_error_no_replay", testSQLServerSQLExecutionError)
+	t.Run("lost_committed_reply_no_replay", testSQLServerSQLLostReply)
 	t.Run("committed_prefix_cancellation_no_replay", testSQLServerSQLExecutionCancellation)
 }
 
