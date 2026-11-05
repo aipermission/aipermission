@@ -47,6 +47,10 @@ separate executions.
   Statement lists, dollar-quoted routine bodies, `DO` and `CALL` are parsed by
   Postgres, not split on semicolons by the gateway. `psql` client meta-commands
   and SQL Server `GO` are not supported.
+  Client COPY transfers (`FROM STDIN`, `TO STDOUT`, replication COPY) are not
+  supported. Their native response closes the connection promptly and reports
+  `outcome_unknown`; no empty successful download or interactive input wait is
+  presented. Reconcile any earlier committed work before another attempt.
 - SQL Server uses its connector-owned pinned T-SQL parser for bounded `GO`
   separators. `GO` must be on its own line, without a repeat count. SQLCMD
   commands, shell escapes and substitutions are unsupported. Strings, quoted
@@ -62,6 +66,16 @@ separate executions.
   explicit commits, routines and external effects may persist after a later
   failure. An open or failed transaction at the end is not successful completion;
   the action-scoped connection is cleaned up rather than kept for another call.
+  Postgres normally wraps a complete multi-statement simple query in its own
+  implicit transaction unless explicit transaction commands divide it; an error
+  rolls that transaction back. Statement acknowledgements are not commit proofs.
+- Postgres output settings may change inside the script. If the native decoder
+  cannot interpret a text value (for example a non-default DateStyle or bytea
+  format), the complete server text is retained with a notice and the script
+  continues. Results in an unsupported client encoding or containing invalid
+  UTF-8 are omitted with an explicit notice and truncation marker; they are not
+  silently replaced with different characters. Subsequent commands still drain;
+  results after restoring UTF8 may be retained normally.
 - Returned-row limits never become UPDATE/DELETE limits. Output truncation
   does not silently stop the remaining script. The protocol is consumed until
   completion or the overall deadline; discarded output remains unretained.

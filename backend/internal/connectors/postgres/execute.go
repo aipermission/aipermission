@@ -10,6 +10,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgproto3"
 )
 
 func validateExecutionAction(runtime connectors.RuntimeContext, action connectors.PreparedAction) error {
@@ -70,61 +71,36 @@ type postgresExecuteSession struct {
 
 func (s *postgresExecuteSession) notice(_ *pgconn.PgConn, notice *pgconn.Notice) {
 	if s.collector != nil {
-		s.collector.Notice(notice.Message)
+		if s.supportsResultText(notice.Message) {
+			s.collector.Notice(notice.Message)
+		} else {
+			s.collector.Notice("PostgreSQL notice omitted: unsupported client encoding or invalid UTF-8 text.")
+		}
 	}
 }
 
-func (s *postgresExecuteSession) Execute(ctx context.Context, sql string, collector *sqlexecute.Collector) error {
+func (s *postgresExecuteSession) Execute(ctx context.Context, sql string, collector *sqlexecute.Collector) (err error) {
 	s.collector = collector
 	defer func() { s.collector = nil }()
 	// Simple query lets Postgres parse dollar quotes, routines and statement lists.
-	results := s.conn.PgConn().Exec(ctx, sql)
-	defer results.Close()
-	for results.NextResult() {
-		if err := s.collectResult(results.ResultReader(), collector); err != nil {
-			return err
-		}
+	conn := s.conn.PgConn()
+	if err := conn.SyncConn(ctx); err != nil {
+		return err
 	}
-	return results.Close()
-}
-
-func (s *postgresExecuteSession) collectResult(reader *pgconn.ResultReader, collector *sqlexecute.Collector) error {
-	if fields := reader.FieldDescriptions(); fields != nil {
-		columns := make([]string, len(fields))
-		for index, field := range fields {
-			columns[index] = field.Name
+	defer func() {
+		// ReceiveMessage may notice an already canceled context without entering
+		// pgconn's async-close path. Preserve native cancellation in that case.
+		if err != nil && ctx.Err() != nil && !conn.IsClosed() {
+			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+			defer cancel()
+			err = errors.Join(err, conn.CancelRequest(cleanup))
 		}
-		if err := collector.BeginResult(columns); err != nil {
-			return err
-		}
-		defer collector.EndResult()
-		rows := pgx.RowsFromResultReader(s.conn.TypeMap(), reader)
-		defer rows.Close()
-		for rows.Next() {
-			if !collector.RetainingRows() {
-				continue
-			}
-			values, err := rows.Values()
-			if err != nil {
-				return fmt.Errorf("decode postgres SQL result: %w", err)
-			}
-			for index, value := range values {
-				values[index] = normalizePostgresValue(value)
-			}
-			// Retention limits never stop protocol consumption or later commands.
-			if err := collector.AddRow(values); err != nil {
-				return err
-			}
-		}
-		if err := rows.Err(); err != nil {
-			return err
-		}
+	}()
+	conn.Frontend().SendQuery(&pgproto3.Query{String: sql})
+	if err := conn.Frontend().Flush(); err != nil {
+		return err
 	}
-	tag, err := reader.Close()
-	if err == nil && tag.String() != "" {
-		collector.Command(tag.String(), tag.RowsAffected())
-	}
-	return err
+	return s.receiveExecution(ctx, collector)
 }
 
 func (s *postgresExecuteSession) Finish(ctx context.Context) error {

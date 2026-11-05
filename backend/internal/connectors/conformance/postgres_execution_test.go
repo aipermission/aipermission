@@ -21,6 +21,8 @@ func TestPostgresExecutionRealService(t *testing.T) {
 		assertSQLExecutionMultipleResults(t, newPostgresExecutionFixture(t).sqlExecutionFixture)
 	})
 	t.Run("exact_json_and_infinity", testPostgresSQLExecutionValues)
+	t.Run("session_output_settings", testPostgresSQLExecutionSettings)
+	t.Run("client_copy_rejected_promptly", testPostgresSQLExecutionCopy)
 	t.Run("row_cap_drains_later_mutations", func(t *testing.T) {
 		fixture := newPostgresExecutionFixture(t)
 		assertSQLExecutionRowCap(t, fixture.sqlExecutionFixture, "\n")
@@ -31,6 +33,7 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("procedure_and_do", testPostgresSQLExecutionProcedure)
 	t.Run("readonly_profile", testPostgresSQLExecutionReadonly)
 	t.Run("open_transaction_cleanup", testPostgresSQLExecutionTransaction)
+	t.Run("implicit_transaction_rollback", testPostgresSQLImplicitRollback)
 	t.Run("committed_prefix_error_no_replay", testPostgresSQLExecutionError)
 	t.Run("committed_prefix_cancellation_no_replay", testPostgresSQLExecutionCancellation)
 }
