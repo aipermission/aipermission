@@ -162,7 +162,7 @@ func TestExecuteSQLCellsRemainBoundedAndNormalized(t *testing.T) {
 }
 
 func TestExecuteSQLPostDispatchFailuresAreUnknown(t *testing.T) {
-	for _, mode := range []string{"sql-error", "lost-reply", "decode", "wire-cap", "psql-directive"} {
+	for _, mode := range []string{"sql-error", "lost-reply", "malformed-row", "wire-cap", "psql-directive"} {
 		t.Run(mode, func(t *testing.T) {
 			script := "UPDATE public.items SET value = 1; COMMIT; SELECT * FROM public.items;"
 			if mode == "psql-directive" {
@@ -190,10 +190,10 @@ func executeFailureReply(mode string, wire io.Writer) func(*pgproto3.Backend) (b
 		switch mode {
 		case "lost-reply":
 			return 'I', io.ErrUnexpectedEOF
-		case "decode":
-			field := executeTextField("value")
-			field.DataTypeOID = 23
-			sendExecuteRows(b, []pgproto3.FieldDescription{field}, [][]byte{[]byte("not an integer")})
+		case "malformed-row":
+			// Presentation decode failures retain server text; a structurally
+			// invalid protocol row remains fatal and must never become success.
+			sendExecuteRows(b, []pgproto3.FieldDescription{executeTextField("value")}, [][]byte{[]byte("1"), []byte("unexpected extra field")})
 		case "wire-cap":
 			if err := b.Flush(); err != nil {
 				return 'I', err

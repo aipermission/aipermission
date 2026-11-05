@@ -26,6 +26,13 @@ or automatic retry. Database role privileges remain authoritative. Use
 `query_readonly` with a dedicated read-only role for protected reads; approving
 `execute_sql` grants the script all capabilities of the selected database role.
 
+The adapter uses pgconn's public protocol receiver and pgx row codecs so
+`COPY FROM STDIN`, `COPY TO STDOUT` and replication-style COPY cannot disappear
+inside the generic multiple-result reader. Client COPY transfer is deliberately
+unsupported: its response immediately closes the action connection and returns
+`outcome_unknown` with an explicit error. No upload stream is invented and no
+download is silently discarded as success. Earlier committed work may remain.
+
 Scripts control transactions. A session must finish idle; an open or failed
 transaction returns conservative `outcome_unknown` and cleanup attempts rollback
 before closing the connection. Explicit commits, routine side effects, and
@@ -33,6 +40,10 @@ external effects cannot be undone by cleanup. Any error after script dispatch,
 including SQL errors, cancellation, timeout, decoding errors, and lost replies,
 is `outcome_unknown` with `retry_safe: false`. Reconcile database state before
 submitting another attempt, even when a particular error suggests rollback.
+Postgres itself runs a multi-statement simple query in an implicit transaction
+unless explicit transaction commands divide it. A later error normally rolls
+back that implicit transaction; acknowledged statements alone do not prove a
+commit. Explicit commits, separate actions and external effects differ.
 
 Input is limited to 64,000 SQL bytes. `timeout_seconds` accepts 1..300 (default
 30), sets the write session's statement timeout, and bounds the entire action
