@@ -61,7 +61,7 @@ export function SQLExecutionControls({
           scripts are never retried automatically.
         </Notice>
       ) : null}
-      {controller.executionStatus ? <Notice tone="warn">{controller.executionStatus}</Notice> : null}
+      {controller.executionMode && controller.executionStatus ? <Notice tone="warn">{controller.executionStatus}</Notice> : null}
     </div>
   );
 }

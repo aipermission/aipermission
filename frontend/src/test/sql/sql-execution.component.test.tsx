@@ -188,6 +188,19 @@ it("shows destructive risk, timeout and returned-row controls only after explici
   );
 });
 
+it("shows discovery status only in execution mode without enabling a write", async () => {
+  transport.discover.mockReturnValue(new Promise(() => {}));
+  const user = userEvent.setup();
+  render(<SQLConnectorConsole {...executionProps} theme="light" />);
+  expect(screen.queryByText(/locked while checking/)).not.toBeInTheDocument();
+  await user.click(screen.getByRole("radio", { name: "Execute SQL" }));
+  expect(screen.getByText(/locked while checking/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Execute SQL" })).toBeDisabled();
+  await user.click(screen.getByRole("radio", { name: "Read-only" }));
+  expect(screen.queryByText(/locked while checking/)).not.toBeInTheDocument();
+  expect(transport.execute).not.toHaveBeenCalled();
+});
+
 it("reports completed execution and request identity even if the activity refresh fails", async () => {
   const onRefreshActivity = vi.fn().mockResolvedValue(undefined);
   const { result } = hook({ onRefreshActivity });

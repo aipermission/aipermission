@@ -98,6 +98,7 @@ it.each(["running", "approval_pending", "outcome_unknown"] as const)(
     await act(async () => first.result.current.runQuery());
     expect(first.result.current.executionLocked).toBe(true);
     expect(first.result.current.executionStatus).toContain("#81");
+    expect(first.result.current.executionStatus).toContain("Settings > Unresolved server requests");
     if (status === "outcome_unknown") expect(first.result.current.runState.error).toContain("Request 81");
     else expect(first.result.current.selectedID).toBe(81);
     act(() => first.result.current.setSQL("DELETE FROM users"));
