@@ -17,6 +17,18 @@ import (
 const queryTimeout = 20 * time.Second
 
 func connection(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB, error) {
+	driver, err := driverConnector(ctx, runtime, queryTimeout)
+	if err != nil {
+		return nil, err
+	}
+	db := sql.OpenDB(driver)
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(0)
+	db.SetConnMaxLifetime(time.Minute)
+	return db, nil
+}
+
+func driverConnector(ctx context.Context, runtime connectors.RuntimeContext, timeout time.Duration) (*mssql.Connector, error) {
 	if err := validateRuntime(runtime); err != nil {
 		return nil, err
 	}
@@ -52,7 +64,7 @@ func connection(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB
 		User: text(runtime.Profile.Public, "username"), Password: password,
 		Encryption: encryption, TLSConfig: tlsConfig, HostInCertificateProvided: true,
 		AppName: "AIPermission", DisableRetry: true, Protocols: []string{"tcp"},
-		ConnTimeout: queryTimeout, DialTimeout: 10 * time.Second, KeepAlive: 30 * time.Second, PacketSize: 4096,
+		ConnTimeout: timeout, DialTimeout: 10 * time.Second, KeepAlive: 30 * time.Second, PacketSize: 4096,
 	}
 	driver := mssql.NewConnectorConfig(params)
 	driver.Dialer = transportDialer{lifetime: ctx, transport: transport, request: connectors.NetworkDialRequest{
@@ -63,11 +75,7 @@ func connection(ctx context.Context, runtime connectors.RuntimeContext) (*sql.DB
 	// A UTF-16 ASCII LOB uses two wire bytes per output byte. Keep the server
 	// cap above twice the cell cap so server-side truncation is still reported.
 	driver.SessionInitSQL = "SET QUOTED_IDENTIFIER ON; SET LOCK_TIMEOUT 5000; SET TEXTSIZE 131072;"
-	db := sql.OpenDB(driver)
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(0)
-	db.SetConnMaxLifetime(time.Minute)
-	return db, nil
+	return driver, nil
 }
 
 func validateRuntime(runtime connectors.RuntimeContext) error {

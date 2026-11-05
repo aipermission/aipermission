@@ -212,7 +212,7 @@ func builtInDeterminismSamples(t *testing.T, kind string) (connectors.TargetView
 	case sqlserverconnector.Kind:
 		return connectors.TargetView{ID: 11, Ref: "sqlserver:11:110", ConnectorKind: kind, Config: map[string]any{"host": "db.test", "database": "app"}},
 			connectors.CredentialProfileView{ID: 110, TargetID: 11, ConnectorKind: kind, Kind: "username_password", Public: map[string]any{"username": "reader"}},
-			map[string]map[string]any{"get_schemas": {}, "get_tables": {}, "describe_table": {"table": "orders"}, "get_metadata": {}, "query_readonly": {"sql": "SELECT 1"}}
+			map[string]map[string]any{"get_schemas": {}, "get_tables": {}, "describe_table": {"table": "orders"}, "get_metadata": {}, "query_readonly": {"sql": "SELECT 1"}, "execute_sql": {"sql": "SELECT 1"}}
 	case clickhouseconnector.Kind, dockerconnector.Kind, kubernetesconnector.Kind, kafkaconnector.Kind, mailconnector.Kind:
 		return builtInDeterminismSamplesPartOne(t, kind)
 	default:
