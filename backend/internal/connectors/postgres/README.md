@@ -46,8 +46,11 @@ metadata, and `transaction_control: script_defined`. Retained output is bounded
 to 1..1000 total rows (default 100), 32 result sets, 256 columns per result,
 64,000-byte cells, and 500,000 serialized bytes. Retention limits, including
 excess column counts, truncate output without stopping the script. Rows use the
-existing Postgres value normalization, including lossless bounded bytea hex and UTC
-timestamps. All results continue to be consumed after retention limits are
+existing Postgres value normalization, including lossless bounded bytea hex, UTC
+timestamps and explicit `infinity` / `-infinity` date/timestamp values. JSON,
+JSONB and their arrays preserve nested numbers before the shared exact-number
+public projection; unsafe JavaScript numbers become exact text. All results
+continue to be consumed after retention limits are
 reached so later statements and their acknowledgements are not silently skipped.
 
 Connector-local wire tests use in-memory protocol peers only, not real endpoints.

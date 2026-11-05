@@ -8,6 +8,7 @@ import (
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func getTables(ctx context.Context, tx pgx.Tx, schema string, includeSystem bool) (queryOutput, error) {
@@ -81,6 +82,13 @@ func normalizePostgresValue(value any) any {
 		return `\x` + hex.EncodeToString(typed)
 	case time.Time:
 		return typed.UTC().Format(time.RFC3339Nano)
+	case pgtype.InfinityModifier:
+		return typed.String()
+	case []any:
+		for index := range typed {
+			typed[index] = normalizePostgresValue(typed[index])
+		}
+		return typed
 	default:
 		return typed
 	}
