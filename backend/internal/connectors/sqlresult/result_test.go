@@ -14,14 +14,28 @@ func TestBuilderPreservesDuplicateColumns(t *testing.T) {
 		t.Fatal("expected row to be added")
 	}
 	result := builder.Result(nil)
-	want := []string{"id", "id_2", "id_2_2"}
+	want := []string{"id", "id_3", "id_2"}
 	for index := range want {
 		if result.Columns[index] != want[index] {
 			t.Fatalf("columns = %#v, want %#v", result.Columns, want)
 		}
 	}
-	if len(result.Rows[0]) != 3 || result.Rows[0]["id"] != 1 || result.Rows[0]["id_2"] != 2 || result.Rows[0]["id_2_2"] != 3 {
+	if len(result.Rows[0]) != 3 || result.Rows[0]["id"] != 1 || result.Rows[0]["id_3"] != 2 || result.Rows[0]["id_2"] != 3 {
 		t.Fatalf("duplicate values were not preserved: %#v", result.Rows[0])
+	}
+}
+
+func TestUniqueColumnsReserveOriginalAndGeneratedNames(t *testing.T) {
+	for _, tt := range []struct{ columns, want []string }{
+		{[]string{"", "column_1", "column_1_2"}, []string{"column_1_3", "column_1", "column_1_2"}},
+		{[]string{"id", "id", "id_2", "id_3", "id"}, []string{"id", "id_4", "id_2", "id_3", "id_5"}},
+		{[]string{"x", "X", "x"}, []string{"x", "X", "x_2"}},
+		{[]string{"", ""}, []string{"column_1", "column_2"}},
+	} {
+		got := uniqueColumns(tt.columns)
+		if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+			t.Fatalf("%v -> %v, want %v", tt.columns, got, tt.want)
+		}
 	}
 }
 
