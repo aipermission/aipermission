@@ -1181,7 +1181,7 @@ func filesystemConnectorKinds(t *testing.T) []string {
 	}
 	support := map[string]bool{
 		"builtin": true, "conformance": true, "connectortest": true,
-		"sqlresult": true, "sqlsafe": true,
+		"sqlexecute": true, "sqlresult": true, "sqlsafe": true,
 	}
 	kinds := []string{}
 	for _, entry := range entries {

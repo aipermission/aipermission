@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 )
 
 const (
@@ -13,6 +14,7 @@ const (
 	ActionDescribeTable = "describe_table"
 	ActionGetMetadata   = "get_metadata"
 	ActionQueryReadonly = "query_readonly"
+	ActionExecuteSQL    = sqlexecute.Action
 	defaultMaxRows      = 100
 	maxRows             = 1000
 	maxMetadataRows     = 5000
@@ -22,9 +24,9 @@ const (
 
 func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (connectors.ConnectorHelp, error) {
 	return connectors.ConnectorHelp{Title: Label + " target: " + target.Name, Connector: Label, ConnectorID: Kind,
-		Summary:  "Inspect SQL Server metadata and run bounded read-only T-SQL using SQL authentication over direct TCP.",
-		Usage:    []string{"Use get_schemas, get_tables and describe_table before querying unknown data.", "Use SELECT TOP (100) and schema-qualified tables such as dbo.orders. Only one SELECT or WITH SELECT is supported.", "get_metadata supplies ordered columns for autocomplete; truncated output is not a complete catalog."},
-		Warnings: []string{"Use a dedicated least-privilege read-only SQL login, not sa or db_owner. Validation is defense in depth, not a substitute for database permissions.", "Writes, EXEC, procedures, SELECT INTO, sequences, external/linked-server access, table functions, hints and non-allowlisted functions are unsupported.", "Catalog actions enumerate the target database; permitted SQL can still expose server metadata visible to the login. Queries have deadlines, row, cell and output limits. TLS certificate verification is enabled by default.", "SQL Server 2012+ first-result inspection is required. CAST XML, sql_variant and CLR/spatial values to supported scalar types. Projected output limits are not a universal driver heap cap.", "Redaction is best-effort; do not intentionally query secrets."},
+		Summary:  "Inspect SQL Server metadata, run protected read-only queries, or explicitly execute SQL scripts using SQL authentication over direct TCP.",
+		Usage:    []string{"Use get_schemas, get_tables and describe_table before querying unknown data.", "query_readonly accepts one SELECT or WITH SELECT. Use SELECT TOP (100) and schema-qualified tables such as dbo.orders.", "execute_sql accepts DML, DDL/schema migrations, EXEC and stored routines, with up to 32 GO-separated batches on one dedicated connection. GO repeats and SQLCMD directives are unsupported.", "get_metadata supplies ordered columns for autocomplete; truncated output is not a complete catalog."},
+		Warnings: []string{"Use a dedicated least-privilege login, not sa or db_owner. A read-only login is recommended for query_readonly. Validation is defense in depth, not a substitute for database permissions.", "query_readonly rejects writes, EXEC, procedures, SELECT INTO, sequences, external/linked-server access, table functions, hints and non-allowlisted functions.", "execute_sql always requires write authority, even for SELECT. It is not a current-database sandbox: schema, permissions, routines and external effects are possible under server grants. Script transactions may partially commit; do not retry an uncertain outcome.", "Catalog actions enumerate the target database; permitted SQL can still expose server metadata visible to the login. Read queries retain their 20-second deadline; execute_sql uses its selected 1-300 second deadline. TLS certificate verification is enabled by default.", "query_readonly requires SQL Server 2012+ first-result inspection. CAST XML, sql_variant and CLR/spatial values to supported scalar types. Native write-result checks cannot prevent the pinned driver's asynchronous prefetch allocations; projected output limits are not a universal driver heap cap.", "Redaction is best-effort; do not intentionally query secrets."},
 	}, nil
 }
 
@@ -39,6 +41,7 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			{Name: "sql", Label: "SQL", Type: connectors.FieldMultiline, Required: true, PreserveWhitespace: true},
 			{Name: "max_rows", Label: "Max rows", Type: connectors.FieldInteger, Default: defaultMaxRows},
 		}),
+		sqlexecute.Definition(Label),
 	}, nil
 }
 
@@ -54,6 +57,13 @@ func readAction(name, label, description string, fields []connectors.Field) conn
 func (Connector) PrepareAction(ctx context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
 	if err := ctx.Err(); err != nil {
 		return connectors.PreparedAction{}, err
+	}
+	if req.ActionName == ActionExecuteSQL {
+		prepared, err := sqlexecute.Prepare(req, Kind, Label)
+		if err == nil {
+			_, err = compileExecutionSQL(text(prepared.Payload, "sql"))
+		}
+		return prepared, err
 	}
 	definitions, _ := New().GetActionList(ctx, req.Target, req.Profile)
 	for _, definition := range definitions {

@@ -15,7 +15,7 @@ func TestActionContractAndPreparation(t *testing.T) {
 	runtime := fixtureRuntime()
 	connectortest.AssertActionListStable(t, New(), runtime.Target, runtime.Profile)
 	actions, err := New().GetActionList(t.Context(), runtime.Target, runtime.Profile)
-	if err != nil || len(actions) != 5 {
+	if err != nil || len(actions) != 6 {
 		t.Fatalf("%#v %v", actions, err)
 	}
 	if err := connectors.ValidateActionDefinitions(actions, "SQL Server"); err != nil {
@@ -26,7 +26,7 @@ func TestActionContractAndPreparation(t *testing.T) {
 		if action.Name == ActionDescribeTable {
 			input["table"] = "order]; DROP TABLE x--"
 		}
-		if action.Name == ActionQueryReadonly {
+		if action.Name == ActionQueryReadonly || action.Name == ActionExecuteSQL {
 			input["sql"] = "SELECT TOP (10) * FROM dbo.orders"
 		}
 		req := connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile, ActionName: action.Name, Input: input}
@@ -36,6 +36,12 @@ func TestActionContractAndPreparation(t *testing.T) {
 			t.Fatal(err)
 		}
 		encoded, _ := json.Marshal(prepared)
+		if action.Name == ActionExecuteSQL {
+			if prepared.Risk != connectors.RiskWrite || connectors.EffectiveRetryPolicy(action).Class != connectors.RetryNonIdempotent {
+				t.Fatalf("unsafe write contract: %#v", prepared)
+			}
+			continue
+		}
 		if strings.Contains(string(encoded), "fixture-only") || prepared.Risk != connectors.RiskRead || connectors.EffectiveRetryPolicy(action).Class != connectors.RetryReadOnly {
 			t.Fatalf("unsafe contract: %#v", prepared)
 		}

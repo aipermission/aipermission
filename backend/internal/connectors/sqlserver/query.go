@@ -15,12 +15,21 @@ import (
 )
 
 func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeContext, action connectors.PreparedAction) (connectors.ActionResult, error) {
-	if action.ConnectorKind != Kind || action.TargetRef != runtime.Target.Ref || action.ProfileID != runtime.Profile.ID || action.Risk != connectors.RiskRead {
+	if err := validateRuntime(runtime); err != nil {
+		return connectors.ActionResult{}, err
+	}
+	if action.ConnectorKind != Kind || action.TargetRef != runtime.Target.Ref || action.ProfileID != runtime.Profile.ID {
 		return connectors.ActionResult{}, fmt.Errorf("SQL Server action identity does not match the current profile")
 	}
 	prepared, err := New().PrepareAction(ctx, connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile, ActionName: action.ActionName, Input: action.Payload})
 	if err != nil {
 		return connectors.ActionResult{}, err
+	}
+	if action.Risk != prepared.Risk {
+		return connectors.ActionResult{}, fmt.Errorf("SQL Server action risk does not match the current action")
+	}
+	if prepared.ActionName == ActionExecuteSQL {
+		return executeSQL(ctx, runtime, prepared)
 	}
 	query, args, limit, err := actionQuery(prepared)
 	if err != nil {
