@@ -8,6 +8,7 @@ export type SQLConsoleConfigInput = {
   defaultPort?: number;
   defaultDatabase?: string;
   queryAction?: string;
+  executionAction?: string;
   describeAction?: string;
   metadataAction?: string;
   metadataInput?: Record<string, unknown>;
@@ -39,9 +40,11 @@ export function normalizeSQLConsoleConfig(config: SQLConsoleConfigInput = {}) {
   const metadataSQL = String(config.metadataSQL || "");
   const metadataMaxRows = Math.max(1, Number(config.metadataMaxRows) || 5000);
   const identifierPolicy: SQLIdentifierPolicy = config.identifierPolicy === "exact" ? "exact" : "lowercase-unquoted";
+  const executionAction = config.executionAction?.trim() || undefined;
   return {
     label,
     queryAction: String(config.queryAction || "query_readonly"),
+    executionAction,
     describeAction: String(config.describeAction || "describe_table"),
     metadataAction: String(config.metadataAction || config.queryAction || "query_readonly"),
     metadataInput: config.metadataInput || { sql: metadataSQL, max_rows: metadataMaxRows },
@@ -52,7 +55,13 @@ export function normalizeSQLConsoleConfig(config: SQLConsoleConfigInput = {}) {
     browserLabel: String(config.browserLabel || "Schema"),
     filenamePrefix: String(config.filenamePrefix || `${label.toLowerCase()}-result`),
     identifierPolicy,
-    keywords: [...new Set([...DEFAULT_SQL_KEYWORDS, ...(config.keywords || [])].map((item) => String(item).toLowerCase()))],
+    keywords: [
+      ...new Set(
+        [...DEFAULT_SQL_KEYWORDS, ...(executionAction ? SQL_EXECUTION_KEYWORDS : []), ...(config.keywords || [])].map((item) =>
+          String(item).toLowerCase(),
+        ),
+      ),
+    ],
     targetEndpoint: config.targetEndpoint || ((target) => defaultTargetEndpoint(target, defaultPort, defaultDatabase)),
     tableQuery:
       config.tableQuery ||
@@ -211,4 +220,28 @@ const DEFAULT_SQL_KEYWORDS = [
   "true",
   "false",
   "null",
+];
+
+const SQL_EXECUTION_KEYWORDS = [
+  "insert into",
+  "values",
+  "update",
+  "set",
+  "delete from",
+  "merge into",
+  "create",
+  "alter",
+  "drop",
+  "truncate table",
+  "table",
+  "index",
+  "view",
+  "grant",
+  "revoke",
+  "begin",
+  "start transaction",
+  "commit",
+  "rollback",
+  "savepoint",
+  "release savepoint",
 ];

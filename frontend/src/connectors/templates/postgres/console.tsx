@@ -6,6 +6,7 @@ import type { SQLConsoleConfigInput } from "../_shared/sql-console-config";
 const config: SQLConsoleConfigInput = {
   label: "Postgres",
   queryAction: "query_readonly",
+  executionAction: "execute_sql",
   describeAction: "describe_table",
   metadataAction: "get_tables",
   metadataInput: {},
@@ -15,6 +16,7 @@ const config: SQLConsoleConfigInput = {
   filenamePrefix: "postgres-result",
   defaultPort: 5432,
   defaultDatabase: "database",
+  keywords: ["call", "do", "returning", "on conflict"],
 };
 
 export const PostgresConnectorConsoleTemplate = createSQLConsoleSlot(config);

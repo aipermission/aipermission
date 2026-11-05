@@ -29,7 +29,9 @@ export function SQLConnectorConsole(
   }
 
   return (
-    <div className={`grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] ${styles.panel}`}>
+    <div
+      className={`grid h-full min-h-0 ${controller.executionMode ? "grid-rows-[auto_minmax(320px,1fr)_auto] overflow-auto" : "grid-rows-[auto_minmax(0,1fr)_auto]"} ${styles.panel}`}
+    >
       <SQLQueryForm controller={controller} styles={styles} theme={theme} />
       <SQLConsoleWorkspace controller={controller} styles={styles} theme={theme} />
       {footer}

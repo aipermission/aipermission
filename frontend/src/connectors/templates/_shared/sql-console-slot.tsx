@@ -19,6 +19,14 @@ export function createSQLConsoleSlot(config: SQLConsoleConfigInput) {
       <SQLConnectorConsole
         config={config}
         target={target}
+        executionIdentity={{
+          config: targetConfig,
+          project_id: props.target.project_id,
+          updated_at: props.target.updated_at,
+          profile_kind: props.target.profile_kind,
+          profile_label: props.target.profile_label,
+          public: props.target.public,
+        }}
         approvals={props.approvals}
         session={structuredConsoleSlotSession(props.session)}
         theme={props.theme}

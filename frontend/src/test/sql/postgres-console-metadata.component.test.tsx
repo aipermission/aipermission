@@ -7,7 +7,7 @@ import { connectorActionFixture, connectorActionRequest } from "../connector-act
 import { consoleWorkspaceFixture } from "../console-workspace-fixtures";
 import { gatewayTargetFixture } from "../connector-inventory-fixtures";
 
-vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../lib/api", () => ({ apiPost: vi.fn(), apiGet: vi.fn(async () => []), currentWorkspaceBinding: () => "sql-test" }));
 vi.mock("../../connectors/templates/_shared/sql-editor", () => ({ SQLEditor: () => <div /> }));
 
 beforeEach(() => {

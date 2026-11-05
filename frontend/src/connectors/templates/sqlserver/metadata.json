@@ -4,6 +4,6 @@
   "icon": "database",
   "badge_tone": "neutral",
   "profile_lifecycle": "custom",
-  "summary": "Direct SQL authentication, schema browsing and bounded read-only T-SQL.",
+  "summary": "Direct SQL authentication, schema browsing and separately authorized T-SQL execution.",
   "version": "0.2"
 }

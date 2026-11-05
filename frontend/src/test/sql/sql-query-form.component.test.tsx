@@ -29,6 +29,12 @@ it.each([
     loadSQL: vi.fn(),
     maxRows: 100,
     setMaxRows: vi.fn(),
+    executionMode: false,
+    setExecutionMode: vi.fn(),
+    timeoutSeconds: 30,
+    setTimeoutSeconds: vi.fn(),
+    executionLocked: false,
+    executionStatus: "",
   };
 
   const { rerender } = render(<SQLQueryForm controller={controller} styles={connectorConsoleTheme(theme)} theme={theme} />);
@@ -58,4 +64,27 @@ it.each([
   expect(screen.getByRole("button", { name: "SQL" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Run SQL (Ctrl+Enter)" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Last query" })).not.toBeInTheDocument();
+
+  const execution = {
+    ...controller,
+    connector: normalizeSQLConsoleConfig({ label, identifierPolicy, executionAction: "execute_sql" }),
+    executionMode: true,
+    runState: { state: "error", error: "Request outcome unknown", message: "Request #81 retained" },
+  };
+  rerender(<SQLQueryForm controller={execution} styles={connectorConsoleTheme(theme)} theme={theme} />);
+  expect(screen.getByText("Request outcome unknown")).toBeVisible();
+  expect(screen.getByText("Request #81 retained")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Execute SQL" })).toBeEnabled();
+  rerender(<SQLQueryForm controller={{ ...execution, executionLocked: true }} styles={connectorConsoleTheme(theme)} theme={theme} />);
+  expect(screen.getByRole("button", { name: "Execute SQL" })).toBeDisabled();
+  rerender(
+    <SQLQueryForm
+      controller={{ ...execution, runState: { state: "running", error: "" } }}
+      styles={connectorConsoleTheme(theme)}
+      theme={theme}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Running" })).toBeDisabled();
+  expect(screen.getByRole("spinbutton", { name: "Returned-row cap" })).toBeDisabled();
+  expect(screen.getByRole("spinbutton", { name: "Timeout (seconds)" })).toBeDisabled();
 });

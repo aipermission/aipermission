@@ -31,6 +31,14 @@ it("projects only SQL-owned target fields and retains generic session and activi
   render(<Console {...props} />);
   const native = vi.mocked(SQLConnectorConsole).mock.calls[0]?.[0];
   expect(native?.target).toEqual({ ref: props.target.ref, name: "My database", config: { host: "db.test", port: 5432, database: "main" } });
+  expect(native?.executionIdentity).toEqual({
+    config: props.target.config,
+    project_id: props.target.project_id,
+    updated_at: props.target.updated_at,
+    profile_kind: props.target.profile_kind,
+    profile_label: props.target.profile_label,
+    public: props.target.public,
+  });
   expect(native?.session).toEqual(props.session);
   expect(native?.approvals).toBe(props.approvals);
   expect(native?.onRefreshActivity).toBe(props.onRefreshActivity);

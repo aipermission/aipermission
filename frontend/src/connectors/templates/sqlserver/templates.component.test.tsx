@@ -12,7 +12,13 @@ import { sqlServerConnectorFamily } from "./connector-family";
 import { sqlServerConsoleConfig } from "./console";
 import * as model from "./model";
 
-vi.mock("../../../lib/api", () => ({ apiPost: vi.fn(), apiPut: vi.fn(), apiDelete: vi.fn() }));
+vi.mock("../../../lib/api", () => ({
+  apiPost: vi.fn(),
+  apiPut: vi.fn(),
+  apiDelete: vi.fn(),
+  apiGet: vi.fn(async () => []),
+  currentWorkspaceBinding: () => "sql-test",
+}));
 const profile = inventoryProfileFixture({
   id: 17,
   connector_kind: "sqlserver",

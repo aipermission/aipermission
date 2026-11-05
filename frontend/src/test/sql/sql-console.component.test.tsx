@@ -6,7 +6,7 @@ import { SQLConnectorConsole } from "../../connectors/templates/_shared/sql-cons
 import type { SQLEditorProps } from "../../connectors/templates/_shared/sql-editor";
 import type { SQLActivityItem, SQLConsoleProps } from "../../connectors/templates/_shared/use-sql-console";
 
-vi.mock("../../lib/api", () => ({ apiPost: vi.fn() }));
+vi.mock("../../lib/api", () => ({ apiPost: vi.fn(), apiGet: vi.fn(async () => []), currentWorkspaceBinding: () => "sql-test" }));
 vi.mock("../../connectors/templates/_shared/sql-editor", () => ({
   SQLEditor: ({ value, onChange, disabled }: SQLEditorProps) => (
     <textarea aria-label="SQL editor" value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} />
