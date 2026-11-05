@@ -482,7 +482,9 @@
     "TestKafkaRealService",
     "TestClickHouseRealService",
     "TestSQLServerRealService",
+    "TestSQLServerExecutionRealService",
     "TestPostgresRealService",
+    "TestPostgresExecutionRealService",
     "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",
     "TestPostgresUnicodeTypedLiteralRealService",
@@ -509,6 +511,10 @@
     "TestS3RealService"
   ],
   "fuzz_targets": [
+    {
+      "package": "./internal/connectors/sqlserver",
+      "name": "FuzzExecutionSQL"
+    },
     {
       "package": "./internal/connectors/sqlserver",
       "name": "FuzzReadonlySQL"

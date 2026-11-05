@@ -32,4 +32,9 @@ DENY INSERT, UPDATE, DELETE, EXECUTE, ALTER TO fixture_reader;
 CREATE LOGIN fixture_policy_writer WITH PASSWORD='Fixture-only-Policy1!', CHECK_POLICY=OFF;
 CREATE USER fixture_policy_writer FOR LOGIN fixture_policy_writer;
 GRANT SELECT, INSERT, UPDATE, DELETE ON dbo.policy_canary TO fixture_policy_writer;
+-- Explicit SQL execution uses a separate schema-scoped fixture identity.
+CREATE LOGIN fixture_executor WITH PASSWORD='Fixture-only-Executor1!', CHECK_POLICY=OFF;
+CREATE USER fixture_executor FOR LOGIN fixture_executor;
+GRANT CREATE TABLE, CREATE PROCEDURE TO fixture_executor;
+GRANT SELECT, INSERT, UPDATE, DELETE, EXECUTE, ALTER ON SCHEMA::dbo TO fixture_executor;
 GO
