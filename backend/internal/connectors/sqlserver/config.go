@@ -28,7 +28,10 @@ var (
 
 type Connector struct{}
 
-func New() Connector              { return Connector{} }
+func New() Connector {
+	initializeSQLGrammar()
+	return Connector{}
+}
 func (Connector) Kind() string    { return Kind }
 func (Connector) Label() string   { return Label }
 func (Connector) Version() string { return Version }

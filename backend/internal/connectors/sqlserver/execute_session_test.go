@@ -21,7 +21,7 @@ func runExecutionFixture(ctx context.Context, f *executionFixture, script string
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
-	batches, err := compileExecutionSQL(script)
+	batches, err := compileExecutionSQL(ctx, script)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
@@ -49,7 +49,7 @@ func TestNativeExecutionDrainsTruncatedResultsAndPreservesMessages(t *testing.T)
 	if err != nil || result.Status != connectors.ResultCompleted {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
-	batches, _ := compileExecutionSQL(script)
+	batches, _ := compileExecutionSQL(t.Context(), script)
 	if !reflect.DeepEqual(f.queries, batches) || f.reads != 4 || f.connects != 1 || f.closes != 1 || f.finishes != 1 {
 		t.Fatalf("script/session lifecycle changed: %#v", f)
 	}

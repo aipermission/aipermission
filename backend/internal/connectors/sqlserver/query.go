@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
 	mssql "github.com/microsoft/go-mssqldb"
 )
@@ -21,7 +22,14 @@ func (Connector) ExecuteAction(ctx context.Context, runtime connectors.RuntimeCo
 	if action.ConnectorKind != Kind || action.TargetRef != runtime.Target.Ref || action.ProfileID != runtime.Profile.ID {
 		return connectors.ActionResult{}, fmt.Errorf("SQL Server action identity does not match the current profile")
 	}
-	prepared, err := New().PrepareAction(ctx, connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile, ActionName: action.ActionName, Input: action.Payload})
+	request := connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile, ActionName: action.ActionName, Input: action.Payload}
+	var prepared connectors.PreparedAction
+	var err error
+	if action.ActionName == ActionExecuteSQL {
+		prepared, err = sqlexecute.Prepare(request, Kind, Label)
+	} else {
+		prepared, err = New().PrepareAction(ctx, request)
+	}
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
