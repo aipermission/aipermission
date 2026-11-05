@@ -155,6 +155,7 @@ func BoundValue(value any, limit int, suffix string) (any, bool) {
 	if limit <= 0 {
 		return "", true
 	}
+	value = NormalizeNonFinite(value)
 	if text, ok := value.(string); ok {
 		if len(text) <= limit {
 			return text, false

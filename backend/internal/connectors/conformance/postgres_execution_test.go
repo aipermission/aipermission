@@ -23,6 +23,7 @@ func TestPostgresExecutionRealService(t *testing.T) {
 	t.Run("exact_json_and_infinity", testPostgresSQLExecutionValues)
 	t.Run("session_output_settings", testPostgresSQLExecutionSettings)
 	t.Run("structural_output_limits", testPostgresSQLExecutionStructure)
+	t.Run("nonfinite_values", testPostgresNonFiniteValues)
 	t.Run("client_copy_rejected_promptly", testPostgresSQLExecutionCopy)
 	t.Run("row_cap_drains_later_mutations", func(t *testing.T) {
 		fixture := newPostgresExecutionFixture(t)
