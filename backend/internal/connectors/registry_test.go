@@ -27,6 +27,22 @@ func TestAllowEmptyChangesActionContract(t *testing.T) {
 	}
 }
 
+func TestFinalOutputLimitIsValidatedAndPartOfActionIdentity(t *testing.T) {
+	action := ActionDefinition{Name: "inspect", Label: "Inspect", Description: "Read state", Risk: RiskRead}
+	for _, limit := range []int{-1, 1, 3, 0, 4, 500000} {
+		action.OutputHint.FinalMaxBytes = limit
+		err := ValidateActionDefinitions([]ActionDefinition{action}, "test")
+		if (err != nil) != (limit != 0 && limit < 4) {
+			t.Fatalf("limit %d validation: %v", limit, err)
+		}
+	}
+	changed := action
+	changed.OutputHint.FinalMaxBytes--
+	if equalActionDefinition(action, changed) {
+		t.Fatal("final output limit drift did not change action identity")
+	}
+}
+
 func (f fakeConnector) Kind() string { return f.kind }
 func (f fakeConnector) Label() string {
 	if f.label == "__empty__" {

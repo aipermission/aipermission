@@ -71,6 +71,10 @@ Input SQL is limited to 64,000 UTF-8 bytes, with at most 32 SQL Server batches.
 sets. `timeout_seconds` defaults to 30 and accepts 1 to 300. Results retain at most
 32 sets, 256 columns per retained set, 64,000 bytes per cell and 500,000 bytes of
 projected output; notices and command summaries have separate finite caps.
+The shared boundary checks the 500,000-byte output cap again after credential
+redaction and exact-number projection. If that expansion exceeds the cap, the
+output is withheld and the dispatched action reports `outcome_unknown`, never
+an oversized successful result or an automatic replay.
 Driver/server buffers are not a universal process-memory ceiling. Unsupported
 native result types can cause an uncertain outcome after execution begins;
 explicitly cast XML, variant or provider-specific values to supported scalars.

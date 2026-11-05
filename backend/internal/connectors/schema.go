@@ -68,6 +68,8 @@ type OutputHint struct {
 	TemporaryCapabilityFields []string `json:"temporary_capability_fields,omitempty"`
 	MaxRows                   int      `json:"max_rows,omitempty"`
 	MaxBytes                  int      `json:"max_bytes,omitempty"`
+	// FinalMaxBytes is an opt-in hard cap on Output JSON after public redaction.
+	FinalMaxBytes int `json:"final_max_bytes,omitempty"`
 }
 
 // ValidateSchemaValues validates a connector target/action value map against
@@ -164,8 +166,8 @@ func ValidateActionDefinitions(actions []ActionDefinition, usage string) error {
 			return fmt.Errorf("%s contains duplicate action %q", usage, action.Name)
 		}
 		seen[action.Name] = true
-		if action.MaxInputBytes != 0 && (action.MaxInputBytes < 1 || action.MaxInputBytes > MaximumActionInputBytes) {
-			return fmt.Errorf("%s action %q max_input_bytes must be between 1 and %d", usage, action.Name, MaximumActionInputBytes)
+		if err := validateActionLimits(action, usage); err != nil {
+			return err
 		}
 		if !ValidRisk(action.Risk) {
 			return fmt.Errorf("%s action %q has unsupported risk %q", usage, action.Name, action.Risk)
@@ -249,6 +251,16 @@ func ValidRisk(risk RiskLevel) bool {
 	default:
 		return false
 	}
+}
+
+func validateActionLimits(action ActionDefinition, usage string) error {
+	if action.MaxInputBytes != 0 && (action.MaxInputBytes < 1 || action.MaxInputBytes > MaximumActionInputBytes) {
+		return fmt.Errorf("%s action %q max_input_bytes must be between 1 and %d", usage, action.Name, MaximumActionInputBytes)
+	}
+	if limit := action.OutputHint.FinalMaxBytes; limit != 0 && limit < 4 {
+		return fmt.Errorf("%s action %q final_max_bytes must allow at least JSON null (4 bytes)", usage, action.Name)
+	}
+	return nil
 }
 
 func validateSchemaDefinition(schema Schema, usage string, allowSecrets bool) error {
