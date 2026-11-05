@@ -122,7 +122,10 @@ func (r *executionRowsFixture) announce() error {
 	}
 	result := r.results[r.result]
 	if result.message != nil {
-		return r.enqueue(result.message)
+		if err := r.enqueue(result.message); err != nil {
+			return err
+		}
+		return r.end()
 	}
 	if len(result.columns) != 0 {
 		return r.enqueue(sqlexp.MsgNext{})

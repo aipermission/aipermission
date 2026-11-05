@@ -71,6 +71,14 @@ func (c *Collector) AddRow(values []any) error {
 // allocating/normalizing another row for the retained output.
 func (c *Collector) RetainingRows() bool { return c.active != nil && !c.discardRows }
 
+// OmitCurrentResult keeps protocol/result counts without retaining unsupported
+// values. The adapter must still consume the result and the current batch.
+func (c *Collector) OmitCurrentResult() {
+	c.active = nil
+	c.discardRows = true
+	c.truncated = true
+}
+
 func (c *Collector) EndResult() {
 	if c.active != nil {
 		result := c.active.Result(nil)

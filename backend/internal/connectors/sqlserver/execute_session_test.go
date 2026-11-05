@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlexecute"
 	"github.com/golang-sql/sqlexp"
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 func runExecutionFixture(ctx context.Context, f *executionFixture, script string, rows, seconds int) (connectors.ActionResult, error) {
@@ -99,15 +100,33 @@ func TestNativeExecutionColumnAndResultCapsDoNotSkipLaterCommands(t *testing.T) 
 	}
 }
 
-func TestNativeExecutionUnsupportedTypesAbortBeforeConnectorNext(t *testing.T) {
+func TestNativeExecutionUnsupportedTypesDrainWithoutRetainingValues(t *testing.T) {
 	for _, kind := range []string{"XML", "UDT", "SQL_VARIANT", "NEW_UNREVIEWED_TYPE"} {
 		unsafe := scalarExecutionResult("unsafe")
 		unsafe.kinds[0] = kind
 		f := &executionFixture{plans: [][]executionResultFixture{{scalarExecutionResult(int64(1)), unsafe}, {{count: fixtureCount(7)}}}}
 		result, err := runExecutionFixture(t.Context(), f, "SELECT 1;\nGO\nUPDATE dbo.t SET id=2;", 1, 30)
-		if err != nil || result.Status != connectors.ResultOutcomeUnknown || f.reads != 1 || f.finishes != 0 || f.closes != 1 || len(f.queries) != 1 {
+		if err != nil || result.Status != connectors.ResultOutcomeUnknown || f.reads != 2 || f.finishes != 0 || f.closes != 1 || len(f.queries) != 1 {
 			t.Fatalf("%s was materialized or reported completed: %#v %v %#v", kind, result, err, f)
 		}
+		output := result.Output.(map[string]any)
+		if output["truncated"] != true || output["row_count"] != 1 || output["result_set_count"] != 2 {
+			t.Fatalf("unsupported result counts lost: %#v", output)
+		}
+	}
+}
+
+func TestNativeExecutionStatementErrorsDrainCurrentBatchButDoNotSubmitNext(t *testing.T) {
+	failure := mssql.Error{Number: 50000, Class: 16, Message: "owned statement failure"}
+	f := &executionFixture{plans: [][]executionResultFixture{
+		{{message: sqlexp.MsgError{Error: failure}}, scalarExecutionResult(int64(7))}, {{count: fixtureCount(100)}},
+	}}
+	result, err := runExecutionFixture(t.Context(), f, "RAISERROR(N'owned statement failure',16,1); SELECT 7;\nGO\nUPDATE dbo.t SET id=100;", 10, 30)
+	if err != nil || result.Status != connectors.ResultOutcomeUnknown || !strings.Contains(result.Error, failure.Error()) || f.reads != 1 || len(f.queries) != 1 {
+		t.Fatalf("batch drain policy violated: result=%#v err=%v fixture=%#v", result, err, f)
+	}
+	if result.Output.(map[string]any)["row_count"] != 1 {
+		t.Fatal("current batch result was lost")
 	}
 }
 
