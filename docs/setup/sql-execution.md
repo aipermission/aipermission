@@ -98,6 +98,10 @@ procedure; the native driver can classify a bare single identifier as an RPC.
 sets. `timeout_seconds` defaults to 30 and accepts 1 to 300. Results retain at most
 32 sets, 256 columns per retained set, 64,000 bytes per cell and 500,000 bytes of
 projected output; notices and command summaries have separate finite caps.
+Row retention also accounts for the shared JSON node and depth limits, including
+the surrounding result envelopes. Oversized arrays or deeply nested values
+cause rows to be omitted with `truncated` set; remaining SQL still completes and
+its command acknowledgements remain available.
 The shared boundary checks the 500,000-byte output cap again after credential
 redaction and exact-number projection. If that expansion exceeds the cap, the
 output is withheld and the dispatched action reports `outcome_unknown`, never

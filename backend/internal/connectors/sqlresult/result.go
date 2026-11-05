@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/aipermission/aipermission/backend/internal/boundedtext"
+	"github.com/aipermission/aipermission/backend/internal/jsonshape"
 )
 
 type Result struct {
@@ -22,7 +23,15 @@ type Builder struct {
 	maxCellBytes    int
 	truncatedSuffix string
 	estimatedBytes  int
+	structure       *jsonshape.Limits
+	retainedNodes   int
 }
+
+// LimitStructure reserves the caller's outer envelope separately from row data.
+// The shared canonical validator and retention use the same structural rules.
+func (b *Builder) LimitStructure(limits jsonshape.Limits) { b.structure = &limits }
+
+func (b *Builder) RetainedNodes() int { return b.retainedNodes }
 
 func NewBuilder(columns []string, maxRows, maxBytes, maxCellBytes int, truncatedSuffix string) *Builder {
 	result := Result{
@@ -56,10 +65,21 @@ func (b *Builder) Add(values []any, normalize func(any) any) bool {
 		row[column] = bounded
 		b.result.Truncated = b.result.Truncated || truncated
 	}
-	rowBytes := encodedSize(row)
-	if b.estimatedBytes+rowBytes+1 > b.maxBytes {
+	encoded, err := json.Marshal(row)
+	rowBytes := len(encoded)
+	if err != nil || b.estimatedBytes+rowBytes+1 > b.maxBytes {
 		b.result.Truncated = true
 		return false
+	}
+	if b.structure != nil {
+		limits := *b.structure
+		limits.Nodes -= b.retainedNodes
+		nodes, err := jsonshape.MeasureJSON(encoded, limits)
+		if err != nil {
+			b.result.Truncated = true
+			return false
+		}
+		b.retainedNodes += nodes
 	}
 	b.result.Rows = append(b.result.Rows, row)
 	b.result.RowCount = len(b.result.Rows)

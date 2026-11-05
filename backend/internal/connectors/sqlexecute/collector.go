@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors/sqlresult"
+	"github.com/aipermission/aipermission/backend/internal/jsonshape"
 )
 
 type Command struct {
@@ -29,7 +30,18 @@ type Collector struct {
 	truncated     bool
 	retainedBytes int
 	metadataBytes int
+	retainedNodes int
 }
+
+// Reserve all possible non-row nodes: 32 result envelopes/256 column names,
+// 128 command objects, 32 notices, and top-level status/metadata fields.
+const (
+	maxResultSets       = 32
+	maxResultColumns    = 256
+	maxCommands         = 128
+	maxNotices          = 32
+	metadataNodeReserve = maxResultSets*(maxResultColumns+8) + maxCommands*3 + maxNotices + 32
+)
 
 func NewCollector(rowLimit int) *Collector {
 	return &Collector{rowLimit: rowLimit, results: []sqlresult.Result{}, commands: []Command{}, notices: []string{}}
@@ -44,11 +56,15 @@ func (c *Collector) BeginResult(columns []string) error {
 	c.discardRows = false
 	c.resultCount++
 	budget := MaxOutputBytes - 100000 - c.retainedBytes
-	if len(columns) > 256 || c.resultCount > 32 || budget < 1024 || c.rows >= c.rowLimit {
+	if len(columns) > maxResultColumns || c.resultCount > maxResultSets || budget < 1024 || c.rows >= c.rowLimit {
 		c.truncated = true
 		return nil
 	}
 	c.active = sqlresult.NewBuilder(columns, c.rowLimit-c.rows, budget, MaxCellBytes, "...[truncated]")
+	c.active.LimitStructure(jsonshape.Limits{
+		Depth: jsonshape.MaxDepth - 4, Nodes: jsonshape.MaxNodes - metadataNodeReserve - c.retainedNodes,
+		StringBytes: jsonshape.MaxStringBytes,
+	})
 	return nil
 }
 
@@ -82,6 +98,7 @@ func (c *Collector) OmitCurrentResult() {
 func (c *Collector) EndResult() {
 	if c.active != nil {
 		result := c.active.Result(nil)
+		c.retainedNodes += c.active.RetainedNodes()
 		c.results = append(c.results, result)
 		c.rows += result.RowCount
 		c.truncated = c.truncated || result.Truncated
@@ -94,7 +111,7 @@ func (c *Collector) EndResult() {
 }
 
 func (c *Collector) Command(tag string, rows int64) {
-	if len(c.commands) >= 128 {
+	if len(c.commands) >= maxCommands {
 		c.truncated = true
 		return
 	}
@@ -108,7 +125,7 @@ func (c *Collector) Command(tag string, rows int64) {
 }
 
 func (c *Collector) Notice(message string) {
-	if len(c.notices) >= 32 {
+	if len(c.notices) >= maxNotices {
 		c.truncated = true
 		return
 	}
