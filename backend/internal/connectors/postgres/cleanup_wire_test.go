@@ -28,7 +28,11 @@ func assertSilentRollbackBounded(t *testing.T, cancelMode string) {
 	defer cancel()
 	result := make(chan error, 1)
 	go func() {
-		_, err := New().ExecuteAction(ctx, cleanupFixtureRuntime(fixture), connectors.PreparedAction{ActionName: ActionGetSchemas})
+		runtime := cleanupFixtureRuntime(fixture)
+		action, err := New().PrepareAction(ctx, connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile, ActionName: ActionGetSchemas})
+		if err == nil {
+			_, err = New().ExecuteAction(ctx, runtime, action)
+		}
 		result <- err
 	}()
 	select {
@@ -80,8 +84,8 @@ func TestConnectionSuccessBoundsSilentClose(t *testing.T) {
 
 func cleanupFixtureRuntime(transport connectors.NetworkTransport) connectors.RuntimeContext {
 	return connectors.RuntimeContext{
-		Target:  connectors.TargetView{ConnectorKind: Kind, Config: map[string]any{"host": "127.0.0.1", "port": 5432, "database": "fixture", "ssl_mode": "disable"}},
-		Profile: connectors.CredentialProfileView{Public: map[string]any{"username": "fixture"}},
+		Target:  connectors.TargetView{ID: 1, Ref: "postgres:1:2", ConnectorKind: Kind, Config: map[string]any{"host": "127.0.0.1", "port": 5432, "database": "fixture", "ssl_mode": "disable"}},
+		Profile: connectors.CredentialProfileView{ID: 2, TargetID: 1, ConnectorKind: Kind, Kind: "username_password", Public: map[string]any{"username": "fixture"}},
 		Secrets: fakeSecrets{"password": "fixture-only"}, Capabilities: fakePostgresCapabilities{transport: transport},
 	}
 }

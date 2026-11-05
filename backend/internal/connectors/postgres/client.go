@@ -9,17 +9,26 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectors/postgres/cleanup"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // Bound allocation before pgx decodes a row, notice, error or metadata message.
 // This is separate from the smaller limits applied to projected action output.
 const maxProtocolMessageBytes = 4 << 20
 
-func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn, error) {
+type postgresSessionOptions struct {
+	timeout      time.Duration
+	onNotice     pgconn.NoticeHandler
+	bindLifetime bool
+}
+
+func connect(ctx context.Context, runtime connectors.RuntimeContext, options ...postgresSessionOptions) (*pgx.Conn, error) {
 	username := strings.TrimSpace(publicString(runtime.Profile.Public, "username"))
 	if username == "" {
 		return nil, fmt.Errorf("%w: username", ErrMissingSecret)
@@ -60,31 +69,48 @@ func connect(ctx context.Context, runtime connectors.RuntimeContext) (*pgx.Conn,
 		return nil, fmt.Errorf("parse postgres connection config: %w", err)
 	}
 	config.Config.MaxProtocolMessageBodyLen = maxProtocolMessageBytes
+	timeout := queryTimeout
+	if len(options) > 0 {
+		timeout = options[0].timeout
+		config.OnNotice = options[0].onNotice
+	}
 	transport, err := postgresNetworkTransport(runtime)
 	if err != nil {
 		return nil, err
 	}
 	dialRequest := postgresNetworkDialRequest(runtime.Target)
-	config.Config.DialFunc = func(ctx context.Context, network string, address string) (net.Conn, error) {
-		return transport.DialConnectorTCP(ctx, dialRequest)
+	lifetime := ctx
+	var established atomic.Bool
+	config.Config.DialFunc = func(dialCtx context.Context, network string, address string) (net.Conn, error) {
+		conn, err := transport.DialConnectorTCP(dialCtx, dialRequest)
+		if err == nil && len(options) > 0 && options[0].bindLifetime {
+			boundContext := lifetime
+			// pgx opens a separate cancellation socket after the action ends.
+			if established.Load() {
+				boundContext = dialCtx
+			}
+			conn = connectors.BindNetworkConnectionContext(boundContext, conn)
+		}
+		return conn, err
 	}
 
 	conn, err := pgx.ConnectConfig(ctx, config)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}
-	if err := configurePostgresSession(ctx, conn); err != nil {
+	established.Store(true)
+	if err := configurePostgresSession(ctx, conn, timeout); err != nil {
 		_ = cleanup.Run(ctx, conn.Close)
 		return nil, err
 	}
 	return conn, nil
 }
 
-func configurePostgresSession(ctx context.Context, conn *pgx.Conn) error {
+func configurePostgresSession(ctx context.Context, conn *pgx.Conn, timeout time.Duration) error {
 	if _, err := conn.Exec(ctx, `SELECT set_config('application_name', 'aipermission', false)`); err != nil {
 		return fmt.Errorf("configure postgres application name: %w", err)
 	}
-	statementTimeout := strconv.Itoa(int(queryTimeout.Milliseconds())) + "ms"
+	statementTimeout := strconv.FormatInt(timeout.Milliseconds(), 10) + "ms"
 	if _, err := conn.Exec(ctx, `SELECT set_config('statement_timeout', $1, false)`, statementTimeout); err != nil {
 		return fmt.Errorf("configure postgres statement timeout: %w", err)
 	}
