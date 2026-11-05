@@ -81,6 +81,19 @@ separate executions.
   completion or the overall deadline; discarded output remains unretained.
 
 Input SQL is limited to 64,000 UTF-8 bytes, with at most 32 SQL Server batches.
+For SQL Server, this is an upper byte ceiling, not a guarantee that every script
+below it can be parsed: the pinned grammar also limits visible tokens to 8,192,
+parenthesis depth to 32, parser rule depth to 256, and adaptive parsing work to
+500,000 token-stream operations within one second (or the earlier caller
+deadline). SLL and any LL fallback share those limits. Fixed generated grammar
+initialization happens once at connector construction, before user-script
+parsing. Caller cancellation and
+deadlines are still honored. A validation timeout sends no SQL and is reported
+separately from a server execution timeout. Dense INSERT/UPDATE lists
+can reach a token limit well below 64,000 bytes. Unsupported grammar constructs
+fail validation before dispatch; divide the migration into separately reviewed
+scripts instead of silently truncating it. Prefer explicit `EXEC name` for a
+procedure; the native driver can classify a bare single identifier as an RPC.
 `max_rows` defaults to 100 and is limited to 1,000 retained rows across all result
 sets. `timeout_seconds` defaults to 30 and accepts 1 to 300. Results retain at most
 32 sets, 256 columns per retained set, 64,000 bytes per cell and 500,000 bytes of
