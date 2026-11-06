@@ -1,9 +1,13 @@
 package conformance_test
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
+	chdriver "github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	clickhouseconnector "github.com/aipermission/aipermission/backend/internal/connectors/clickhouse"
 )
@@ -36,6 +40,7 @@ func TestClickHouseRealService(t *testing.T) {
 		"max_rows": 5,
 	})
 	assertResultContains(t, result, "clickhouse-conformance")
+	assertClickHouseSourceFunctionsStayReadonly(t, connector, runtime)
 	for _, identifier := range []string{" events ", "`events`", `tenant\back`, "ending\\", "mixed\\`"} {
 		quoted := "`" + strings.ReplaceAll(strings.ReplaceAll(identifier, "\\", "\\\\"), "`", "``") + "`"
 		result := executeAction(t, connector, runtime, clickhouseconnector.ActionQueryReadonly, map[string]any{
@@ -44,6 +49,29 @@ func TestClickHouseRealService(t *testing.T) {
 		columns := result.Output.(map[string]any)["columns"].([]string)
 		if len(columns) != 1 || columns[0] != identifier {
 			t.Fatalf("native parser changed identifier %q: %#v", identifier, columns)
+		}
+	}
+}
+
+func assertClickHouseSourceFunctionsStayReadonly(t *testing.T, connector connectors.Connector, runtime connectors.RuntimeContext) {
+	t.Helper()
+	for _, query := range []string{
+		"SELECT * FROM url('http://127.0.0.1:1/read-only-canary', 'CSV', 'marker String')",
+		"SELECT * FROM file('read-only-canary.csv', 'CSV', 'marker String')",
+		"SELECT * FROM s3('http://127.0.0.1:1/read-only-canary', 'NOSIGN', 'CSV', 'marker String')",
+		"SELECT getSetting('readonly') SETTINGS readonly=0",
+	} {
+		prepared, err := connector.PrepareAction(t.Context(), connectors.ActionRequest{Target: runtime.Target, Profile: runtime.Profile,
+			ActionName: clickhouseconnector.ActionQueryReadonly, Input: map[string]any{"sql": query, "max_rows": 1}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+		_, err = connector.ExecuteAction(ctx, runtime, prepared)
+		cancel()
+		var exception *chdriver.Exception
+		if !errors.As(err, &exception) || exception.Code != 164 {
+			t.Fatalf("source escaped native readonly guard: query=%s err=%v", query, err)
 		}
 	}
 }
