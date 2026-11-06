@@ -15,6 +15,9 @@ import (
 )
 
 func openRedisClient(ctx context.Context, runtime connectors.RuntimeContext) (*redisClient, error) {
+	if err := connectors.ValidateSchemaValues((Connector{}).TargetSchema(), runtime.Target.Config); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 	transport, _ := runtime.Capability(connectors.NetworkTransportCapabilityName).(connectors.NetworkTransport)
 	if transport == nil {
 		return nil, ErrMissingTransport

@@ -482,6 +482,7 @@
     "TestOpenSSHRealService",
     "TestMailRealService",
     "TestMailRealServiceRejectsInvalidIdentity",
+    "TestMalformedTransportModesRejectBeforeCredentialsOrDial",
     "TestKafkaWireProbe",
     "TestKafkaRealService",
     "TestClickHouseRealService",

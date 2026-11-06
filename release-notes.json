@@ -7,7 +7,8 @@
         "Align PostgreSQL readonly lexical inspection with server whitespace and CR comment boundaries; reject hidden function calls before network execution while preserving quoted values and identifiers.",
         "Constrain all Kafka broker connections to explicitly configured bootstrap and additional advertised endpoints. Require verified TLS or separate deliberate plaintext exceptions for PLAIN and SCRAM, including Over SSH.",
         "Pass MCP publication tags as environment data, validate them before checkout, and enforce adversarial workflow-input regressions in local and hosted checks.",
-        "Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict update links to HTTPS repository releases, and retain supervisor process identity during termination."
+        "Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict update links to HTTPS repository releases, and retain supervisor process identity during termination.",
+        "Revalidate Redis and RabbitMQ runtime configuration against each connector's existing schema before credentials or transport access. This closes malformed-row fallback in depth without duplicating select-option policy or changing intentional plaintext settings."
       ]
     },
     {
