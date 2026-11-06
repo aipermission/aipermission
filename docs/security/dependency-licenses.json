@@ -11,7 +11,7 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "25cfb9775b953ce0b24ddbc96ec81f9f82c8deb593ba754563a9accd50b0627c"
+      "sha256": "52c519e7d09a20e4ebd45a9c5b5df999c430ae2313229be6c1cc7b2fb4729716"
     },
     {
       "path": "frontend/package-lock.json",

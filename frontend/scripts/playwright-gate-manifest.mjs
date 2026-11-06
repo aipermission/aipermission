@@ -50,3 +50,6 @@ export const requiredSmokeTitles = Object.freeze([
 ]);
 
 export const requiredRealBackendTitles = Object.freeze(["runs approval, stale rejection, lock, and restart against the real backend"]);
+export const requiredSourceBackendTitles = Object.freeze([
+  "creates, locks and unlocks a real encrypted database through source Vite defaults",
+]);

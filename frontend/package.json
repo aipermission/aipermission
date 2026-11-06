@@ -35,7 +35,7 @@
     "test:e2e:smoke": "playwright test --grep-invert '@high-risk|@accessibility'",
     "test:e2e:accessibility": "playwright test --grep @accessibility",
     "test:e2e:high-risk": "npm run test:e2e:policy && playwright test --grep @high-risk",
-    "test:e2e:real": "npm run test:e2e:policy && playwright test --config playwright.real.config.js",
+    "test:e2e:real": "npm run test:e2e:policy && playwright test --config playwright.real.config.js && playwright test --config playwright.source.config.js",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

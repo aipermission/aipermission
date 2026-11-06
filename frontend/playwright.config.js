@@ -27,7 +27,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run build && npm run preview -- --host 127.0.0.1 --strictPort --port ${port}`,
+    command: `VITE_API_URL=http://localhost:8080 npm run build && npm run preview -- --host 127.0.0.1 --strictPort --port ${port}`,
     url: origin,
     reuseExistingServer: false,
     timeout: 120_000,
