@@ -9,52 +9,84 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
-### Security
-
-- Update the Go Brotli decompressor to 1.2.7 for GO-2026-6888 / CVE-2026-111497, which
-  fixes excessive allocation from crafted compressed streams; preserve exact module and
-  named-license evidence and verify both patched and upstream dependency graphs.
-- Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Bootstrap
-  builder/runtime package installation with download retries disabled until patched APT
-  is installed; fail the image build if the fixed package is unavailable.
+## [0.2.76] - 2026-11-06
 
 ### Added
 
 - Postgres and SQL Server expose separately authorized execute_sql for data changes,
-  schema migrations and routines through the existing connector permission, approval,
-  history, audit and MCP pipeline; protected read-only actions remain unchanged.
+  schema migrations and procedures through the existing connector permission, approval,
+  history, audit and MCP pipeline. Protected read-only actions remain independent.
 - The shared SQL console provides explicit read-only/execution modes, configurable
-  execution deadlines and bounded multiple-result views. SQL Server supports reviewed
-  standalone GO batches; Postgres uses native statement-list and dollar-quoted routine
-  handling.
+  deadlines and bounded multiple-result views. SQL Server supports bounded standalone GO
+  batches; Postgres preserves native statement lists and dollar-quoted routine bodies.
 
 ### Changed
 
 - Load the Vault workspace only when its unlocked route is opened, retaining the
   existing initial JavaScript budget rather than increasing it for SQL execution
   support.
+- Opening the bare Console route leaves targets unselected; explicit target links and
+  manual profile selection remain available without silently choosing a replacement
+  target.
 - Show all built-in connectors near the top of README using the canonical
-  metadata-driven catalog generator; CI rejects a stale overview.
+  metadata-driven catalog, and reset SQL execution context after target, profile or
+  project reconfiguration without discarding unresolved mutation ownership.
+
+### Fixed
+
+- SQL Server connection shutdown joins native response readers before returning pooled
+  buffers. Ordinary statement failures drain the active batch; fatal protocol failures
+  wake execution promptly and later GO batches are not submitted after failure.
+- Postgres output-setting changes retain undecodable values as complete server text with
+  notices, while unsupported client encodings are explicitly omitted instead of silently
+  changing characters. Remaining commands continue to drain.
+- Preserve Postgres JSON number identity, infinite dates and non-finite scalar/array
+  values including NULLs. Generated duplicate column labels no longer consume another
+  original column name.
+- Account for whole-envelope JSON depth and node limits during SQL retention, and
+  enforce the declared byte cap after redaction and numeric projection. Omitted rows are
+  marked truncated without interrupting later mutations.
+- Initialize fixed T-SQL grammar state outside the per-script parse timer and provide
+  action-specific validation errors while preserving cancellation, syntax-work and input
+  limits.
+
+### Security
+
+- Update the Go Brotli decompressor to 1.2.7 for GO-2026-6888 / CVE-2026-111497, which
+  fixes excessive allocation from crafted compressed streams; preserve exact module and
+  named-license evidence and verify both patched and upstream dependency graphs.
+- Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Disable
+  download retries while bootstrapping patched APT and fail image builds when the fixed
+  packages are unavailable.
+- SQL execution is always a separate write action, including scripts containing only
+  SELECT. Existing read permission does not grant it; final output rejection preserves
+  outcome_unknown rather than replaying a mutation.
 
 ### Maintenance
 
-- Update development-only ESLint to 10.14.0 in frontend and MCP through
-  maintainer-authored changes, retaining the existing lint rules and verification
-  budgets.
-- Update frontend Lucide to 1.66.0 with reviewed registry integrity and license
-  metadata; preserve unchanged Go/native evidence and acknowledged historical gaps.
-- Synchronize Redis delete-confirmation component tests with asynchronous mutation
-  readiness and the portaled dialog lifecycle without changing destructive-action rules.
+- Maintain a narrowly patched, source-pinned Microsoft SQL driver with readable upstream
+  diff, license/integrity checks, reader ownership regressions and both patched/upstream
+  vulnerability scans.
+- Retain real-service regressions for committed-but-lost replies, cross-GO
+  physical-session continuity, output-setting changes, structural limits and transaction
+  cleanup, together with native-wire, race and coverage checks.
+- Include the previously untagged ESLint 10.14.0 and Lucide 1.66.0 maintenance updates,
+  preserving verification budgets and unchanged dependency evidence gaps.
 
 ### Notes
 
-- SQL execution is broad, potentially destructive and non-idempotent. Scripts control
-  their transactions; partial commits and external routine effects may survive failure.
-  Post-dispatch errors remain outcome_unknown and require reconciliation, never
-  automatic replay. TLS defaults are not weakened.
-- These are untagged source changes after 0.2.75. Existing release tags, published
-  container images and the npm package are not replaced; source users must rebuild to
-  consume the updated frontend dependency.
+- AIPermission remains local-only and single-user. execute_sql is broad and potentially
+  destructive under the database login's grants, not a SQL sandbox. Prompt and Always
+  are deliberate operator choices; scripts control transactions and partial commits or
+  external effects may persist.
+- Uncertain mutations require reconciliation, never blind replay with a new idempotency
+  key. PostgreSQL client COPY streams remain unsupported. Driver allocation limits are
+  not a universal heap ceiling, and local cancellation is not proof that all remote
+  effects stopped.
+- Back up the encrypted database before upgrading and publish the MCP package
+  separately. Linux SQL Server 2022 fixtures do not certify every Windows server
+  configuration; existing SQLCipher and development-only minimatch follow-ups remain
+  documented.
 
 ## [0.2.75] - 2026-11-03
 

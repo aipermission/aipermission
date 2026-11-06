@@ -1,6 +1,61 @@
 {
-  "version": "0.2.75",
+  "version": "0.2.76",
   "entries": [
+    {
+      "version": "0.2.76",
+      "label": "Explicit SQL execution and native lifecycle hardening",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Postgres and SQL Server expose separately authorized execute_sql for data changes, schema migrations and procedures through the existing connector permission, approval, history, audit and MCP pipeline. Protected read-only actions remain independent.",
+            "The shared SQL console provides explicit read-only/execution modes, configurable deadlines and bounded multiple-result views. SQL Server supports bounded standalone GO batches; Postgres preserves native statement lists and dollar-quoted routine bodies."
+          ]
+        },
+        {
+          "title": "Changed",
+          "items": [
+            "Load the Vault workspace only when its unlocked route is opened, retaining the existing initial JavaScript budget rather than increasing it for SQL execution support.",
+            "Opening the bare Console route leaves targets unselected; explicit target links and manual profile selection remain available without silently choosing a replacement target.",
+            "Show all built-in connectors near the top of README using the canonical metadata-driven catalog, and reset SQL execution context after target, profile or project reconfiguration without discarding unresolved mutation ownership."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "SQL Server connection shutdown joins native response readers before returning pooled buffers. Ordinary statement failures drain the active batch; fatal protocol failures wake execution promptly and later GO batches are not submitted after failure.",
+            "Postgres output-setting changes retain undecodable values as complete server text with notices, while unsupported client encodings are explicitly omitted instead of silently changing characters. Remaining commands continue to drain.",
+            "Preserve Postgres JSON number identity, infinite dates and non-finite scalar/array values including NULLs. Generated duplicate column labels no longer consume another original column name.",
+            "Account for whole-envelope JSON depth and node limits during SQL retention, and enforce the declared byte cap after redaction and numeric projection. Omitted rows are marked truncated without interrupting later mutations.",
+            "Initialize fixed T-SQL grammar state outside the per-script parse timer and provide action-specific validation errors while preserving cancellation, syntax-work and input limits."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Update the Go Brotli decompressor to 1.2.7 for GO-2026-6888 / CVE-2026-111497, which fixes excessive allocation from crafted compressed streams; preserve exact module and named-license evidence and verify both patched and upstream dependency graphs.",
+            "Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Disable download retries while bootstrapping patched APT and fail image builds when the fixed packages are unavailable.",
+            "SQL execution is always a separate write action, including scripts containing only SELECT. Existing read permission does not grant it; final output rejection preserves outcome_unknown rather than replaying a mutation."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Maintain a narrowly patched, source-pinned Microsoft SQL driver with readable upstream diff, license/integrity checks, reader ownership regressions and both patched/upstream vulnerability scans.",
+            "Retain real-service regressions for committed-but-lost replies, cross-GO physical-session continuity, output-setting changes, structural limits and transaction cleanup, together with native-wire, race and coverage checks.",
+            "Include the previously untagged ESLint 10.14.0 and Lucide 1.66.0 maintenance updates, preserving verification budgets and unchanged dependency evidence gaps."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "AIPermission remains local-only and single-user. execute_sql is broad and potentially destructive under the database login's grants, not a SQL sandbox. Prompt and Always are deliberate operator choices; scripts control transactions and partial commits or external effects may persist.",
+            "Uncertain mutations require reconciliation, never blind replay with a new idempotency key. PostgreSQL client COPY streams remain unsupported. Driver allocation limits are not a universal heap ceiling, and local cancellation is not proof that all remote effects stopped.",
+            "Back up the encrypted database before upgrading and publish the MCP package separately. Linux SQL Server 2022 fixtures do not certify every Windows server configuration; existing SQLCipher and development-only minimatch follow-ups remain documented."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.75",
       "label": "SQL Server connector and dependency security",
@@ -271,42 +326,6 @@
             "AIPermission remains local-only, single-user and developer-focused; connector permission and approval policies are unchanged.",
             "Back up the encrypted database before upgrading. This release adds no database schema migration.",
             "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.68",
-      "label": "Connector capacity visibility and storage recovery",
-      "sections": [
-        {
-          "title": "Added",
-          "items": [
-            "Settings displays per-token retained request bytes, records, result reservations, running requests and pending approvals, with storage warnings at 80% and 90% and explicit exhaustion guidance.",
-            "An authenticated local-only capacity report exposes configured limits and history retention without returning token values, credentials, commands or request payloads.",
-            "The operator-owned AIPERMISSION_CONNECTOR_REQUEST_STORAGE_MIB setting accepts integer budgets from 256 to 4096 MiB; the default remains 256 MiB and invalid configuration prevents startup."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Persisted request storage exhaustion reports a stable limit reason and safe token-scoped usage instead of suggesting that waiting 60 seconds always restores capacity; concurrency exhaustion retains retry guidance.",
-            "Capacity polling has a bounded deadline, ignores stale completions, clears cached token identities after UI session invalidation and explicitly marks failed refreshes as stale."
-          ]
-        },
-        {
-          "title": "Changed",
-          "items": [
-            "Schema migration 43 installs a compact numeric request-usage projection maintained atomically by canonical writes, rollback and retention, avoiding repeated aggregation of retained request payloads without duplicating secret content.",
-            "Storage accounting preserves UTF-8 byte sizes, active result reservations, atomic admission, idempotent replay and existing row and concurrency limits."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "Back up the encrypted database before upgrading. Migration runs on unlock; rolling back to an older binary requires restoring the pre-upgrade database rather than opening schema 43 with that binary.",
-            "Larger finite budgets can still fill. Review retention and disk capacity; this release does not silently erase recent history, increase limits automatically or change connector permissions.",
-            "AIPermission remains local-only, single-user and developer-focused. The MCP package must be published separately after the GitHub release."
           ]
         }
       ]

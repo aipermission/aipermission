@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "3251d693373f3ca2b01e292ebf021fb2c80d67f05198f909f92fec168e9e8f75"
+      "sha256": "25cfb9775b953ce0b24ddbc96ec81f9f82c8deb593ba754563a9accd50b0627c"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "af9fd32f040392ed63c2660bc60e786c55f026bea8edfc2d286c0e69e393479b"
+      "sha256": "c2c74ffa149b472ef6995393b3807c29cf141578c32dc23b7240f2334b9d8308"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "4fff2a4768377597ebaca0dc9f2ed53d2dee1f79b983b56ceaa22ec43f749885"
+      "sha256": "8866228ef5d4df59dd128e5fe15038001fcab7e0057424f88e4adce2b94e88fb"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "5bb2b1cc4e1bd3061f280ae9a9dbeb492f550a4089b61db53123024a578b94a4"
+      "sha256": "a95688ca49a514eca275717c980e56785fbdc9d15c692546d0a86363667e57ed"
     },
     {
       "path": "scripts/package.json",
@@ -55,11 +55,11 @@
       "source": "frontend/package-lock.json",
       "location": "",
       "name": "aipermission-frontend",
-      "version": "0.2.75",
+      "version": "0.2.76",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "83c7a8a999668f5e12e4b9ad1d59fdbf4eee34e6615c43775aa4c06bea1a560a"
+      "metadata_sha256": "7e58db773bbeb1aa576f80e4b2ee2115dc6b64d50d64cfc4ca2edb2e577a7478"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4375,11 +4375,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "",
       "name": "@aipermission/mcp",
-      "version": "0.2.75",
+      "version": "0.2.76",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "c300c3baffe703ffb65bfd6f364796f3fe3dca3429637d64a28da311332c1605"
+      "metadata_sha256": "fb33a8cc40dbda0bde396aa78698adf11b75b2dbdeb4dbd101782e3a2a505f26"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8424,7 +8424,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed Brotli 1.2.7 exact checksums and unchanged MIT/flate BSD named evidence; historical gaps preserved; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed 0.2.76 root metadata and Brotli 1.2.7 checksums with unchanged MIT/flate BSD evidence; historical gaps preserved; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
