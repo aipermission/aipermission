@@ -404,6 +404,12 @@ endpoint; remote contexts are rejected and operator `.env` files are not loaded.
 The required `Connector Conformance` GitHub workflow runs for pull requests and
 pushes to `main` and `dev`, as well as weekly and on demand.
 
+The disposable Postgres fixture disables ambient autovacuum to keep positive
+catalog-fence cases deterministic. A required native maintenance-lock scenario
+still holds the conflicting shared-catalog lock and verifies fail-closed NOWAIT
+behavior. Production maintenance settings and connector behavior are unchanged;
+tests do not retry a rejected catalog fence or use an unlocked fallback.
+
 The shared harness verifies connection testing, the advertised action contract,
 prepared-payload credential isolation, bounded execution, and terminal results.
 Service-specific tests should contain only target/profile fixture data and the

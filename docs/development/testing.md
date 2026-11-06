@@ -6,6 +6,16 @@ fixture services, including RabbitMQ. Logs are limited to 40 lines per service
 and 64 KiB total. Diagnostics inspect only the run's owned project, never the
 operator's stable stack, Docker environment or mount configuration. A passing
 retry does not establish the cause of an earlier fixture failure.
+Postgres role-fence failures also log at most 12 catalog lock owners, backend
+types and lock modes without query text. A controlled maintenance-lock probe
+verifies that the production NOWAIT fence rejects contention and leaves its
+connection idle; native setup does not retry or bypass that security decision.
+Diagnostics exclude their own observer connection and do not prove that a lock
+observed after failure was the original blocker. The disposable Postgres service
+disables background autovacuum so positive catalog-fence cases have controlled
+writers. The required maintenance-lock scenario still holds a real conflicting
+catalog lock and checks the unchanged production fence returns `SQLSTATE 55P03`.
+This fixture-only setting does not change production autovacuum or add retries.
 
 Use the root `Makefile` for the common verification set.
 
