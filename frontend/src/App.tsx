@@ -13,11 +13,11 @@ import { AuditLogsPage } from "./pages/audit-logs";
 import { TokensPage } from "./pages/tokens";
 import { ConnectorsPage } from "./pages/connectors";
 import { ProjectsPage } from "./pages/projects";
-import { VaultPage } from "./pages/vault";
 import { UnlockPage, UnlockShell } from "./pages/unlock";
 
 const ConsolePage = lazy(() => import("./pages/console").then((module) => ({ default: module.ConsolePage })));
 const MCPSetupPage = lazy(() => import("./pages/mcp-setup").then((module) => ({ default: module.MCPSetupPage })));
+const VaultPage = lazy(() => import("./pages/vault").then((module) => ({ default: module.VaultPage })));
 
 export default function App() {
   const { theme, setTheme } = useTheme();
@@ -47,7 +47,14 @@ export default function App() {
           <Route path="/servers" element={<Navigate to="/connectors" replace />} />
           <Route path="/connectors" element={<ConnectorsPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/vault" element={<VaultPage />} />
+          <Route
+            path="/vault"
+            element={
+              <Suspense fallback={<Notice>Loading vault...</Notice>}>
+                <VaultPage />
+              </Suspense>
+            }
+          />
           <Route path="/history" element={<HistoryPage />} />
           <Route path="/audit-logs" element={<AuditLogsPage />} />
           <Route path="/tokens" element={<TokensPage />} />
