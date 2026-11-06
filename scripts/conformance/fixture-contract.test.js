@@ -130,6 +130,19 @@ test("connector conformance documentation matches the required workflow", () => 
   );
 });
 
+test("Postgres fixture isolates ambient maintenance while retaining contention proof", () => {
+  const compose = parseYAML("backend/testdata/connector-conformance/compose.yml");
+  assert.deepEqual(compose.services.postgres.command, [
+    "postgres", "-c", "autovacuum=off",
+  ]);
+  const required = JSON.parse(read("scripts/verification-policy.json")).connector_conformance_tests;
+  assert.ok(required.includes("TestPostgresRoleFenceFailsClosedDuringCatalogMaintenance"));
+  const maintenance = read("backend/internal/connectors/conformance/postgres_catalog_maintenance_test.go");
+  assert.match(maintenance, /LOCK TABLE pg_catalog\.pg_database IN SHARE UPDATE EXCLUSIVE MODE/);
+  assert.match(maintenance, /serverError\.Code != "55P03"/);
+  assert.match(maintenance, /assertPostgresRoleFenceConnectionIdle/);
+});
+
 test("Docker daemon qualification cannot reach the host daemon or network", () => {
   const prefix = "backend/testdata/connector-conformance/docker-vm";
   const build = read("backend/testdata/connector-conformance/Dockerfile");

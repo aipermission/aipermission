@@ -497,6 +497,7 @@
     "TestPostgresProvisionScopePreservesExactPrivilegesRealService",
     "TestPostgresRoleFenceBlocksCrossDatabaseCatalogWriters",
     "TestPostgresRoleFenceFailsClosedWhenCatalogWriterAlreadyEntered",
+    "TestPostgresRoleFenceFailsClosedDuringCatalogMaintenance",
     "TestPostgresRoleFenceRejectsRoleNameReuseAndMarkerDrift",
     "TestPostgresRoleFenceDoesNotFallbackForCreateRoleOnlyAdmin",
     "TestPostgresRoleCleanupPlanPreservesOwnedDataAndRevokesColumnPrivileges",

@@ -61,10 +61,38 @@ func beginPostgresRoleFence(t *testing.T, connection *pgx.Conn) pgx.Tx {
 	t.Helper()
 	tx, err := rolecatalog.Begin(t.Context(), connection)
 	if err != nil {
+		logPostgresFixtureCatalogLocks(t, connection)
 		t.Fatal(err)
 	}
 	cleanupPostgresRoleFenceTransaction(t, tx)
 	return tx
+}
+
+func logPostgresFixtureCatalogLocks(t *testing.T, connection *pgx.Conn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	rows, err := connection.Query(ctx, `SELECT COALESCE(activity.backend_type, 'gone'), lock.mode, lock.granted
+ FROM pg_catalog.pg_locks AS lock LEFT JOIN pg_catalog.pg_stat_activity AS activity USING (pid)
+ WHERE lock.locktype = 'relation' AND lock.relation = 'pg_catalog.pg_database'::regclass
+ AND lock.pid <> pg_catalog.pg_backend_pid() LIMIT 12`)
+	if err != nil {
+		t.Logf("fixture catalog lock diagnostics unavailable: %v", err)
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var backend, mode string
+		var granted bool
+		if err := rows.Scan(&backend, &mode, &granted); err != nil {
+			t.Logf("fixture lock diagnostic decode: %v", err)
+			return
+		}
+		t.Logf("fixture pg_database lock: backend=%s mode=%s granted=%t", backend, mode, granted)
+	}
+	if err := rows.Err(); err != nil {
+		t.Logf("fixture catalog lock diagnostics interrupted: %v", err)
+	}
 }
 
 func cleanupPostgresRoleFenceTransaction(t *testing.T, tx pgx.Tx) {
