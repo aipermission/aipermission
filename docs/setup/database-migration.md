@@ -51,7 +51,8 @@ The migration page asks for:
 - the new 0.2 database password
 
 The source password can be an older 0.1.x password. The new 0.2 database
-password follows the current password rule: at least 14 characters with
+password follows the current password rule: SQLCipher raw-key notation is not
+accepted for a new target; use a passphrase of at least 14 characters with
 uppercase letters, lowercase letters, and numbers.
 
 The helper migrates:
