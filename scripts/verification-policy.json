@@ -491,6 +491,7 @@
     "TestPostgresExecutionRealService",
     "TestPostgresBinaryFixtureReadOnlyPolicy",
     "TestPostgresMultipartFunctionQualificationRealService",
+    "TestPostgresReadonlyLexicalBoundariesRealService",
     "TestPostgresUnicodeTypedLiteralRealService",
     "TestPostgresProvisionScopePreservesExactPrivilegesRealService",
     "TestPostgresRoleFenceBlocksCrossDatabaseCatalogWriters",
