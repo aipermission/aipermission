@@ -3,6 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 
@@ -43,9 +44,11 @@ func (*Connector) TargetSchema() connectors.Schema {
 			{Value: "over_ssh", Label: "Over an SSH connector profile"},
 		}},
 		{Name: "bootstrap_brokers", Label: "Bootstrap brokers", Type: connectors.FieldMultiline, Required: true, Description: "One host:port per line or a comma-separated list."},
+		{Name: "advertised_brokers", Label: "Additional permitted brokers", Type: connectors.FieldMultiline, Description: "Additional advertised host:port endpoints this target may contact; bootstrap brokers are already permitted. Maximum 200."},
 		{Name: "transport_target_ref", Label: "SSH transport profile", Type: connectors.FieldString},
 		{Name: "tls_enabled", Label: "Use TLS", Type: connectors.FieldBoolean, Default: false},
 		{Name: "allow_insecure_plain_sasl", Label: "Allow PLAIN SASL without TLS", Type: connectors.FieldBoolean, Default: false, Description: "Explicitly permit plaintext PLAIN credentials on a trusted private network."},
+		{Name: "allow_insecure_scram_sasl", Label: "Allow SCRAM SASL without TLS", Type: connectors.FieldBoolean, Default: false, Description: "Explicitly accept unencrypted SCRAM exchanges on this target; SSH does not encrypt the final broker hop."},
 		{Name: "tls_server_name", Label: "TLS server name", Type: connectors.FieldString},
 		{Name: "tls_ca_pem", Label: "Custom CA certificate", Type: connectors.FieldFileText},
 	}}
@@ -227,9 +230,18 @@ func (c *Connector) TestConnection(ctx context.Context, runtime connectors.Runti
 	if err != nil {
 		return testFailure(err), nil
 	}
+	_, scope, err := configuredBrokerScope(runtime.Target.Config)
+	if err != nil {
+		return testFailure(err), nil
+	}
+	for _, broker := range metadata.Brokers {
+		if _, _, err := scope.resolve(net.JoinHostPort(broker.Host, strconv.Itoa(int(broker.Port)))); err != nil {
+			return testFailure(err), nil
+		}
+	}
 	return connectors.TestResult{
 		Status:  connectors.TestOK,
-		Message: fmt.Sprintf("%s cluster is reachable through %d broker(s).", familyLabel(stringValue(runtime.Target.Config, "server_family", "kafka")), len(metadata.Brokers)),
+		Message: fmt.Sprintf("%s bootstrap is reachable; %d advertised broker(s) are within the configured scope.", familyLabel(stringValue(runtime.Target.Config, "server_family", "kafka")), len(metadata.Brokers)),
 		Details: map[string]any{"cluster_id": metadata.Cluster, "controller_id": metadata.Controller, "broker_count": len(metadata.Brokers)},
 	}, nil
 }

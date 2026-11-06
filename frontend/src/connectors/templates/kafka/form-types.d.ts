@@ -10,10 +10,12 @@ export type KafkaConnectionForm = ComponentProps<typeof ConnectionModeFields>["f
     name: string;
     server_family: string;
     bootstrap_brokers: string;
+    advertised_brokers?: string;
     project_id?: string | number;
     tls_enabled: boolean;
     tls_server_name: string;
     allow_insecure_plain_sasl: boolean;
+    allow_insecure_scram_sasl?: boolean;
     tls_ca_pem: string;
     profile_label: string;
     risk_label: string;
@@ -34,9 +36,11 @@ export interface KafkaTarget extends LifecycleTarget<KafkaProfile> {
     server_family?: string;
     connection_mode?: string;
     bootstrap_brokers?: string;
+    advertised_brokers?: string;
     transport_target_ref?: string;
     tls_enabled?: boolean;
     allow_insecure_plain_sasl?: boolean;
+    allow_insecure_scram_sasl?: boolean;
     tls_server_name?: string;
     tls_ca_pem?: string;
   };

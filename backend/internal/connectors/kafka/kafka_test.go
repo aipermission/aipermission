@@ -765,7 +765,7 @@ func testRuntime(brokers []string, transport connectors.NetworkTransport) connec
 			ID: 1, Ref: "kafka:1:2", ConnectorKind: Kind, Name: "events",
 			Config: map[string]any{
 				"server_family": "redpanda", "connection_mode": "direct",
-				"bootstrap_brokers": brokers[0], "tls_enabled": false,
+				"bootstrap_brokers": brokers[0], "advertised_brokers": strings.Join(brokers[1:], "\n"), "tls_enabled": false,
 			},
 		},
 		Profile: connectors.CredentialProfileView{

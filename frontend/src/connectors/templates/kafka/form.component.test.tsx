@@ -89,6 +89,23 @@ it("requires an explicit exception for PLAIN SASL without TLS", async () => {
   );
 
   const insecurePlain = screen.getByLabelText(/PLAIN without TLS/);
-  await user.selectOptions(insecurePlain, "allowed");
+  await user.click(insecurePlain);
   expect(onChange).toHaveBeenCalledWith("allow_insecure_plain_sasl", true);
+});
+
+it("keeps SCRAM plaintext consent separate from PLAIN consent", async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  render(
+    <KafkaConnectorFormTemplate
+      form={{ ...emptyForm(), sasl_mechanism: "scram_sha_512", allow_insecure_plain_sasl: true }}
+      onChange={onChange}
+    />,
+  );
+  const consent = screen.getByRole("checkbox", { name: /SCRAM without TLS/ });
+  expect(consent).not.toBeChecked();
+  await user.click(consent);
+  expect(onChange).toHaveBeenCalledWith("allow_insecure_scram_sasl", true);
+  await user.type(screen.getByLabelText("Additional permitted brokers"), "b");
+  expect(onChange).toHaveBeenCalledWith("advertised_brokers", "b");
 });

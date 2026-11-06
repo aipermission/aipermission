@@ -19,9 +19,11 @@ const config = {
   server_family: "redpanda",
   connection_mode: "direct",
   bootstrap_brokers: "broker.example:9093",
+  advertised_brokers: "",
   transport_target_ref: "",
   tls_enabled: true,
   allow_insecure_plain_sasl: false,
+  allow_insecure_scram_sasl: false,
   tls_server_name: "broker.example",
   tls_ca_pem: "test-ca",
 };

@@ -42,7 +42,7 @@ func newClient(ctx context.Context, runtime connectors.RuntimeContext, extraOpti
 		kgo.BrokerMaxReadBytes(2097152),
 		kgo.WithDecompressor(boundedDecompressor{maxBytes: maxDecompressedBatchBytes}),
 		kgo.Dialer(func(dialCtx context.Context, _, address string) (net.Conn, error) {
-			host, port, err := splitBrokerAddress(address)
+			host, port, err := config.Scope.resolve(address)
 			if err != nil {
 				return nil, err
 			}
@@ -85,6 +85,7 @@ func newClient(ctx context.Context, runtime connectors.RuntimeContext, extraOpti
 
 type clientConfig struct {
 	Brokers            []string
+	Scope              brokerScope
 	ConnectionMode     string
 	TransportTargetRef string
 	TLSEnabled         bool
@@ -94,7 +95,7 @@ type clientConfig struct {
 }
 
 func parseClientConfig(ctx context.Context, runtime connectors.RuntimeContext) (clientConfig, error) {
-	brokers, err := parseBrokerList(stringValue(runtime.Target.Config, "bootstrap_brokers", ""))
+	brokers, scope, err := configuredBrokerScope(runtime.Target.Config)
 	if err != nil {
 		return clientConfig{}, err
 	}
@@ -121,6 +122,9 @@ func parseClientConfig(ctx context.Context, runtime connectors.RuntimeContext) (
 		}
 	}
 	mechanismName := stringValue(runtime.Profile.Public, "mechanism", "none")
+	if err := validateSASLTransport(runtime.Target.Config, tlsEnabled, mechanismName); err != nil {
+		return clientConfig{}, err
+	}
 	var mechanism sasl.Mechanism
 	if mechanismName != "none" {
 		username := strings.TrimSpace(stringValue(runtime.Profile.Public, "username", ""))
@@ -139,9 +143,6 @@ func parseClientConfig(ctx context.Context, runtime connectors.RuntimeContext) (
 		}
 		switch mechanismName {
 		case "plain":
-			if !tlsEnabled && !boolValue(runtime.Target.Config, "allow_insecure_plain_sasl", false) {
-				return clientConfig{}, fmt.Errorf("PLAIN SASL requires TLS unless insecure PLAIN is explicitly allowed on this connector")
-			}
 			mechanism = plain.Auth{User: username, Pass: password}.AsMechanism()
 		case "scram_sha_256":
 			mechanism = scram.Auth{User: username, Pass: password}.AsSha256Mechanism()
@@ -153,6 +154,7 @@ func parseClientConfig(ctx context.Context, runtime connectors.RuntimeContext) (
 	}
 	return clientConfig{
 		Brokers:            brokers,
+		Scope:              scope,
 		ConnectionMode:     mode,
 		TransportTargetRef: transportRef,
 		TLSEnabled:         tlsEnabled,
@@ -163,27 +165,12 @@ func parseClientConfig(ctx context.Context, runtime connectors.RuntimeContext) (
 }
 
 func parseBrokerList(value string) ([]string, error) {
-	fields := strings.FieldsFunc(value, func(r rune) bool {
-		return r == ',' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-	})
-	seen := map[string]bool{}
-	brokers := make([]string, 0, len(fields))
-	for _, field := range fields {
-		host, port, err := splitBrokerAddress(field)
-		if err != nil {
-			return nil, err
-		}
-		address := net.JoinHostPort(host, strconv.Itoa(port))
-		if !seen[address] {
-			seen[address] = true
-			brokers = append(brokers, address)
-		}
+	brokers, err := parseScopedBrokerList(value, "bootstrap", 20)
+	if err != nil {
+		return nil, err
 	}
 	if len(brokers) == 0 {
 		return nil, fmt.Errorf("at least one bootstrap broker is required")
-	}
-	if len(brokers) > 20 {
-		return nil, fmt.Errorf("bootstrap broker count must not exceed 20")
 	}
 	return brokers, nil
 }
@@ -197,15 +184,38 @@ func splitBrokerAddress(address string) (string, int, error) {
 	if err != nil {
 		return "", 0, fmt.Errorf("broker %q must use host:port format: %w", address, err)
 	}
-	host = strings.TrimSpace(host)
-	if host == "" {
-		return "", 0, fmt.Errorf("broker %q has an empty host", address)
+	host, err = canonicalBrokerHost(host)
+	if err != nil {
+		return "", 0, err
+	}
+	for _, digit := range portText {
+		if digit < '0' || digit > '9' {
+			return "", 0, fmt.Errorf("broker port must be decimal digits")
+		}
 	}
 	port, err := strconv.Atoi(portText)
 	if err != nil || port < 1 || port > 65535 {
 		return "", 0, fmt.Errorf("broker %q has an invalid port", address)
 	}
 	return host, port, nil
+}
+
+func validateSASLTransport(config map[string]any, tlsEnabled bool, mechanism string) error {
+	var exception string
+	switch mechanism {
+	case "none":
+		return nil
+	case "plain":
+		exception = "allow_insecure_plain_sasl"
+	case "scram_sha_256", "scram_sha_512":
+		exception = "allow_insecure_scram_sasl"
+	default:
+		return fmt.Errorf("unsupported SASL mechanism %q", mechanism)
+	}
+	if !tlsEnabled && !boolValue(config, exception, false) {
+		return fmt.Errorf("%s SASL requires TLS unless %s is explicitly enabled on this connector", mechanism, exception)
+	}
+	return nil
 }
 
 func clientBrokerMetadata(ctx context.Context, client *kgo.Client) (kadm.Metadata, error) {

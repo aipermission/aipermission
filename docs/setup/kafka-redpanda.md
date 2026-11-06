@@ -12,6 +12,8 @@ Create a connector and choose:
 - **Connection mode:** Direct from the local gateway, or Over SSH through an
   existing SSH connector profile.
 - **Bootstrap brokers:** one `host:port` per line or a comma-separated list.
+- **Additional permitted brokers:** explicitly list any other endpoints returned
+  by broker, partition-leader or consumer-group coordinator discovery.
 - **TLS:** optional TLS, certificate server-name override, and custom CA PEM.
 - **SASL profile:** None, PLAIN, SCRAM-SHA-256, or SCRAM-SHA-512.
 
@@ -21,9 +23,24 @@ address must be reachable from the gateway container. In Over SSH mode, every
 advertised address is dialed through the selected SSH profile and must resolve
 from that remote host.
 
-PLAIN SASL is rejected without TLS by default because it exposes the password
-on the broker connection. A connector can explicitly allow insecure PLAIN only
-for a trusted private network; TLS or SCRAM remains the recommended setup.
+Every connection is checked against the exact host-and-port union of bootstrap
+and additional permitted brokers before the network transport is called. This
+applies equally to Direct and Over SSH, including metadata/coordinator redirects.
+Listing a bootstrap hostname does not authorize arbitrary metadata IPs, ports or
+subdomains. DNS names are resolved by the selected transport; this is endpoint
+authorization, not DNS rebinding protection or IP pinning. Up to 20 bootstrap and
+200 additional endpoints are supported; each list is limited to 64 KiB.
+
+PLAIN and SCRAM SASL are rejected without TLS by default. PLAIN exposes the
+password; SCRAM does not encrypt broker traffic or its authentication exchanges.
+A connector can explicitly allow insecure PLAIN or insecure SCRAM separately
+on a trusted network. Neither exception authorizes the other mechanism. Prefer
+verified TLS, including Over SSH: SSH does not encrypt the final broker hop.
+
+When upgrading existing profiles, add any advertised endpoints that differ from
+the bootstrap list. Existing plaintext SCRAM profiles must enable TLS or
+deliberately select the separate SCRAM exception. Missing settings fail closed;
+no database migration or automatic trust of discovered endpoints occurs.
 
 For a broker running on the same machine as AIPermission Docker, use
 `host.docker.internal` rather than `localhost` in a Direct target.

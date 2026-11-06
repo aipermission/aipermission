@@ -31,8 +31,10 @@ export function KafkaCredentialFormTemplate<Form extends KafkaCredentialForm>({
         targetOptionLabel={(target) => `${target.name} · ${targetEndpoint(target)}`}
       />
       <KafkaSASLFields form={form} editing={editing} onChange={(name, value) => onChange({ ...form, [name]: value })} />
-      {form.sasl_mechanism === "plain" ? (
-        <Notice tone="warn">The target must use TLS or explicitly allow insecure PLAIN on a trusted private network.</Notice>
+      {form.sasl_mechanism !== "none" ? (
+        <Notice tone="warn">
+          The target must use TLS or explicitly allow this SASL mechanism without encryption on a trusted network.
+        </Notice>
       ) : null}
       {state.state === "error" ? <Notice tone="bad">{state.error}</Notice> : null}
       <Button type="submit" disabled={state.state === "saving" || kafkaTargets.length === 0}>

@@ -70,6 +70,31 @@ describe("Kafka credential lifecycle model", () => {
     );
   });
 
+  it.each(["direct", "over_ssh"])("roundtrips explicit broker scope and SCRAM consent in %s mode", async (connection_mode) => {
+    const config = {
+      bootstrap_brokers: "seed:9092",
+      advertised_brokers: "broker-1:9092\nbroker-2:9092",
+      connection_mode,
+      transport_target_ref: connection_mode === "over_ssh" ? "ssh:1:2" : "",
+      allow_insecure_scram_sasl: true,
+    };
+    const target: KafkaTarget = {
+      id: 3,
+      connector_kind: "kafka",
+      name: "Stream",
+      config,
+      profiles: [{ id: 9, kind: "sasl", label: "monitor", public: { mechanism: "none" } }],
+    };
+    const form = syncForm({ form: formFromTarget({ target }) });
+    expect(form).toMatchObject(config);
+    await save({ mode: "edit", form, target });
+    expect(api.put).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ target: expect.objectContaining({ config: expect.objectContaining(config) }) }),
+    );
+    expect(emptyForm()).toMatchObject({ advertised_brokers: "", allow_insecure_scram_sasl: false });
+  });
+
   it("keeps profile projection public and preserves stored SASL passwords on edit", async () => {
     const profile = {
       id: 9,
