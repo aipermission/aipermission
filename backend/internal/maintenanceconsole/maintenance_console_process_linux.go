@@ -36,22 +36,22 @@ func maintenancePIDHandlesAvailable() error {
 	return unix.PidfdSendSignal(fd, 0, nil, 0)
 }
 
-func signalMaintenanceConsoleProcess(pid int, signal syscall.Signal) error {
-	if pid < 1 {
-		return nil
+func terminateMaintenanceConsoleSupervisor(process *os.Process) {
+	if process == nil {
+		return
 	}
-	return syscall.Kill(pid, signal)
+	// Keep the exec-created process handle; looking the PID up again can target
+	// an unrelated process after the concurrent waiter reaps this supervisor.
+	_ = process.Signal(syscall.SIGHUP)
+	if waitForMaintenanceConsoleSupervisorExit(process, maintenanceConsoleProcessGracePeriod) {
+		return
+	}
+	_ = process.Kill()
 }
 
-func terminateMaintenanceConsoleSupervisor(pid int) {
-	if pid < 1 {
-		return
-	}
-	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGHUP)
-	if waitForMaintenanceConsoleSupervisorExit(pid, maintenanceConsoleProcessGracePeriod) {
-		return
-	}
-	_ = signalMaintenanceConsoleProcess(pid, syscall.SIGKILL)
+func maintenanceSupervisorExists(process *os.Process) bool {
+	err := process.Signal(syscall.Signal(0))
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func maintenanceConsoleProcessExists(pid int) bool {

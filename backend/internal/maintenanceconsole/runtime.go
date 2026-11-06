@@ -527,7 +527,7 @@ func (s *Session) terminate(status string, data string) {
 			_ = tty.Close()
 		}
 		if cmd != nil && cmd.Process != nil {
-			terminateMaintenanceConsoleSupervisor(cmd.Process.Pid)
+			terminateMaintenanceConsoleSupervisor(cmd.Process)
 			waitForMaintenanceConsoleProcess(s.processDone, maintenanceConsoleProcessGracePeriod)
 		}
 	})
@@ -543,9 +543,9 @@ func (s *Session) markProcessDone() {
 	}
 }
 
-func waitForMaintenanceConsoleSupervisorExit(pid int, timeout time.Duration) bool {
+func waitForMaintenanceConsoleSupervisorExit(process *os.Process, timeout time.Duration) bool {
 	deadline := time.Now().Add(timeout)
-	for maintenanceConsoleProcessExists(pid) {
+	for maintenanceSupervisorExists(process) {
 		if time.Now().After(deadline) {
 			return false
 		}

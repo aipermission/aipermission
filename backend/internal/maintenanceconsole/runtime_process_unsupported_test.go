@@ -3,6 +3,7 @@
 package maintenanceconsole
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -20,7 +21,12 @@ func TestMaintenanceConsoleUnsupportedRuntimeFailsClosed(t *testing.T) {
 		}
 		t.Fatalf("unsupported maintenance console error = %v", err)
 	}
-	terminateMaintenanceConsoleSupervisor(1)
+	terminateMaintenanceConsoleSupervisor(nil)
+	for _, process := range []*os.Process{nil, {Pid: os.Getpid()}} {
+		if maintenanceSupervisorExists(process) {
+			t.Fatal("unsupported platform reported a maintenance supervisor")
+		}
+	}
 	if maintenanceConsoleProcessExists(1) {
 		t.Fatal("unsupported platform reported a maintenance console process")
 	}
