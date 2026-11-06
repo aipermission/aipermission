@@ -9,6 +9,41 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Security
+
+- Align PostgreSQL readonly lexical inspection with server whitespace and CR comment
+  boundaries; reject hidden function calls before network execution while preserving
+  quoted values and identifiers.
+- Constrain all Kafka broker connections to explicitly configured bootstrap and
+  additional advertised endpoints. Require verified TLS or separate deliberate plaintext
+  exceptions for PLAIN and SCRAM, including Over SSH.
+- Pass MCP publication tags as environment data, validate them before checkout, and
+  enforce adversarial workflow-input regressions in local and hosted checks.
+- Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict
+  update links to HTTPS repository releases, and retain supervisor process identity
+  during termination.
+
+### Fixed
+
+- Align the shared action request budget at 330 seconds and the default MCP HTTP budget
+  at 335 seconds so explicit SQL execution can use its existing 300-second maximum.
+  Preserve caller cancellation and unknown-outcome reconciliation without automatic
+  mutation replay.
+- Configure explicit bounded MCP header/body timeouts and close its HTTP pool on stdio
+  shutdown, avoiding a shorter hidden transport deadline and abandoned connections.
+- Keep source Vite and its default API address on the same hostname and scheme without
+  relaxing CSRF checks; preserve explicit overrides and production relative URLs.
+
+### Notes
+
+- Existing Kafka profiles must explicitly list discovered endpoints outside their
+  bootstrap set. Plaintext SCRAM profiles must enable TLS or deliberately opt into the
+  independent SCRAM exception; missing settings fail closed.
+- Use the operator skill bundled with the exact installed MCP version instead of
+  downloading instructions from a moving branch. AIPermission remains local-only and
+  single-user; this hardening does not add a connector, database migration or permission
+  bypass.
+
 ## [0.2.76] - 2026-11-06
 
 ### Added
