@@ -10,6 +10,9 @@ import type { KafkaConnectionForm } from "./form-types";
 export function KafkaConnectorFormTemplate({ form, mode = "create", targets = [], onChange }: ConnectorFormProps<KafkaConnectionForm>) {
   const editing = mode === "edit";
   const brokersID = useId();
+  const saslException = form.sasl_mechanism === "plain" ? "allow_insecure_plain_sasl" : "allow_insecure_scram_sasl";
+  const saslLabel = form.sasl_mechanism === "plain" ? "PLAIN" : "SCRAM";
+  const authenticated = ["plain", "scram_sha_256", "scram_sha_512"].includes(form.sasl_mechanism);
   return (
     <>
       <Notice tone="good">
@@ -57,6 +60,16 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
         />
         <span className="text-xs text-stone-500">One host:port per line, or a comma-separated list.</span>
       </FieldWithAction>
+      <Field>
+        Additional permitted brokers
+        <Textarea
+          className="min-h-24 font-mono text-xs"
+          value={form.advertised_brokers || ""}
+          onChange={(event) => onChange("advertised_brokers", event.target.value)}
+          placeholder={"advertised-broker-1:9092\nadvertised-broker-2:9092"}
+          title="Only bootstrap endpoints and these additional advertised endpoints may be contacted, in Direct or Over SSH mode. Maximum 200."
+        />
+      </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field>
           TLS
@@ -78,17 +91,20 @@ export function KafkaConnectorFormTemplate({ form, mode = "create", targets = []
           />
         </Field>
       </div>
-      {!form.tls_enabled && form.sasl_mechanism === "plain" ? (
+      {!form.tls_enabled && authenticated ? (
         <Field>
-          PLAIN without TLS
-          <Select
-            value={form.allow_insecure_plain_sasl ? "allowed" : "blocked"}
-            onChange={(event) => onChange("allow_insecure_plain_sasl", event.target.value === "allowed")}
-          >
-            <option value="blocked">Blocked</option>
-            <option value="allowed">Allow on this trusted network</option>
-          </Select>
-          <span className="text-xs text-amber-600">PLAIN sends credentials without transport encryption. Prefer TLS or SCRAM.</span>
+          {saslLabel} without TLS
+          <input
+            type="checkbox"
+            checked={Boolean(form[saslException])}
+            onChange={(event) => onChange(saslException, event.target.checked)}
+          />
+          <span className="text-xs text-amber-600">
+            {saslLabel === "PLAIN"
+              ? "PLAIN sends credentials without encryption."
+              : "SCRAM does not encrypt broker traffic or authentication exchanges."}{" "}
+            Prefer TLS; SSH does not encrypt the final broker hop.
+          </span>
         </Field>
       ) : null}
       {form.tls_enabled ? (
