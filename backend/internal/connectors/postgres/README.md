@@ -11,6 +11,12 @@ use output truncation. Protected read actions retain read-only transactions,
 the audited function allowlist and resolution policy, and their existing
 20-second request/session statement timeouts, including pooler-compatible setup.
 
+The read-policy scanner recognizes PostgreSQL whitespace (including vertical
+tab) and both CR and LF line-comment endings. Other unquoted ASCII controls
+are rejected. Literal and quoted-identifier contents are not rewritten. The
+same policy is checked during preparation and again before execution; database
+roles remain a separate least-privilege boundary, not a replacement for it.
+
 ## Explicit SQL Execution
 
 `execute_sql` is a separate `write`-risk, `non_idempotent` action. Its approval

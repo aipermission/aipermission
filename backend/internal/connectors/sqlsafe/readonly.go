@@ -322,7 +322,7 @@ func sqlIdentifierAtCursor(sql string, cursor int) (string, int) {
 
 func sqlSpace(ch byte) bool {
 	switch ch {
-	case ' ', '\t', '\r', '\n', '\f':
+	case ' ', '\t', '\r', '\n', '\f', '\v':
 		return true
 	default:
 		return false
@@ -346,13 +346,8 @@ func postgresIdentifierContinue(ch byte) bool {
 }
 
 func skipSQLSpace(sql string, start int) int {
-	for start < len(sql) {
-		switch sql[start] {
-		case ' ', '\t', '\r', '\n', '\f':
-			start++
-		default:
-			return start
-		}
+	for start < len(sql) && sqlSpace(sql[start]) {
+		start++
 	}
 	return start
 }
@@ -401,7 +396,7 @@ func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool, 
 	for i := 0; i < len(sql); {
 		switch {
 		case strings.HasPrefix(sql[i:], "--"):
-			for i < len(sql) && sql[i] != '\n' {
+			for i < len(sql) && sql[i] != '\n' && (dialect != DialectPostgreSQL || sql[i] != '\r') {
 				out.WriteByte(' ')
 				i++
 			}
@@ -479,6 +474,12 @@ func normalizedSQL(sql string, dialect Dialect, preserveQuotedIdentifiers bool, 
 				out.WriteByte(byteLower(sql[i]))
 				i++
 			}
+		case dialect == DialectPostgreSQL && sql[i] == '\v':
+			// Go regexp whitespace excludes VT; PostgreSQL treats it as space.
+			out.WriteByte(' ')
+			i++
+		case dialect == DialectPostgreSQL && (sql[i] < 32 && !sqlSpace(sql[i]) || sql[i] == 127):
+			return "", fmt.Errorf("unsupported unquoted control byte 0x%02x", sql[i])
 		default:
 			out.WriteByte(byteLower(sql[i]))
 			i++
