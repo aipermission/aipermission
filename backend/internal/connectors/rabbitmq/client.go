@@ -27,6 +27,9 @@ type rabbitClient struct {
 }
 
 func newRabbitClient(ctx context.Context, runtime connectors.RuntimeContext) (*rabbitClient, error) {
+	if err := connectors.ValidateSchemaValues((Connector{}).TargetSchema(), runtime.Target.Config); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 	if err := validateRabbitIdentities(runtime.Target.Config); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
 	}

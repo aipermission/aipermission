@@ -22,6 +22,10 @@ and this project uses semantic versioning for public releases.
 - Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict
   update links to HTTPS repository releases, and retain supervisor process identity
   during termination.
+- Revalidate Redis and RabbitMQ runtime configuration against each connector's existing
+  schema before credentials or transport access. This closes malformed-row fallback in
+  depth without duplicating select-option policy or changing intentional plaintext
+  settings.
 
 ### Fixed
 
