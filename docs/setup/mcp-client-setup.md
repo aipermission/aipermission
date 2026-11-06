@@ -371,20 +371,24 @@ full restart remains the conservative cross-client recovery step.
 
 The MCP bridge only accepts local gateway URLs: `http://localhost:3210`, `http://127.0.0.1:3210`, or `http://[::1]:3210`. It refuses remote `AIPERMISSION_API_URL` values so a poisoned config cannot send the bearer token to another host.
 
-### 2. Manual Install / Custom
+### 2. Version-Matched Install / Custom
 
-Manual Codex install:
+For an existing installation, select the same exact npm package version as the
+MCP bridge configured in your client. Set `MCP_VERSION` to that version before
+running these commands; the guard refuses an unset value. This installs the
+skill bundled in that package rather than downloading instructions from a
+moving Git branch. Do not fetch `SKILL.md` from `main` for a pinned older bridge.
 
 ```bash
-mkdir -p ~/.agents/skills/aipermission-operator
-curl -fsSL https://raw.githubusercontent.com/aipermission/aipermission/main/docs/skills/aipermission-operator/SKILL.md \
-  -o ~/.agents/skills/aipermission-operator/SKILL.md
+: "${MCP_VERSION:?Set MCP_VERSION to your installed MCP package version}"
+npx -y "@aipermission/mcp@${MCP_VERSION}" install-skill --client codex --scope user
 ```
 
 For custom clients, print portable Markdown:
 
 ```bash
-npx -y @aipermission/mcp install-skill --client custom
+: "${MCP_VERSION:?Set MCP_VERSION to your installed MCP package version}"
+npx -y "@aipermission/mcp@${MCP_VERSION}" install-skill --client custom
 ```
 
 ### 3. Prompt-Level Use

@@ -35,3 +35,11 @@ test("package MCP registry name matches server metadata", async () => {
   assert.equal(serverJSON.packages[0].identifier, packageJSON.name);
   assert.equal(serverJSON.packages[0].version, packageJSON.version);
 });
+
+test("pinned installation docs use packaged skills, not moving-branch instructions", async () => {
+  const setup = await fs.readFile(path.join(repoRoot, "docs/setup/mcp-client-setup.md"), "utf8");
+  assert.doesNotMatch(setup, /https:\/\/raw\.githubusercontent\.com\/aipermission\/aipermission\/main\/docs\/skills\//);
+  assert.match(setup, /npx -y "@aipermission\/mcp@\$\{MCP_VERSION\}" install-skill --client codex --scope user/);
+  assert.match(setup, /npx -y "@aipermission\/mcp@\$\{MCP_VERSION\}" install-skill --client custom/);
+  assert.match(setup, /\$\{MCP_VERSION:\?/);
+});
