@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,8 +16,6 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/config"
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
-
-const listenAddress = "127.0.0.1:18080"
 
 func main() {
 	cfg, err := config.Load()
@@ -29,6 +28,7 @@ func main() {
 	}
 	defer harness.close()
 
+	listenAddress := net.JoinHostPort(cfg.Host, cfg.Port)
 	log.Printf("AIPermission real-browser test backend listening on %s", listenAddress)
 	if err := http.ListenAndServe(listenAddress, harness); err != nil {
 		log.Fatal(err)

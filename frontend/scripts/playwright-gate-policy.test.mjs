@@ -53,6 +53,7 @@ test("rejects removing a base-branch Playwright gate in the same change", () => 
 for (const [filename, port] of [
   ["playwright.config.js", "4273"],
   ["playwright.real.config.js", "4174"],
+  ["playwright.source.config.js", "3213"],
 ]) {
   test(`${filename} uses an isolated strict port without reusing another app`, async () => {
     const previous = process.env.AIPERMISSION_PLAYWRIGHT_PORT;
@@ -64,6 +65,8 @@ for (const [filename, port] of [
       assert.equal(webServer.url, config.use.baseURL);
       assert.equal(webServer.reuseExistingServer, false);
       assert.ok(webServer.command.includes(`--strictPort --port ${port}`));
+      if (filename === "playwright.config.js") assert.ok(webServer.command.startsWith("VITE_API_URL=http://localhost:8080 "));
+      if (filename === "playwright.source.config.js") assert.ok(webServer.command.startsWith("env -u VITE_API_URL "));
     } finally {
       if (previous === undefined) delete process.env.AIPERMISSION_PLAYWRIGHT_PORT;
       else process.env.AIPERMISSION_PLAYWRIGHT_PORT = previous;

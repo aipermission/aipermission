@@ -9,6 +9,7 @@ import {
   requiredHighRiskTitles,
   requiredRealBackendTitles,
   requiredSmokeTitles,
+  requiredSourceBackendTitles,
 } from "./playwright-gate-manifest.mjs";
 import { resolveFrontendBase } from "./coverage-git-state.mjs";
 import { assertPlaywrightListing, assertPlaywrightManifestRatchet, forbiddenPlaywrightAnnotations } from "./playwright-gate-policy.mjs";
@@ -29,9 +30,10 @@ assertPlaywrightListing(listTests(["--grep", "@high-risk"]), requiredHighRiskTit
 assertPlaywrightListing(listTests(["--grep", "@accessibility"]), requiredAccessibilityTitles, "accessibility Playwright");
 assertPlaywrightListing(listTests(["--grep-invert", "@high-risk|@accessibility"]), requiredSmokeTitles, "smoke Playwright");
 assertPlaywrightListing(listTests(["--config", "playwright.real.config.js"]), requiredRealBackendTitles, "real-backend Playwright");
+assertPlaywrightListing(listTests(["--config", "playwright.source.config.js"]), requiredSourceBackendTitles, "source-backend Playwright");
 await assertBaseManifestRatchet();
 console.log(
-  `Playwright policy passed for ${requiredHighRiskTitles.length} high-risk, ${requiredAccessibilityTitles.length} accessibility, ${requiredSmokeTitles.length} smoke, and ${requiredRealBackendTitles.length} real tests.`,
+  `Playwright policy passed for ${requiredHighRiskTitles.length} high-risk, ${requiredAccessibilityTitles.length} accessibility, ${requiredSmokeTitles.length} smoke, ${requiredRealBackendTitles.length} real and ${requiredSourceBackendTitles.length} source tests.`,
 );
 
 function listTests(args) {
@@ -71,6 +73,7 @@ function manifestSnapshot(module) {
     accessibility: [...(module.requiredAccessibilityTitles || [])],
     smoke: [...(module.requiredSmokeTitles || [])],
     realBackend: [...(module.requiredRealBackendTitles || [])],
+    sourceBackend: [...(module.requiredSourceBackendTitles || [])],
   };
 }
 

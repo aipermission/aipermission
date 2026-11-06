@@ -31,7 +31,7 @@ const workspaceChangedHeaderName = "X-AIPermission-Workspace-Changed";
 let workspaceBinding = "";
 let workspaceBindingOwner: Window | null = null;
 
-export const apiUrl = viteEnv.VITE_API_URL === undefined ? "http://localhost:8080" : normalizeApiUrl(viteEnv.VITE_API_URL);
+export const apiUrl = viteEnv.VITE_API_URL === undefined ? sourceApiUrl() : normalizeApiUrl(viteEnv.VITE_API_URL);
 export const mcpApiUrl = normalizeApiUrl(viteEnv.VITE_MCP_API_URL || browserOrigin());
 
 export async function apiGet(path: string, options: APIOptions = {}): Promise<unknown> {
@@ -412,6 +412,12 @@ function browserOrigin() {
     return window.location.origin;
   }
   return "http://localhost:3210";
+}
+
+function sourceApiUrl() {
+  const url = new URL(browserOrigin());
+  url.port = "8080";
+  return url.origin;
 }
 
 function boundedReadSignal(parent: AbortSignal | undefined, timeoutMs: number | undefined) {

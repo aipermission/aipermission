@@ -88,9 +88,16 @@ introduced.
 
 The source Vite dev server uses `http://127.0.0.1:3213`, not the persistent
 Docker gateway port 3210, and refuses to silently switch an occupied port.
+Without `VITE_API_URL`, source API requests use the browser's hostname and
+scheme on port 8080, keeping `127.0.0.1`, `localhost` and IPv6 loopback origins
+consistent. An explicit `VITE_API_URL` still overrides that default; the empty
+string keeps production requests relative to the gateway's origin.
 Before starting a source backend, set `AIPERMISSION_FRONTEND_PORT=3213` and use
 a separate development data directory. Keep its allowed origins aligned with
 the chosen Vite origin; do not point development at the dogfood database.
+`npm --prefix frontend run test:e2e:real` includes both the packaged browser
+lifecycle and a separate no-env source-Vite setup/lock/unlock regression with
+disposable encrypted storage. It refuses occupied test ports.
 
 Run Playwright when a change touches route-level UI, approval dialogs, console,
 or connector template rendering:
