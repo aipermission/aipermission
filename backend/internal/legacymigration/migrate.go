@@ -13,6 +13,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/databasecatalog"
 	"github.com/aipermission/aipermission/backend/internal/databaseownership"
 	"github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/db/keymaterial"
 	"github.com/aipermission/aipermission/backend/internal/projectvault"
 	"github.com/aipermission/aipermission/backend/internal/recordcrypto"
 	"github.com/aipermission/aipermission/backend/internal/vault"
@@ -525,6 +526,9 @@ func sshKeyByID(keys []legacySSHKey, id int64) (legacySSHKey, error) {
 }
 
 func validateNewDatabasePassword(password string) error {
+	if err := keymaterial.ValidatePassphrase(password); err != nil {
+		return err
+	}
 	if len(password) < 14 {
 		return fmt.Errorf("new database password must be at least 14 characters")
 	}
