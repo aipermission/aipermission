@@ -30,6 +30,9 @@ and this project uses semantic versioning for public releases.
 
 ### Changed
 
+- Load the Vault workspace only when its unlocked route is opened, retaining the
+  existing initial JavaScript budget rather than increasing it for SQL execution
+  support.
 - Show all built-in connectors near the top of README using the canonical
   metadata-driven catalog generator; CI rejects a stale overview.
 
