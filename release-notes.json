@@ -2,6 +2,12 @@
   "inAppReleaseLimit": 8,
   "unreleased": [
     {
+      "title": "Security",
+      "items": [
+        "Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Bootstrap builder/runtime package installation with download retries disabled until patched APT is installed; fail the image build if the fixed package is unavailable."
+      ]
+    },
+    {
       "title": "Added",
       "items": [
         "Postgres and SQL Server expose separately authorized execute_sql for data changes, schema migrations and routines through the existing connector permission, approval, history, audit and MCP pipeline; protected read-only actions remain unchanged.",

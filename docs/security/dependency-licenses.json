@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "8ec5a94c0d53daa155304551b3c621d36b531d662aa1faacf98a3df71d51a741"
+      "sha256": "526bb968d9711f3021d36978bca1629146f4c69b8e61c4e6ded7a74233c8ebdf"
     },
     {
       "path": "third_party/go-mssqldb-upstream.json",
@@ -8396,11 +8396,11 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "8ec5a94c0d53daa155304551b3c621d36b531d662aa1faacf98a3df71d51a741"
+    "sha256": "526bb968d9711f3021d36978bca1629146f4c69b8e61c4e6ded7a74233c8ebdf"
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex: pinned driver source/metadata review, not legal compliance",
+    "reviewer": "Codex: pinned driver and APT container metadata review, not legal compliance",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
