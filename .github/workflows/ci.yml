@@ -65,6 +65,8 @@ jobs:
         run: node scripts/run-tooling-tests.js scripts/dependencies
       - name: Release policy tests
         run: node scripts/run-tooling-tests.js scripts/release
+      - name: Workflow input security tests
+        run: node scripts/run-tooling-tests.js scripts/security
       - name: Maintenance budgets
         run: node scripts/maintenance-budget-check.js
       - name: Generated MCP client catalog

@@ -98,6 +98,12 @@ readback alone does not prove a reporter can submit a report or that a second
 human will triage it. Hardware-backed MFA, account recovery and independent
 backup ownership remain separate operator responsibilities.
 
+The manual MCP publication workflow validates the exact release-tag syntax
+before checkout. Dispatch inputs are passed through environment variables,
+never interpolated into inline shell code. Tagged-source and required-check
+verification remain mandatory after checkout; a valid tag name alone is not
+publication authorization. Repository tests enforce this shell-input boundary.
+
 ## Emergency Security Release
 
 Use this path only for a confirmed vulnerability that risks credential

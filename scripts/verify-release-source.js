@@ -38,7 +38,8 @@ function parseArguments(argv) {
 
 function releaseVersionFromTag(tag) {
   const match = releaseTagPattern.exec(tag || "");
-  if (!match) throw new Error(`invalid release tag: ${tag || "missing"}`);
+  if (!match || match[0] !== tag)
+    throw new Error(`invalid release tag: ${tag || "missing"}`);
   return match[1];
 }
 
@@ -77,7 +78,9 @@ function actionRunID(detailsURL) {
 }
 
 function actionJobID(detailsURL) {
-  const match = /\/actions\/runs\/\d+\/job\/(\d+)(?:\/|$)/.exec(detailsURL || "");
+  const match = /\/actions\/runs\/\d+\/job\/(\d+)(?:\/|$)/.exec(
+    detailsURL || "",
+  );
   return match?.[1] || "";
 }
 
