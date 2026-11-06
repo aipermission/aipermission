@@ -105,6 +105,17 @@ test("backend runtime enforces its patched PCRE2 inventory minimum", () => {
   assert.match(read("backend/Dockerfile"), /dpkg --compare-versions[^\n]+libpcre2-8-0[^\n]+ge "10\.42-1\+deb12u2"/);
 });
 
+test("backend bootstraps patched APT without vulnerable download retries", () => {
+  const dockerfile = read("backend/Dockerfile");
+  const inventory = JSON.parse(read("docs/security/native-dependencies.json"));
+  for (const name of ["apt", "libapt-pkg6.0"]) {
+    assert.equal(inventory.sqlcipher.container.runtime_minimum_versions[name], "2.6.2");
+    assert.ok(dockerfile.includes(`dpkg --compare-versions "$(dpkg-query -W -f='\${Version}' ${name})" ge "2.6.2"`));
+  }
+  assert.equal((dockerfile.match(/RUN apt-get -o Acquire::Retries=0 update/g) || []).length, 2);
+  assert.equal((dockerfile.match(/apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt /g) || []).length, 2);
+});
+
 test("frontend runtime installs patched native packages before dropping root", () => {
   assert.match(
     read("frontend/Dockerfile"),

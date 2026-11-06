@@ -3,8 +3,10 @@ FROM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d744
 WORKDIR /src/backend
 ENV CGO_ENABLED=1
 
-RUN apt-get update \
-	&& apt-get install -y --no-install-recommends libssl-dev \
+# Disable vulnerable download retries until the APT security fix is installed.
+RUN apt-get -o Acquire::Retries=0 update \
+	&& apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt libssl-dev \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge "2.6.2" \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY backend/go.mod backend/go.sum* ./
@@ -37,8 +39,10 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 
 WORKDIR /app
 
-RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates curl gnupg gosu libpcre2-8-0 libssl3 \
+RUN apt-get -o Acquire::Retries=0 update \
+	&& apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt ca-certificates curl gnupg gosu libpcre2-8-0 libssl3 \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge "2.6.2" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg6.0)" ge "2.6.2" \
 	&& install -d /usr/share/postgresql-common/pgdg \
 	&& curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
 		| gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \

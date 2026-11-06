@@ -9,6 +9,12 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Security
+
+- Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Bootstrap
+  builder/runtime package installation with download retries disabled until patched APT
+  is installed; fail the image build if the fixed package is unavailable.
+
 ### Added
 
 - Postgres and SQL Server expose separately authorized execute_sql for data changes,
