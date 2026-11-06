@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 )
@@ -65,6 +66,24 @@ func TestGeneratedActionInputLimitUsesCanonicalBudget(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Fatalf("generated budget missing: %s", output)
 		}
+	}
+}
+
+func TestGeneratedActionExecutionBudgetsShareBackendPolicy(t *testing.T) {
+	for _, typescript := range []bool{false, true} {
+		output := string(generateFrontendContract(typescript))
+		for name, value := range map[string]int64{
+			"connectorActionMaximumExecutionSeconds": int64(connectors.MaximumActionExecutionSeconds),
+			"connectorActionRequestTimeoutMs":        connectors.ActionRequestTimeout.Milliseconds(),
+			"connectorActionDefaultClientTimeoutMs":  connectors.DefaultActionClientTimeout.Milliseconds(),
+		} {
+			if !strings.Contains(output, fmt.Sprintf("export const %s = %d;", name, value)) {
+				t.Fatalf("missing generated action budget %s", name)
+			}
+		}
+	}
+	if connectors.ActionRequestTimeout <= time.Duration(connectors.MaximumActionExecutionSeconds)*time.Second || connectors.DefaultActionClientTimeout <= connectors.ActionRequestTimeout {
+		t.Fatal("client/HTTP budgets must allow execution and finalization")
 	}
 }
 

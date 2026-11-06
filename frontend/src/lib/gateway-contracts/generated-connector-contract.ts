@@ -27,3 +27,6 @@ export const connectorActionResponseRequiredFields = Object.freeze([
 ] as const);
 
 export const connectorActionMaximumInputBytes = 25165824;
+export const connectorActionMaximumExecutionSeconds = 300;
+export const connectorActionRequestTimeoutMs = 330000;
+export const connectorActionDefaultClientTimeoutMs = 335000;

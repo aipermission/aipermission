@@ -63,8 +63,8 @@ func Limits(payload map[string]any) (rows, seconds int, err error) {
 		return 0, 0, fmt.Errorf("max_rows must be between 1 and %d", MaxRows)
 	}
 	seconds, ok = connectors.NativeIntValue(payload["timeout_seconds"])
-	if !ok || seconds < 1 || seconds > 300 {
-		return 0, 0, fmt.Errorf("timeout_seconds must be between 1 and 300")
+	if !ok || seconds < 1 || seconds > connectors.MaximumActionExecutionSeconds {
+		return 0, 0, fmt.Errorf("timeout_seconds must be between 1 and %d", connectors.MaximumActionExecutionSeconds)
 	}
 	return rows, seconds, nil
 }

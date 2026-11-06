@@ -17,12 +17,11 @@ import (
 )
 
 const (
-	OrdinaryRequestTimeout        = 45 * time.Second
-	RemoteBrowseRequestTimeout    = 75 * time.Second
-	ConnectorActionRequestTimeout = 90 * time.Second
-	WorkspaceHeaderName           = "X-AIPermission-Workspace"
-	WorkspaceChangedHeaderName    = "X-AIPermission-Workspace-Changed"
-	WorkspaceQueryName            = "workspace"
+	OrdinaryRequestTimeout     = 45 * time.Second
+	RemoteBrowseRequestTimeout = 75 * time.Second
+	WorkspaceHeaderName        = "X-AIPermission-Workspace"
+	WorkspaceChangedHeaderName = "X-AIPermission-Workspace-Changed"
+	WorkspaceQueryName         = "workspace"
 )
 
 type Lifecycle interface {
@@ -31,24 +30,25 @@ type Lifecycle interface {
 }
 
 type HTTPBoundary struct {
-	Routes            http.Handler
-	Lifecycle         Lifecycle
-	IsUnlocked        func() bool
-	IsLocalRemoteAddr func(string) bool
-	IsLocalhostHeader func(string) bool
-	AllowsOrigin      func(string) bool
-	HasSession        func(*http.Request) bool
-	EnsureWorkspace   func(http.ResponseWriter, *http.Request)
-	HasCSRF           func(*http.Request) bool
-	IsSessionExempt   func(string) bool
-	RequiresCSRF      func(string, string) bool
-	CurrentWorkspace  func() string
-	WriteError        func(http.ResponseWriter, int, string)
+	Routes               http.Handler
+	Lifecycle            Lifecycle
+	IsUnlocked           func() bool
+	IsLocalRemoteAddr    func(string) bool
+	IsLocalhostHeader    func(string) bool
+	AllowsOrigin         func(string) bool
+	HasSession           func(*http.Request) bool
+	EnsureWorkspace      func(http.ResponseWriter, *http.Request)
+	HasCSRF              func(*http.Request) bool
+	IsSessionExempt      func(string) bool
+	RequiresCSRF         func(string, string) bool
+	CurrentWorkspace     func() string
+	WriteError           func(http.ResponseWriter, int, string)
+	ActionRequestTimeout time.Duration
 }
 
 func (boundary HTTPBoundary) Handler() http.Handler {
 	handler := http.HandlerFunc(boundary.serveHTTP)
-	return ResponsePolicy(boundary.localOnly(boundary.cors(WithRequestDeadline(handler, OrdinaryRequestTimeout))))
+	return ResponsePolicy(boundary.localOnly(boundary.cors(WithRequestDeadline(handler, OrdinaryRequestTimeout, boundary.ActionRequestTimeout))))
 }
 
 func ResponsePolicy(next http.Handler) http.Handler {
@@ -361,13 +361,13 @@ func ManagesLifecycleLock(path string) bool {
 		(strings.HasSuffix(path, "/upload") || strings.HasSuffix(path, "/download") || strings.HasSuffix(path, "/restore"))
 }
 
-func WithRequestDeadline(next http.Handler, timeout time.Duration) http.Handler {
+func WithRequestDeadline(next http.Handler, timeout, actionTimeout time.Duration) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if timeout <= 0 || IsUnboundedRequestRoute(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
-		deadline := time.Now().Add(RequestTimeoutForPath(r.URL.Path, timeout))
+		deadline := time.Now().Add(RequestTimeoutForPath(r.URL.Path, timeout, actionTimeout))
 		controller := http.NewResponseController(w)
 		_ = controller.SetReadDeadline(deadline)
 		_ = controller.SetWriteDeadline(deadline)
@@ -378,18 +378,21 @@ func WithRequestDeadline(next http.Handler, timeout time.Duration) http.Handler 
 	})
 }
 
-func RequestTimeoutForPath(path string, fallback time.Duration) time.Duration {
+func RequestTimeoutForPath(path string, fallback, actionTimeout time.Duration) time.Duration {
+	if actionTimeout <= 0 {
+		actionTimeout = fallback
+	}
 	if requestID, ok := strings.CutPrefix(path, "/api/connector-action-approvals/"); ok && strings.HasSuffix(requestID, "/run") {
 		requestID = strings.TrimSuffix(requestID, "/run")
 		if requestID != "" && !strings.Contains(requestID, "/") {
-			return ConnectorActionRequestTimeout
+			return actionTimeout
 		}
 	}
 	switch path {
 	case "/api/file-transfers/browse", "/api/file-transfers/expand":
 		return RemoteBrowseRequestTimeout
 	case "/api/connector-actions/local-run", "/api/mcp/connector-actions/call":
-		return ConnectorActionRequestTimeout
+		return actionTimeout
 	default:
 		return fallback
 	}

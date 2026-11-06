@@ -1,4 +1,5 @@
 import { Notice } from "../../../components/ui/notice";
+import { connectorActionMaximumExecutionSeconds } from "../../../lib/gateway-contracts/generated-connector-contract";
 import type { SQLConsoleViewProps } from "./sql-console-view-types";
 
 type ExecutionController = Pick<
@@ -45,7 +46,7 @@ export function SQLExecutionControls({
             <input
               type="number"
               min="1"
-              max="300"
+              max={connectorActionMaximumExecutionSeconds}
               step="1"
               className={`h-8 w-20 rounded-md border px-2 outline-none ${styles.input}`}
               value={controller.timeoutSeconds}

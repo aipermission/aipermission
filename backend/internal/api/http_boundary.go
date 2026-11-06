@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/api/httptransport"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayinfra "github.com/aipermission/aipermission/backend/internal/gatewayinfrastructure"
 )
 
@@ -24,7 +25,7 @@ func (s *Server) Handler() http.Handler {
 		RequiresCSRF: func(method, path string) bool {
 			return !s.access.IsUIExempt(path) && httptransport.IsStateChangingMethod(method)
 		},
-		WriteError: writeError,
+		WriteError: writeError, ActionRequestTimeout: connectors.ActionRequestTimeout,
 	}.Handler()
 }
 
