@@ -105,7 +105,7 @@ func TestMaintenanceUnreadableShellUsesOneTeardownGrace(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Cleanup(func() { _ = syscall.Kill(child, syscall.SIGKILL) })
-	terminateMaintenanceConsoleSupervisor(command.Process.Pid)
+	terminateMaintenanceConsoleSupervisor(command.Process)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):

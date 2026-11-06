@@ -63,7 +63,7 @@ func TestMaintenanceSlowInventoryBatchTeardown(t *testing.T) {
 		pids = append(pids, pid)
 		t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) })
 	}
-	terminateMaintenanceConsoleSupervisor(command.Process.Pid)
+	terminateMaintenanceConsoleSupervisor(command.Process)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
