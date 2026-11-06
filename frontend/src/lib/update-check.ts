@@ -13,9 +13,20 @@ export async function checkForUpdates(currentVersion: string) {
   return {
     latestVersion,
     localVersion,
-    releaseUrl: release.html_url || "https://github.com/aipermission/aipermission/releases",
+    releaseUrl: trustedReleaseUrl(release.html_url),
     updateAvailable: compareVersions(latestVersion, localVersion) > 0,
   };
+}
+
+function trustedReleaseUrl(value: string | undefined) {
+  const fallback = "https://github.com/aipermission/aipermission/releases";
+  try {
+    const url = new URL(value || "");
+    if (url.origin !== "https://github.com" || url.username || url.password || url.search || url.hash) return fallback;
+    return /^\/aipermission\/aipermission\/releases(?:\/tag\/[A-Za-z0-9._-]+)?\/?$/.test(url.pathname) ? url.href : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function fetchLatestRelease(): Promise<GitHubRelease> {

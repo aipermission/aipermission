@@ -26,6 +26,37 @@ it("checks a valid tagged release and preserves its public URL", async () => {
   });
 });
 
+it.each([
+  "https://github.com/aipermission/aipermission/releases",
+  "https://GITHUB.com:443/aipermission/aipermission/releases/tag/v0.2.77-rc.1",
+])("accepts canonical repository release links %s", async (html_url) => {
+  fetchMock.mockResolvedValue(jsonResponse({ tag_name: "v0.2.77", html_url }));
+  await expect(checkForUpdates("0.2.76")).resolves.toMatchObject({ releaseUrl: new URL(html_url).href });
+});
+
+it.each([
+  "javascript:alert(1)",
+  "data:text/html,test",
+  "http://github.com/aipermission/aipermission/releases",
+  "//github.com/aipermission/aipermission/releases",
+  "https://github.com.evil.test/aipermission/aipermission/releases",
+  "https://github.com@evil.test/aipermission/aipermission/releases",
+  "https://user:password@github.com/aipermission/aipermission/releases",
+  "https://github.com:444/aipermission/aipermission/releases",
+  "https://github.com/another/repository/releases",
+  "https://github.com/aipermission/aipermission/releases-evil",
+  "https://github.com/aipermission/aipermission/releases/tag/../../issues",
+  "https://github.com/aipermission/aipermission/releases/tag/%2f%2fevil.test",
+  "not a URL",
+  "",
+])("does not expose untrusted release navigation %s", async (html_url) => {
+  fetchMock.mockResolvedValue(jsonResponse({ tag_name: "v0.2.77", html_url }));
+  await expect(checkForUpdates("0.2.76")).resolves.toMatchObject({
+    releaseUrl: "https://github.com/aipermission/aipermission/releases",
+    updateAvailable: true,
+  });
+});
+
 it("falls back to the bounded release list only when latest returns 404", async () => {
   fetchMock.mockResolvedValueOnce(jsonResponse({}, 404)).mockResolvedValueOnce(jsonResponse([{ name: "v0.2.60" }]));
   await expect(checkForUpdates(" v0.2.61 ")).resolves.toEqual({
