@@ -95,7 +95,12 @@ fail validation before dispatch; divide the migration into separately reviewed
 scripts instead of silently truncating it. Prefer explicit `EXEC name` for a
 procedure; the native driver can classify a bare single identifier as an RPC.
 `max_rows` defaults to 100 and is limited to 1,000 retained rows across all result
-sets. `timeout_seconds` defaults to 30 and accepts 1 to 300. Results retain at most
+sets. `timeout_seconds` defaults to 30 and accepts 1 to 300. Generic action HTTP
+routes allow 330 seconds including processing/finalization, and the MCP bridge
+defaults to 335 seconds. These budgets share the generated backend contract;
+ordinary routes keep shorter deadlines. A caller's shorter timeout or explicit
+cancellation still wins, and does not prove that a dispatched script rolled
+back. Results retain at most
 32 sets, 256 columns per retained set, 64,000 bytes per cell and 500,000 bytes of
 projected output; notices and command summaries have separate finite caps.
 Row retention also accounts for the shared JSON node and depth limits, including

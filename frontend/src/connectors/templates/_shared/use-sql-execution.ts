@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useState } from "react";
 import { currentWorkspaceBinding } from "../../../lib/api";
+import { connectorActionMaximumExecutionSeconds } from "../../../lib/gateway-contracts/generated-connector-contract";
 import { runGuardedConnectorAction } from "./action-runner";
 import { useConnectorMutationOwnership } from "./use-connector-mutation-ownership";
 import type { GuardedConnectorActionOptions } from "./action-runner";
@@ -38,8 +39,19 @@ export function useSQLExecution({ scope, actionName, approvalState, onSelected, 
     if (!executionMode || !actionName || owner.locked) return;
     const seconds = Number(timeoutSeconds);
     const rows = Number(maxRows);
-    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300 || !Number.isInteger(rows) || rows < 1 || rows > 1000) {
-      options.setState({ state: "error", error: "Use a timeout of 1-300 seconds and a returned-row cap of 1-1000.", message: "" });
+    if (
+      !Number.isInteger(seconds) ||
+      seconds < 1 ||
+      seconds > connectorActionMaximumExecutionSeconds ||
+      !Number.isInteger(rows) ||
+      rows < 1 ||
+      rows > 1000
+    ) {
+      options.setState({
+        state: "error",
+        error: `Use a timeout of 1-${connectorActionMaximumExecutionSeconds} seconds and a returned-row cap of 1-1000.`,
+        message: "",
+      });
       return;
     }
     try {

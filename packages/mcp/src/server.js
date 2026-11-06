@@ -14,10 +14,11 @@ import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { fetch, Headers, Request } from "undici";
 import { callVaultActionSchema, listVaultItemsSchema, vaultActionRequestSchema } from "./vault-tools.js";
 import { MCP_SERVER_INSTRUCTIONS } from "./instructions.js";
 import { gatewayAPIError } from "./api-error.js";
-import { parseHTTPTimeout } from "./config.js";
+import { createHTTPDispatcher, parseHTTPTimeout } from "./config.js";
 import { idempotencyKeySchema } from "./idempotency-key.js";
 import { normalizeLocalAPIURL } from "./local-url.js";
 import { projectGatewaySuccess, responseContracts } from "./response-contracts.js";
@@ -35,6 +36,7 @@ try {
 }
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = parseHTTPTimeout(process.env.AIPERMISSION_HTTP_TIMEOUT_MS);
+const gatewayDispatcher = createHTTPDispatcher(apiTimeoutMs);
 const connectorIdentifierSchema = z.string().trim().min(1);
 
 const server = new McpServer(
@@ -211,6 +213,12 @@ server.tool(
 );
 
 const transport = new StdioServerTransport();
+server.server.onclose = () => {
+  void gatewayDispatcher.destroy().catch(() => {});
+};
+process.stdin.once("end", () => {
+  void server.close().catch(() => {});
+});
 await server.connect(transport);
 
 async function apiGet(path, context = {}) {
@@ -271,7 +279,7 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
       throw new Error("MCP request was canceled.");
     }
     dispatchStarted = true;
-    const response = await fetch(request, { signal: controller.signal });
+    const response = await fetch(request, { signal: controller.signal, dispatcher: gatewayDispatcher });
     const text = await readGatewayResponseText(response);
     const data = response.status === 204 ? null : parseResponseBody(text);
     bodyReceived = true;

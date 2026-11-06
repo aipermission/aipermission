@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortransport"
 )
 
@@ -240,7 +241,7 @@ func TestRequestDeadlineBoundsOrdinaryRoutes(t *testing.T) {
 		_, ok := r.Context().Deadline()
 		deadlineObserved <- ok
 		<-r.Context().Done()
-	}), 10*time.Millisecond)
+	}), 10*time.Millisecond, 0)
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	if !<-deadlineObserved {
 		t.Fatal("ordinary route did not receive a request deadline")
@@ -270,7 +271,7 @@ func TestRequestDeadlineLeavesStreamingRoutesUnbounded(t *testing.T) {
 				if _, ok := r.Context().Deadline(); ok {
 					t.Fatalf("streaming route %s received ordinary deadline", path)
 				}
-			}), time.Second)
+			}), time.Second, 0)
 			handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
 		})
 	}
@@ -339,24 +340,24 @@ func TestBackupOperationRoutesManageLifecycleAfterOperationAdmission(t *testing.
 }
 
 func TestRemoteBrowseKeepsItsLongerBoundedDeadline(t *testing.T) {
-	if got := RequestTimeoutForPath("/api/file-transfers/expand", OrdinaryRequestTimeout); got != RemoteBrowseRequestTimeout {
+	if got := RequestTimeoutForPath("/api/file-transfers/expand", OrdinaryRequestTimeout, connectors.ActionRequestTimeout); got != RemoteBrowseRequestTimeout {
 		t.Fatalf("remote expand timeout = %s, want %s", got, RemoteBrowseRequestTimeout)
 	}
-	if got := RequestTimeoutForPath("/api/status", OrdinaryRequestTimeout); got != OrdinaryRequestTimeout {
+	if got := RequestTimeoutForPath("/api/status", OrdinaryRequestTimeout, connectors.ActionRequestTimeout); got != OrdinaryRequestTimeout {
 		t.Fatalf("ordinary timeout = %s, want %s", got, OrdinaryRequestTimeout)
 	}
 }
 
 func TestConnectorActionsOutliveTheirInternalExecutionTimeout(t *testing.T) {
 	for _, path := range []string{"/api/connector-actions/local-run", "/api/mcp/connector-actions/call", "/api/connector-action-approvals/42/run"} {
-		if got := RequestTimeoutForPath(path, OrdinaryRequestTimeout); got != ConnectorActionRequestTimeout {
-			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, ConnectorActionRequestTimeout)
+		if got := RequestTimeoutForPath(path, OrdinaryRequestTimeout, connectors.ActionRequestTimeout); got != connectors.ActionRequestTimeout {
+			t.Fatalf("connector action timeout for %s = %s, want %s", path, got, connectors.ActionRequestTimeout)
 		}
 	}
-	if ConnectorActionRequestTimeout <= connectortransport.MaxCommandTimeout {
-		t.Fatalf("connector action timeout %s must exceed command timeout %s", ConnectorActionRequestTimeout, connectortransport.MaxCommandTimeout)
+	if connectors.ActionRequestTimeout <= connectortransport.MaxCommandTimeout {
+		t.Fatalf("connector action timeout %s must exceed command timeout %s", connectors.ActionRequestTimeout, connectortransport.MaxCommandTimeout)
 	}
-	if got := RequestTimeoutForPath("/api/connector-action-approvals/42/decline", OrdinaryRequestTimeout); got != OrdinaryRequestTimeout {
+	if got := RequestTimeoutForPath("/api/connector-action-approvals/42/decline", OrdinaryRequestTimeout, connectors.ActionRequestTimeout); got != OrdinaryRequestTimeout {
 		t.Fatalf("approval decision timeout = %s, want %s", got, OrdinaryRequestTimeout)
 	}
 }
@@ -366,7 +367,7 @@ func TestOrdinaryRouteAppliesTransportDeadlines(t *testing.T) {
 	deadlineSeen := make(chan [2]time.Time, 1)
 	handler := WithRequestDeadline(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		deadlineSeen <- [2]time.Time{writer.readDeadline, writer.writeDeadline}
-	}), time.Second)
+	}), time.Second, 0)
 	handler.ServeHTTP(writer, httptest.NewRequest(http.MethodGet, "/api/status", nil))
 	deadlines := <-deadlineSeen
 	if deadlines[0].IsZero() || deadlines[1].IsZero() {

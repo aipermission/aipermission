@@ -8,6 +8,14 @@ review is required before integrating the initial capture.
 
 ## Sources and Artifact Identity
 
+The 0.2.77 action-timeout correction pins Undici 8.12.4 (MIT) for the MCP
+runtime. Its own fetch, Request, Headers and Agent APIs are used together;
+Node's bundled dispatcher interface is not mixed with this major version.
+Explicit finite header/body budgets honor the shared action deadline, and the
+dispatcher is destroyed when the MCP session closes. Lock identity and npm
+metadata are recorded; existing Go/native evidence and historical gaps are
+unchanged. This metadata review is not a legal compatibility assertion.
+
 The 0.2.76 security update records Brotli 1.2.7 for
 [GO-2026-6888](https://pkg.go.dev/vuln/GO-2026-6888). The new module checksums
 are captured, and the named MIT and bundled flate BSD license-file hashes match

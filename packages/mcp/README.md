@@ -126,11 +126,19 @@ does this automatically.
 ## Tools
 
 `AIPERMISSION_HTTP_TIMEOUT_MS` sets the gateway request deadline (default:
-95000 milliseconds; maximum: 600000). The value must be a positive base-10
+335000 milliseconds; maximum: 600000). The default is generated from the
+backend action budget: up to 300 seconds of execution, a 30-second gateway
+processing allowance, and 5 seconds for the bridge response. The value must be a positive base-10
 integer; invalid configuration stops the bridge instead of silently changing
 the deadline. It covers both response headers and the complete response body,
 including streamed bodies. A timeout does not prove that a submitted
 operation failed; do not retry mutations with a new idempotency key blindly.
+Explicit shorter overrides and the AI client's own deadline still win; choose
+a sufficient client timeout for long SQL scripts. Ordinary gateway routes and
+individual connector operations keep their shorter limits.
+The bridge configures its pinned HTTP client's header/body timeouts as well
+as the total deadline; Node's bundled fetch 300-second header default is not
+an additional hidden cap. The HTTP dispatcher closes with the MCP session.
 Gateway response bodies are capped at 8 MiB. An oversized POST response is
 also treated as an unknown outcome, not proof that the operation failed.
 If a POST response is lost or incomplete, the bridge returns
