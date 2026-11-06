@@ -4,6 +4,7 @@
     {
       "title": "Security",
       "items": [
+        "Update the Go Brotli decompressor to 1.2.7 for GO-2026-6888 / CVE-2026-111497, which fixes excessive allocation from crafted compressed streams; preserve exact module and named-license evidence and verify both patched and upstream dependency graphs.",
         "Require Debian APT and libapt-pkg6.0 2.6.2 or later for CVE-2026-109518. Bootstrap builder/runtime package installation with download retries disabled until patched APT is installed; fail the image build if the fixed package is unavailable."
       ]
     },

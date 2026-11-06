@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "804c65d25c56bca9936b14705d92155a2323817dd48d6d0785f9c4b1d9630fc4"
+      "sha256": "94c905ab76cdd8cf724291f8b9ab6dbdb0cedda9a9f301c48af35cef18fe6c38"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "cdb97416b612b17f76fc8207609b6175bf7ce8aba25e33e741a97979bbe0a249"
+      "sha256": "ece91da10227cdfb8d7c0f1b3ca7c4dba992ffb481164abcd8434ce54318732c"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6190,7 +6190,7 @@
       },
       {
         "Path": "github.com/andybalholm/brotli",
-        "Version": "v1.2.6",
+        "Version": "v1.2.7",
         "Indirect": true
       },
       {
@@ -6522,7 +6522,7 @@
         "module": "h1:ftYnfj6usCp+UGV5kSJ3+chpMQgU+gJf/AxsUQ52REI=",
         "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
       },
-      "requirement": "indirect",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
@@ -6533,6 +6533,30 @@
           },
           {
             "path": "github.com/andybalholm/brotli@v1.2.6/flate/LICENSE",
+            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
+            "bytes": 1479
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/andybalholm/brotli",
+      "version": "v1.2.7",
+      "checksums": {
+        "module": "h1:UgafRPGMam5ySHfRkhthMqOFA6IFoeF3D7mWIDLjG5A=",
+        "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
+      },
+      "requirement": "indirect",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/andybalholm/brotli@v1.2.7/LICENSE",
+            "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
+            "bytes": 1084
+          },
+          {
+            "path": "github.com/andybalholm/brotli@v1.2.7/flate/LICENSE",
             "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
             "bytes": 1479
           }
@@ -8400,7 +8424,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex: pinned driver and APT container metadata review, not legal compliance",
+    "reviewer": "Codex maintainer: reviewed Brotli 1.2.7 exact checksums and unchanged MIT/flate BSD named evidence; historical gaps preserved; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

@@ -8,6 +8,13 @@ review is required before integrating the initial capture.
 
 ## Sources and Artifact Identity
 
+The 0.2.76 security update records Brotli 1.2.7 for
+[GO-2026-6888](https://pkg.go.dev/vuln/GO-2026-6888). The new module checksums
+are captured, and the named MIT and bundled flate BSD license-file hashes match
+the previous version. Existing evidence and the 38 acknowledged historical
+gaps remain unchanged. This metadata review is not a legal determination or
+a substitute for the separate vulnerability and protocol-conformance gates.
+
 The inventory covers the canonical frontend, MCP, and repository-tooling npm
 lockfiles, their package manifests, `backend/go.mod`, `backend/go.sum`, and
 [`native-dependencies.json`](native-dependencies.json). Exact SHA-256 source
