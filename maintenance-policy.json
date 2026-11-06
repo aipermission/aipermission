@@ -122,6 +122,7 @@
     "scripts/frontend",
     "scripts/maintenance",
     "scripts/release",
+    "scripts/security",
     "scripts/verification"
   ],
   "toolingTestFiles": [
@@ -159,6 +160,7 @@
     "scripts/release/images/publish-images-workflow.test.js",
     "scripts/release/release-notes.test.js",
     "scripts/release/release-version.test.js",
+    "scripts/security/workflow-input.test.js",
     "scripts/release/source/verify-release-source.test.js",
     "scripts/verification/platform-coverage-ratchet.test.js",
     "scripts/verification/build-entrypoint.test.js",
