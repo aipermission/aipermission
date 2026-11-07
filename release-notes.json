@@ -1,33 +1,48 @@
 {
   "inAppReleaseLimit": 8,
-  "unreleased": [
-    {
-      "title": "Security",
-      "items": [
-        "Align PostgreSQL readonly lexical inspection with server whitespace and CR comment boundaries; reject hidden function calls before network execution while preserving quoted values and identifiers.",
-        "Constrain all Kafka broker connections to explicitly configured bootstrap and additional advertised endpoints. Require verified TLS or separate deliberate plaintext exceptions for PLAIN and SCRAM, including Over SSH.",
-        "Pass MCP publication tags as environment data, validate them before checkout, and enforce adversarial workflow-input regressions in local and hosted checks.",
-        "Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict update links to HTTPS repository releases, and retain supervisor process identity during termination.",
-        "Revalidate Redis and RabbitMQ runtime configuration against each connector's existing schema before credentials or transport access. This closes malformed-row fallback in depth without duplicating select-option policy or changing intentional plaintext settings."
-      ]
-    },
-    {
-      "title": "Fixed",
-      "items": [
-        "Align the shared action request budget at 330 seconds and the default MCP HTTP budget at 335 seconds so explicit SQL execution can use its existing 300-second maximum. Preserve caller cancellation and unknown-outcome reconciliation without automatic mutation replay.",
-        "Configure explicit bounded MCP header/body timeouts and close its HTTP pool on stdio shutdown, avoiding a shorter hidden transport deadline and abandoned connections.",
-        "Keep source Vite and its default API address on the same hostname and scheme without relaxing CSRF checks; preserve explicit overrides and production relative URLs."
-      ]
-    },
-    {
-      "title": "Notes",
-      "items": [
-        "Existing Kafka profiles must explicitly list discovered endpoints outside their bootstrap set. Plaintext SCRAM profiles must enable TLS or deliberately opt into the independent SCRAM exception; missing settings fail closed.",
-        "Use the operator skill bundled with the exact installed MCP version instead of downloading instructions from a moving branch. AIPermission remains local-only and single-user; this hardening does not add a connector, database migration or permission bypass."
-      ]
-    }
-  ],
+  "unreleased": [],
   "releases": [
+    {
+      "version": "0.2.77",
+      "date": "2026-11-07",
+      "label": "Connector boundaries and action lifecycle hardening",
+      "sections": [
+        {
+          "title": "Security",
+          "items": [
+            "Align PostgreSQL readonly lexical inspection with server whitespace and CR comment boundaries; reject hidden function calls before network execution while preserving quoted values and identifiers.",
+            "Constrain all Kafka broker connections to explicitly configured bootstrap and additional advertised endpoints. Require verified TLS or separate deliberate plaintext exceptions for PLAIN and SCRAM, including Over SSH.",
+            "Pass MCP publication tags as environment data, validate them before checkout, and enforce adversarial workflow-input regressions in local and hosted checks.",
+            "Reject SQLCipher raw-key notation for newly migrated database passphrases, restrict update links to HTTPS repository releases, and retain supervisor process identity during termination.",
+            "Revalidate Redis and RabbitMQ runtime configuration against each connector's existing schema before credentials or transport access. This closes malformed-row fallback in depth without duplicating select-option policy or changing intentional plaintext settings.",
+            "Require musl and musl-utils 1.2.6-r3 or later in the frontend runtime for CVE-2026-107891; fail the image build if patched packages are unavailable."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Align the shared action request budget at 330 seconds and the default MCP HTTP budget at 335 seconds so explicit SQL execution can use its existing 300-second maximum. Preserve caller cancellation and unknown-outcome reconciliation without automatic mutation replay.",
+            "Configure explicit bounded MCP header/body timeouts and close its HTTP pool on stdio shutdown, avoiding a shorter hidden transport deadline and abandoned connections.",
+            "Keep source Vite and its default API address on the same hostname and scheme without relaxing CSRF checks; preserve explicit overrides and production relative URLs."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Retain native PostgreSQL 16/17 readonly lexical and side-effect controls, ClickHouse readonly source-function rejection, and deterministic PostgreSQL catalog-maintenance contention tests.",
+            "Capture bounded PostgreSQL role-fence lock-owner diagnostics without recording query text or relaxing NOWAIT behavior.",
+            "Isolate disposable PostgreSQL catalog-fence positive scenarios from background autovacuum while retaining the required explicit maintenance-lock refusal test. Exclude diagnostic observers from lock reports; production maintenance and NOWAIT settings are unchanged."
+          ]
+        },
+        {
+          "title": "Notes",
+          "items": [
+            "Existing Kafka profiles must explicitly list discovered endpoints outside their bootstrap set. Plaintext SCRAM profiles must enable TLS or deliberately opt into the independent SCRAM exception; missing settings fail closed.",
+            "Use the operator skill bundled with the exact installed MCP version instead of downloading instructions from a moving branch. AIPermission remains local-only and single-user; this hardening does not add a connector, database migration or permission bypass."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.76",
       "date": "2026-11-06",

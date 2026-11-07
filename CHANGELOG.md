@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.77] - 2026-11-07
+
 ### Security
 
 - Align PostgreSQL readonly lexical inspection with server whitespace and CR comment
@@ -26,6 +28,8 @@ and this project uses semantic versioning for public releases.
   schema before credentials or transport access. This closes malformed-row fallback in
   depth without duplicating select-option policy or changing intentional plaintext
   settings.
+- Require musl and musl-utils 1.2.6-r3 or later in the frontend runtime for
+  CVE-2026-107891; fail the image build if patched packages are unavailable.
 
 ### Fixed
 
@@ -37,6 +41,18 @@ and this project uses semantic versioning for public releases.
   shutdown, avoiding a shorter hidden transport deadline and abandoned connections.
 - Keep source Vite and its default API address on the same hostname and scheme without
   relaxing CSRF checks; preserve explicit overrides and production relative URLs.
+
+### Maintenance
+
+- Retain native PostgreSQL 16/17 readonly lexical and side-effect controls, ClickHouse
+  readonly source-function rejection, and deterministic PostgreSQL catalog-maintenance
+  contention tests.
+- Capture bounded PostgreSQL role-fence lock-owner diagnostics without recording query
+  text or relaxing NOWAIT behavior.
+- Isolate disposable PostgreSQL catalog-fence positive scenarios from background
+  autovacuum while retaining the required explicit maintenance-lock refusal test.
+  Exclude diagnostic observers from lock reports; production maintenance and NOWAIT
+  settings are unchanged.
 
 ### Notes
 
