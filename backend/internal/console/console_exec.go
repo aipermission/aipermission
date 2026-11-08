@@ -220,16 +220,20 @@ func (s *managedConsoleSession) activeCommand() *consoleSessionActiveExec {
 func (s *managedConsoleSession) setActiveCommand(active consoleSessionActiveExec) {
 	s.mu.Lock()
 	s.activeExec = &active
+	s.lastActivity = time.Now()
 	s.mu.Unlock()
+	s.manager.capacityChanged()
 }
 
 func (s *managedConsoleSession) clearActiveCommand(marker string) {
 	s.mu.Lock()
 	if s.activeExec != nil && s.activeExec.Marker == marker {
 		s.activeExec = nil
+		s.lastActivity = time.Now()
 		s.filterUntil = time.Now().Add(750 * time.Millisecond)
 	}
 	s.mu.Unlock()
+	s.manager.capacityChanged()
 }
 
 func (s *managedConsoleSession) waitReady(ctx context.Context) error {

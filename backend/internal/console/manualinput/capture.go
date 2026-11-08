@@ -21,6 +21,11 @@ type Capture struct {
 	historyRecall bool
 }
 
+// Pending protects unfinished or untrusted terminal input from idle cleanup.
+func (c *Capture) Pending() bool {
+	return c.line != "" || c.escapePending || len(c.heredocs) > 0 || (c.initialized && !c.trusted) || c.historyRecall
+}
+
 func (c *Capture) Consume(data string) []Record {
 	data = stripBracketedPasteMarkers(data)
 	if !c.initialized {

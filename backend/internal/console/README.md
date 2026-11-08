@@ -14,6 +14,7 @@ Responsibilities:
 - enforce local hardening limits for websocket clients, input size, and high-frequency input/resize messages
 - execute AI commands through the persistent shell
 - detect long-running command state
+- expose bounded console capacity snapshots and conditionally close reviewed idle sessions
 - keep raw transcript parsing separate from cleaned display output
 - redact transcript text before persistence through the injected redactor
 - keep independent stdout/stderr UTF-8 carry before text policy and JSON framing
@@ -54,3 +55,35 @@ Non-responsibilities:
 - database unlock and workspace switching
 
 The API package should call `console.Manager` and translate returned errors into HTTP responses. This keeps the console runtime testable without a web server and gives contributors a clear place to work on terminal behavior.
+
+## Capacity And Operator Cleanup
+
+`capacity` owns transcript-free DTOs and the shared finite session limit. The
+manager counts every retained session, including closing/finalization failures;
+persisted historical rows are not capacity use. One coalescing change signal wakes
+visible browser watches on session lifecycle and command state changes. A dedicated
+WebSocket emits revision-only invalidations; its authenticated upgrade releases the
+workspace read lease, so an idle watch never delays Lock/Switch. Each short snapshot
+GET performs one bounded metadata query rather than loading transcripts. Terminal
+output refreshes in-memory activity without a notification for every chunk. Browser
+watches pause when hidden, coalesce events, and reconcile at 30-second intervals.
+
+The local operator reviews exact session IDs, generations and activity timestamps
+before closing. The manager rechecks these under lifecycle/input/session locks,
+rejects running, unfinished and untracked input, and claims closing before releasing
+the check. Bulk cleanup uses a finite idle threshold; zero threshold is limited to
+explicit single-session close. New activity or replacement causes a skip, not a
+forced close. Existing authorization and finalization fences remain in effect.
+Ambiguous compound input remains protected even after an intermediate prompt;
+the cleanup view does not infer whole-batch completion from terminal appearance.
+Any manually entered terminal input keeps that session protected from Capacity
+and automatic idle cleanup until it is explicitly ended. Manual History can
+recognize prompts for best-effort output capture, but process output can imitate
+a prompt, and a later automation attempt cannot certify prior manual work exited.
+Normal explicit session close/restart remains available outside idle cleanup.
+
+Websocket viewers are shown separately: the application also attaches background
+transcript observers, so viewer presence alone is not proof of active work. Idle
+means no observed I/O for the selected period, not proof that remote detached
+processes are absent. Cleanup requires explicit confirmation, warns about this
+boundary, audits results, and distinguishes confirmed closures from uncertain ones.
