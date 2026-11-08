@@ -5,10 +5,21 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { AppSidebar } from "./app-sidebar";
 import { renderSidebar } from "../test/fixtures/app-sidebar";
 import { checkForUpdates } from "../lib/update-check";
+import { report } from "../test/console-capacity-fixtures";
 
 vi.mock("../lib/update-check", () => ({ checkForUpdates: vi.fn() }));
 beforeEach(() => {
   vi.mocked(checkForUpdates).mockReset();
+});
+
+it("opens capacity from the same sidebar controls and shows native usage", async () => {
+  const user = userEvent.setup();
+  const onOpen = vi.fn();
+  renderSidebar({ consoleCapacity: { data: report(), error: null, onOpen } });
+  const button = screen.getByRole("button", { name: /Capacity 3 \/ 32/ });
+  expect(screen.getByRole("progressbar", { name: "Console capacity" })).toHaveValue((3 / 32) * 100);
+  await user.click(button);
+  expect(onOpen).toHaveBeenCalledOnce();
 });
 
 it("renders the complete embedded navigation and reports route selection", async () => {

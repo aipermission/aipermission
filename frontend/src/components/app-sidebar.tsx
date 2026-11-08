@@ -32,6 +32,8 @@ import { Notice } from "./ui/notice";
 import { checkForUpdates } from "../lib/update-check";
 import { errorMessage } from "../lib/errors";
 import type { LucideIcon } from "lucide-react";
+import { CapacityButton } from "./capacity/capacity-button";
+import type { Report as ConsoleCapacityReport } from "./capacity/model";
 
 export type AppSidebarProps = {
   pathname: string;
@@ -43,6 +45,7 @@ export type AppSidebarProps = {
   onSetTheme: (_theme: "dark" | "light") => void;
   onSetMCPRuntimeEnabled: (_enabled: boolean) => unknown;
   onOpenTransferCenter: () => void;
+  consoleCapacity?: { data: ConsoleCapacityReport | null; error: string | null; onOpen: () => void };
   onSwitchDatabase: () => void;
   onLockDatabase: () => void;
   embedded?: boolean;
@@ -86,6 +89,7 @@ export function AppSidebar({
   onSetTheme,
   onSetMCPRuntimeEnabled,
   onOpenTransferCenter,
+  consoleCapacity,
   onSwitchDatabase,
   onLockDatabase,
   embedded = false,
@@ -187,6 +191,7 @@ export function AppSidebar({
               <span className="shrink-0 text-xs text-stone-500">idle</span>
             )}
           </button>
+          {consoleCapacity ? <CapacityButton {...consoleCapacity} /> : null}
           <div className="grid gap-3 rounded-lg border border-stone-200 bg-stone-50 p-3 dark-panel-subtle">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-stone-500">Gateway</span>

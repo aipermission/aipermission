@@ -14,12 +14,16 @@ import { PendingVaultApprovalNotice } from "./vault/pending-vault-approval-notic
 import { useAppShellController } from "./use-app-shell-controller";
 import type { Dispatch, SetStateAction } from "react";
 import type { Theme } from "../lib/theme.ts";
+import { useConsoleCapacity } from "./capacity/use-console-capacity";
+
+const CapacityDialog = lazy(() => import("./capacity/capacity-dialog").then((module) => ({ default: module.CapacityDialog })));
 
 const VaultActionApprovalDialog = lazy(() =>
   import("./vault/vault-action-approval-dialog").then((module) => ({ default: module.VaultActionApprovalDialog })),
 );
 export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<SetStateAction<Theme>> }) {
   const location = useLocation();
+  const capacity = useConsoleCapacity();
   const {
     resources,
     transferCenter,
@@ -42,6 +46,7 @@ export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<Se
     onSetTheme: setTheme,
     onSetMCPRuntimeEnabled: resources.setMCPRuntimeEnabled,
     onOpenTransferCenter: transferCenter.show,
+    consoleCapacity: { data: capacity.data, error: capacity.error, onOpen: () => capacity.setOpen(true) },
     onSwitchDatabase: database.openSwitch,
     onLockDatabase: database.requestLock,
   };
@@ -50,6 +55,19 @@ export function Shell({ theme, setTheme }: { theme: Theme; setTheme: Dispatch<Se
     <main className="min-h-screen bg-stone-100 text-stone-950">
       <AppSidebar {...sidebarProps} />
       <AppMobileNavigation sidebarProps={sidebarProps} />
+      {capacity.open ? (
+        <Suspense fallback={null}>
+          <CapacityDialog
+            data={capacity.data}
+            error={capacity.error}
+            message={capacity.message}
+            saving={capacity.saving}
+            onClose={() => capacity.setOpen(false)}
+            onRefresh={capacity.refresh}
+            onClean={capacity.close}
+          />
+        </Suspense>
+      ) : null}
 
       <TransferCenter
         open={transferCenter.open}

@@ -45,6 +45,30 @@
       "functions": 100,
       "lines": 100
     },
+    "src/components/capacity/capacity-button.tsx": {
+      "statements": 100,
+      "branches": 71.42,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/capacity/capacity-dialog.tsx": {
+      "statements": 80.85,
+      "branches": 71.64,
+      "functions": 85.18,
+      "lines": 82.92
+    },
+    "src/components/capacity/model.ts": {
+      "statements": 100,
+      "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/capacity/use-console-capacity.ts": {
+      "statements": 87.39,
+      "branches": 65.21,
+      "functions": 84.21,
+      "lines": 93.26
+    },
     "src/components/changelog-entries.tsx": {
       "statements": 100,
       "branches": 100,

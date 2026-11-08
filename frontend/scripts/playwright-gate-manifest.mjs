@@ -14,6 +14,7 @@ const responsiveWorkspaceTitles = responsiveViewportMatrix.map(
 );
 
 export const requiredHighRiskTitles = Object.freeze([
+  "console capacity updates and guarded cleanup stay usable on desktop/mobile @high-risk",
   "@high-risk unlocks the local UI session and renders the dashboard",
   "@high-risk imports a database from the unlock screen",
   "@high-risk updates token connector permission from the Tokens page",

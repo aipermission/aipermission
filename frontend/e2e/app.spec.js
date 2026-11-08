@@ -22,13 +22,7 @@ test.beforeEach(async ({ page, apiIsolation }) => {
   await apiIsolation.route(page, "http://localhost:8080/api/unlock/status", ["GET"], async (route) => {
     await fulfillWorkspace(route, {
       headers: unlocked ? workspaceHeaders : {},
-      json: unlocked
-        ? mockResponse("unlockedStatus")
-        : {
-            state: "session_required",
-            database_id: "default",
-            databases: [{ id: "default", name: "Default", state: "locked", unlocked: false }],
-          },
+      json: mockResponse(unlocked ? "unlockedStatus" : "lockedStatus"),
     });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/unlock", ["POST"], async (route) => {
@@ -54,27 +48,7 @@ test.beforeEach(async ({ page, apiIsolation }) => {
   });
 
   await apiIsolation.route(page, "http://localhost:8080/api/settings/security", ["GET", "PUT"], async (route) => {
-    if (route.request().method() === "PUT") {
-      await fulfillWorkspace(route, {
-        json: {
-          reusable_tokens: false,
-          expose_mcp_server_metadata: true,
-          mcp_start_enabled: false,
-          redaction_mode: "basic",
-          revision: "security-2",
-        },
-      });
-      return;
-    }
-    await fulfillWorkspace(route, {
-      json: {
-        reusable_tokens: false,
-        expose_mcp_server_metadata: false,
-        mcp_start_enabled: false,
-        redaction_mode: "basic",
-        revision: "security-1",
-      },
-    });
+    await fulfillWorkspace(route, { json: mockResponse(route.request().method() === "PUT" ? "securityUpdated" : "securityInitial") });
   });
   await apiIsolation.route(page, "http://localhost:8080/api/settings/mcp-runtime", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
@@ -97,22 +71,9 @@ test.beforeEach(async ({ page, apiIsolation }) => {
   await apiIsolation.route(page, "http://localhost:8080/api/tokens/1/connector-permissions", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
-      expect(body).toEqual({
-        permissions: [{ target_id: 1, profile_id: 1, action_name: "exec", execution_rule: "approval_required" }],
-        expected_revision: connectorPermissionRevision,
-      });
+      expect(body).toEqual({ ...mockResponse("connectorPermissionExpected"), expected_revision: connectorPermissionRevision });
       connectorPermissions = body.permissions.map((permission) => ({
-        project_id: 1,
-        project_name: "Ungrouped",
-        project_slug: "ungrouped",
-        project_enabled: true,
-        target_name: "worker-1",
-        profile_label: "main",
-        target_ref: "ssh:1:1",
-        connector_kind: "ssh",
-        profile_kind: "private_key",
-        created_at: "2026-05-31T00:00:00Z",
-        updated_at: "2026-05-31T00:00:00Z",
+        ...mockResponse("connectorPermissionMetadata"),
         ...permission,
       }));
       connectorPermissionRevision = "connector-permissions-2";
@@ -140,20 +101,11 @@ test.beforeEach(async ({ page, apiIsolation }) => {
   await apiIsolation.route(page, "http://localhost:8080/api/tokens/1/project-capabilities", ["GET", "PUT"], async (route) => {
     if (route.request().method() === "PUT") {
       const body = route.request().postDataJSON();
-      expect(body).toEqual({
-        capabilities: [
-          { project_id: 1, capability_name: "vault.metadata.read", execution_rule: "always_run" },
-          { project_id: 1, capability_name: "vault.item.generate", execution_rule: "always_run" },
-        ],
-        expected_revision: projectCapabilityRevision,
-      });
+      expect(body).toEqual({ ...mockResponse("projectCapabilitiesExpected"), expected_revision: projectCapabilityRevision });
       projectCapabilities = body.capabilities.map((capability) => ({
         ...capability,
-        token_id: 1,
-        project_name: "Ungrouped",
-        project_slug: "ungrouped",
+        ...mockResponse("projectCapabilityMetadata"),
         project_enabled: enabledProjectIDs.includes(capability.project_id),
-        revision: 1,
       }));
       projectCapabilityRevision = "project-capabilities-2";
     } else {
@@ -557,17 +509,10 @@ for (const [kind, label, sessionKind] of [
         json: [
           {
             ...mockResponse("pendingApproval"),
+            ...mockResponse("sqlPreviousQuery"),
             connector_kind: kind,
-            target_id: 2,
-            target_name: "analytics-db",
             target_ref: `${kind}:2:1`,
-            profile_label: "admin",
-            action_name: "query_readonly",
             reason: `manual ${label} console query`,
-            input: { sql: "SELECT 2", max_rows: 100 },
-            preview: { sql: "SELECT 2", max_rows: 100 },
-            status: "completed",
-            retry_policy: { class: "read_only", guidance: "Read-only fixture." },
           },
         ],
       });
