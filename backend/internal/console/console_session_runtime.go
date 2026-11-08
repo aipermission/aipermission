@@ -282,6 +282,7 @@ func (s *managedConsoleSession) writeInputAttempt(data string) (bool, error) {
 		return false, fmt.Errorf("console session is not ready")
 	}
 	stdin := s.stdin
+	s.lastActivity = time.Now()
 	s.mu.Unlock()
 	written, err := io.WriteString(stdin, data)
 	if err == nil && written != len(data) {
@@ -327,6 +328,7 @@ func (s *managedConsoleSession) beginClose() {
 	}
 	s.mu.Unlock()
 	s.closeWorkAdmission()
+	s.manager.capacityChanged()
 	if s.cancel != nil {
 		s.cancel()
 	}
@@ -473,6 +475,7 @@ func (s *managedConsoleSession) setStatus(status string, message string) {
 	s.status = status
 	s.errText = persistedMessage
 	s.mu.Unlock()
+	s.manager.capacityChanged()
 	if _, err := s.manager.db.Exec(`UPDATE console_sessions SET status = ?, error = ?, updated_at = ? WHERE id = ?`, status, persistedMessage, now, s.id); err != nil {
 		logConsolePersistError("set_status", s.id, err)
 	}
@@ -513,6 +516,7 @@ func (s *managedConsoleSession) appendSafeOutput(data string) error {
 	defer s.outputMu.Unlock()
 	s.mu.Lock()
 	automationActive := s.activeExec != nil
+	s.lastActivity = time.Now()
 	postAutomationFilter := !automationActive && time.Now().Before(s.filterUntil)
 	keepShellPrompt := postAutomationFilter
 	combinedRaw := s.rawTranscript + data
@@ -533,10 +537,15 @@ func (s *managedConsoleSession) appendSafeOutput(data string) error {
 	if displayData != "" {
 		s.transcript = terminaltext.TailStringByBytes(s.transcript+displayData, maxConsoleTranscriptLength)
 	}
+	wasProtected := s.manualActive != nil || s.manualPause != nil
 	manualCompletion := s.manualOutputCompletionLocked()
 	s.clearManualPauseIfPromptReturnedLocked()
+	protectionChanged := wasProtected != (s.manualActive != nil || s.manualPause != nil)
 	clients := maps.Clone(s.clients)
 	s.mu.Unlock()
+	if protectionChanged {
+		s.manager.capacityChanged()
+	}
 	if err := s.enqueueTranscript(s.ctx, displayData); err != nil {
 		return err
 	}

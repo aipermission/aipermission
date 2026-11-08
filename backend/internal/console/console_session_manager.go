@@ -244,11 +244,13 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 		start:                   make(chan struct{}),
 		done:                    make(chan struct{}),
 		status:                  "connecting",
+		lastActivity:            time.Now(),
 		clients:                 map[*websocket.Conn]*sync.Mutex{},
 	}
 
 	m.sessions[id] = managed
 	m.mu.Unlock()
+	m.capacityChanged()
 	go managed.run()
 	record, err := m.Get(ctx, id)
 	if err != nil {
@@ -679,6 +681,7 @@ func (m *Manager) CloseAll(ctx context.Context) error {
 		ctx = context.Background()
 	}
 	m.BeginCloseAll()
+	m.capacityChanged()
 	m.mu.Lock()
 	sessions := make([]*managedConsoleSession, 0, len(m.sessions))
 	for _, session := range m.sessions {
@@ -782,6 +785,7 @@ func (m *Manager) removeFinalized(session *managedConsoleSession) {
 		delete(m.sessions, session.id)
 	}
 	m.mu.Unlock()
+	m.capacityChanged()
 }
 
 func (s *managedConsoleSession) handle() SessionHandle {

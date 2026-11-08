@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/capacity"
 	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/streamoutput"
@@ -20,7 +21,7 @@ const (
 	maxConsoleTranscriptLength   = 200000
 	maxConsoleSnapshotLength     = 50000
 	maxConsoleChunkLength        = consolepersistence.MaxChunkLength
-	maxActiveConsoleSessions     = 32
+	maxActiveConsoleSessions     = capacity.Limit
 	maxConsoleClientsPerSession  = 8
 	maxConsoleInputBytes         = 65536
 	maxPTYClientMessageBytes     = maxConsoleInputBytes + 4096
@@ -172,9 +173,11 @@ type Manager struct {
 	persistChunks func(context.Context, *sql.DB, int64, string, string, string) error
 	persistStatus func(context.Context, *sql.DB, int64, string, string, string) error
 
-	mu       sync.Mutex
-	sessions map[int64]*managedConsoleSession
-	closed   bool
+	mu               sync.Mutex
+	sessions         map[int64]*managedConsoleSession
+	closed           bool
+	capacityRevision uint64
+	capacitySignal   chan struct{}
 
 	lifecycleMu sync.Mutex
 	lifecycle   map[int64]*sync.Mutex
@@ -251,24 +254,26 @@ type managedConsoleSession struct {
 	persisted    bool
 	hookDone     bool
 
-	mu              sync.Mutex
-	execMu, inputMu sync.Mutex
-	outputMu        consolepersistence.OutputGate
-	status          string
-	closing         bool
-	transcript      string
-	rawTranscript   string
-	rawBaseOffset   int64
-	errText         string
-	stdin           io.WriteCloser
-	runtime         *RuntimeSession
-	clients         map[*websocket.Conn]*sync.Mutex
-	activeExec      *consoleSessionActiveExec
-	manualInput     manualinput.Capture
-	manualActive    *consoleSessionManualCapture
-	manualPause     *consoleSessionManualPause
-	filterUntil     time.Time
-	startErr        error
-	finalStatus     string
-	finalMessage    string
+	mu               sync.Mutex
+	execMu, inputMu  sync.Mutex
+	outputMu         consolepersistence.OutputGate
+	status           string
+	closing          bool
+	transcript       string
+	rawTranscript    string
+	rawBaseOffset    int64
+	errText          string
+	stdin            io.WriteCloser
+	runtime          *RuntimeSession
+	clients          map[*websocket.Conn]*sync.Mutex
+	activeExec       *consoleSessionActiveExec
+	manualInput      manualinput.Capture
+	manualActive     *consoleSessionManualCapture
+	manualPause      *consoleSessionManualPause
+	filterUntil      time.Time
+	startErr         error
+	finalStatus      string
+	finalMessage     string
+	lastActivity     time.Time
+	cleanupUntracked bool
 }

@@ -431,6 +431,7 @@
     "internal/connectortargets/httpapi": 100,
     "internal/connectortransport": 89,
     "internal/console": 80,
+    "internal/console/capacity": 100,
     "internal/console/manualinput": 95,
     "internal/console/manualinput/heredocsyntax": 95,
     "internal/console/persistence": 74,

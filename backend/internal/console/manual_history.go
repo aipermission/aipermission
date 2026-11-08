@@ -107,6 +107,10 @@ func (s *managedConsoleSession) finishManualInputPreparation(preparation manualI
 func (s *managedConsoleSession) persistManualInput(commands []manualCommandRecord) {
 	for _, command := range commands {
 		if err := s.insertManualCommand(command); err != nil {
+			s.mu.Lock()
+			s.cleanupUntracked = true
+			s.mu.Unlock()
+			s.manager.capacityChanged()
 			logConsolePersistError("manual_history", s.id, err)
 		}
 	}
@@ -117,6 +121,7 @@ func (s *managedConsoleSession) recordManualInput(data string) {
 }
 
 func (s *managedConsoleSession) submitManualInput(data string) error {
+	defer s.manager.capacityChanged()
 	s.inputMu.Lock()
 	defer s.inputMu.Unlock()
 	s.mu.Lock()
@@ -128,8 +133,17 @@ func (s *managedConsoleSession) submitManualInput(data string) error {
 		startOffset:  s.rawStreamPositionLocked(),
 		resumePrompt: terminaltext.LastManualShellPrompt(s.rawTranscript),
 	}
+	// Manual history recognizes prompts heuristically, not verified process exits.
+	// Retain cleanup protection before dispatch, even if later automation or a
+	// prompt-shaped output clears the best-effort history capture.
+	if data != "" {
+		s.cleanupUntracked = true
+	}
 	s.mu.Unlock()
 	if err := s.writeInput(data); err != nil {
+		s.mu.Lock()
+		s.cleanupUntracked = true
+		s.mu.Unlock()
 		return err
 	}
 	var preparation manualInputPreparation
