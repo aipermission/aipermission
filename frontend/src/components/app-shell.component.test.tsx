@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Shell } from "./app-shell";
 import type { VaultApproval } from "../lib/gateway-contracts/security-contracts.ts";
@@ -8,6 +8,8 @@ import type { AppSidebar } from "./app-sidebar";
 import type { TransferCenter } from "./transfer-center";
 import type { VaultApprovalDialogState } from "./vault/use-vault-action-approvals";
 import type { VaultActionApprovalDialog } from "./vault/vault-action-approval-dialog";
+import type { useConsoleCapacity } from "./capacity/use-console-capacity";
+import { report } from "../test/console-capacity-fixtures";
 
 type FixtureState = {
   pathname: string;
@@ -19,6 +21,7 @@ type FixtureState = {
   context: GatewayContext | null;
   sidebar: ComponentProps<typeof AppSidebar> | null;
   transferProps: ComponentProps<typeof TransferCenter> | null;
+  capacity: ReturnType<typeof useConsoleCapacity> | null;
 };
 const state = vi.hoisted<FixtureState>(() => ({
   pathname: "/console",
@@ -30,6 +33,7 @@ const state = vi.hoisted<FixtureState>(() => ({
   context: null,
   sidebar: null,
   transferProps: null,
+  capacity: null,
 }));
 const wiring = vi.hoisted(() => ({
   resources: vi.fn(),
@@ -60,6 +64,9 @@ vi.mock("./app-sidebar", () => ({
   },
 }));
 vi.mock("./backup-freshness-notices", () => ({ BackupFreshnessNotices: () => null }));
+vi.mock("./capacity/use-console-capacity", () => ({
+  useConsoleCapacity: () => state.capacity,
+}));
 vi.mock("./database-switch-dialog", () => ({ DatabaseSwitchDialog: () => null }));
 vi.mock("./database-lock-dialog", () => ({ DatabaseLockDialog: () => null }));
 vi.mock("./local-action-reconciliation-dialog", () => ({ LocalActionReconciliationDialog: () => null }));
@@ -118,6 +125,36 @@ beforeEach(() => {
   state.transfers = transferState();
   state.console = consoleState();
   state.vault = vaultState();
+  state.capacity = {
+    data: report(),
+    error: null,
+    message: null,
+    open: false,
+    setOpen: vi.fn(),
+    saving: false,
+    refresh: vi.fn(),
+    close: vi.fn(async () => {}),
+  };
+});
+
+it("opens one lazy capacity view from the sidebar and wires refresh and dismissal", async () => {
+  vi.useRealTimers();
+  const props = { theme: "dark" as const, setTheme: vi.fn() };
+  const view = render(<Shell {...props} />);
+  expect(screen.queryByRole("dialog", { name: "Console capacity" })).not.toBeInTheDocument();
+  act(() => state.sidebar!.consoleCapacity!.onOpen());
+  expect(state.capacity!.setOpen).toHaveBeenCalledWith(true);
+  state.capacity!.open = true;
+  view.rerender(<Shell {...props} />);
+  const dialog = await screen.findByRole("dialog", { name: "Console capacity" });
+  expect(within(dialog).getByText("Target 1")).toBeVisible();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Refresh capacity" }));
+  expect(state.capacity!.refresh).toHaveBeenCalledOnce();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }));
+  expect(state.capacity!.setOpen).toHaveBeenLastCalledWith(false);
+  state.capacity!.open = false;
+  view.rerender(<Shell {...props} />);
+  expect(screen.queryByRole("dialog", { name: "Console capacity" })).not.toBeInTheDocument();
 });
 
 it("passes a reversible theme toggle through the native route context", () => {

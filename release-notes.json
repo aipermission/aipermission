@@ -1,6 +1,13 @@
 {
   "inAppReleaseLimit": 8,
-  "unreleased": [],
+  "unreleased": [
+    {
+      "title": "Added",
+      "items": [
+        "Show live shared console capacity below Transfers with a bounded, visibility-aware watch, grouped activity views, configurable idle thresholds and audited conditional single/bulk cleanup without closing tracked running commands."
+      ]
+    }
+  ],
   "releases": [
     {
       "version": "0.2.77",
@@ -704,9 +711,7 @@
         },
         {
           "title": "Fixed",
-          "items": [
-            "Audit payload previews preserve zero-valued fields."
-          ]
+          "items": ["Audit payload previews preserve zero-valued fields."]
         },
         {
           "title": "Maintenance",

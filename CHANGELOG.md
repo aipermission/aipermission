@@ -9,6 +9,12 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Added
+
+- Show live shared console capacity below Transfers with a bounded, visibility-aware
+  watch, grouped activity views, configurable idle thresholds and audited conditional
+  single/bulk cleanup without closing tracked running commands.
+
 ## [0.2.77] - 2026-11-07
 
 ### Security

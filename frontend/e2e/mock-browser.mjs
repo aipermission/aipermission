@@ -67,6 +67,14 @@ test.afterEach(async ({ apiIsolation }) => {
 });
 
 export async function installStaticMockRoutes(page, isolation) {
+  await page.routeWebSocket(/^ws:\/\/localhost:8080\/api\/console\/capacity\/attach\?workspace=browser-fixture-workspace$/, (socket) => {
+    socket.send(JSON.stringify({ revision: 1 }));
+  });
+  await isolation.route(page, "http://localhost:8080/api/console/capacity", ["GET"], async (route) => {
+    await fulfillWorkspace(route, {
+      json: { limit: 32, used: 0, available: 32, revision: 1, observed_at: "2026-11-08T12:00:00Z", items: [] },
+    });
+  });
   for (const [path, response] of Object.entries(structuredClone(data.staticRoutes))) {
     await isolation.route(page, `http://localhost:8080${path}`, ["GET"], async (route) => {
       await fulfillWorkspace(route, response);

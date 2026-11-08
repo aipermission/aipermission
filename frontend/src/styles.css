@@ -53,12 +53,25 @@ textarea {
 }
 
 .aip-progress {
+  --progress-value: #047857;
   display: block;
   overflow: hidden;
   appearance: none;
   border: 0;
   border-radius: 9999px;
   background: var(--progress-track);
+}
+
+.aip-progress[data-tone="warning"] {
+  --progress-value: #f59e0b;
+}
+
+.aip-progress[data-tone="critical"] {
+  --progress-value: #ef4444;
+}
+
+.aip-progress[data-tone="muted"] {
+  --progress-value: #a8a29e;
 }
 
 .aip-progress::-webkit-progress-bar {
@@ -68,13 +81,13 @@ textarea {
 
 .aip-progress::-webkit-progress-value {
   border-radius: 9999px;
-  background: #047857;
+  background: var(--progress-value);
   transition: width 150ms ease;
 }
 
 .aip-progress::-moz-progress-bar {
   border-radius: 9999px;
-  background: #047857;
+  background: var(--progress-value);
   transition: width 150ms ease;
 }
 

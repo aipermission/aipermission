@@ -1,5 +1,87 @@
 {
   "responses": {
+    "lockedStatus": {
+      "state": "session_required",
+      "database_id": "default",
+      "databases": [{ "id": "default", "name": "Default", "state": "locked", "unlocked": false }]
+    },
+    "securityInitial": {
+      "reusable_tokens": false,
+      "expose_mcp_server_metadata": false,
+      "mcp_start_enabled": false,
+      "redaction_mode": "basic",
+      "revision": "security-1"
+    },
+    "securityUpdated": {
+      "reusable_tokens": false,
+      "expose_mcp_server_metadata": true,
+      "mcp_start_enabled": false,
+      "redaction_mode": "basic",
+      "revision": "security-2"
+    },
+    "connectorPermissionExpected": {
+      "permissions": [{ "target_id": 1, "profile_id": 1, "action_name": "exec", "execution_rule": "approval_required" }],
+      "expected_revision": "connector-permissions-1"
+    },
+    "connectorPermissionMetadata": {
+      "project_id": 1,
+      "project_name": "Ungrouped",
+      "project_slug": "ungrouped",
+      "project_enabled": true,
+      "target_name": "worker-1",
+      "profile_label": "main",
+      "target_ref": "ssh:1:1",
+      "connector_kind": "ssh",
+      "profile_kind": "private_key",
+      "created_at": "2026-05-31T00:00:00Z",
+      "updated_at": "2026-05-31T00:00:00Z"
+    },
+    "projectCapabilitiesExpected": {
+      "capabilities": [
+        { "project_id": 1, "capability_name": "vault.metadata.read", "execution_rule": "always_run" },
+        { "project_id": 1, "capability_name": "vault.item.generate", "execution_rule": "always_run" }
+      ],
+      "expected_revision": "project-capabilities-1"
+    },
+    "projectCapabilityMetadata": { "token_id": 1, "project_name": "Ungrouped", "project_slug": "ungrouped", "revision": 1 },
+    "sqlPreviousQuery": {
+      "target_id": 2,
+      "target_name": "analytics-db",
+      "profile_label": "admin",
+      "action_name": "query_readonly",
+      "input": { "sql": "SELECT 2", "max_rows": 100 },
+      "preview": { "sql": "SELECT 2", "max_rows": 100 },
+      "status": "completed",
+      "retry_policy": { "class": "read_only", "guidance": "Read-only fixture." }
+    },
+    "consoleCapacityItems": [
+      {
+        "id": 1,
+        "runtime_id": 1,
+        "generation": 1,
+        "target_name": "My Container",
+        "connector_kind": "docker",
+        "name": "shell",
+        "owner": "mcp_token:1",
+        "state": "connected",
+        "clients": 1,
+        "last_activity": "2026-11-08T10:00:00Z",
+        "can_close": true
+      },
+      {
+        "id": 2,
+        "runtime_id": 2,
+        "generation": 1,
+        "target_name": "My Pod",
+        "connector_kind": "kubernetes",
+        "name": "shell",
+        "owner": "mcp_token:2",
+        "state": "running",
+        "clients": 0,
+        "last_activity": "2026-11-08T11:59:00Z",
+        "can_close": false
+      }
+    ],
     "sqlEmptyOutput": { "rows": [] },
     "sqlMetadataOutput": {
       "rows": [{ "table_schema": "dbo", "table_name": "Orders", "column_name": "order_id", "ordinal_position": 1, "data_type": "int" }]
