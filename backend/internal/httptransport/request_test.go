@@ -83,6 +83,7 @@ func TestWorkspaceSocketRouteCatalog(t *testing.T) {
 	for _, path := range []string{
 		"/api/settings/maintenance-console/attach",
 		"/api/console/sessions/12/attach",
+		"/api/console/capacity/attach",
 	} {
 		if !IsWorkspaceSocketRoute(path) {
 			t.Fatalf("workspace socket route %q was not recognized", path)
@@ -92,6 +93,8 @@ func TestWorkspaceSocketRouteCatalog(t *testing.T) {
 		"/api/settings/maintenance-console/status",
 		"/api/console/sessions/12",
 		"/api/console/sessions/12/attach/extra",
+		"/api/console/capacity",
+		"/api/console/capacity/attach/extra",
 	} {
 		if IsWorkspaceSocketRoute(path) {
 			t.Fatalf("ordinary route %q was classified as a workspace socket", path)
