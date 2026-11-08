@@ -804,6 +804,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/console/capacity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiConsoleCapacity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/capacity/attach": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiConsoleCapacityAttach"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/console/capacity/close": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiConsoleCapacityClose"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/console/command-requests/{id}": {
         parameters: {
             query?: never;
@@ -2540,6 +2588,54 @@ export interface components {
             status: string;
             /** Format: date-time */
             updated_at: string;
+        };
+        ConsoleCapacityCloseRequest: {
+            /** @enum {integer} */
+            idle_minutes: 0 | 10 | 20 | 30 | 45 | 60 | 120 | 180 | 360;
+            sessions: {
+                /** Format: int64 */
+                generation: number;
+                /** Format: int64 */
+                id: number;
+                /** Format: date-time */
+                last_activity: string;
+            }[];
+        };
+        ConsoleCapacityCloseResult: {
+            closed: number[];
+            skipped: number[];
+            uncertain: number[];
+        };
+        ConsoleCapacityReport: {
+            /** Format: int64 */
+            available: number;
+            items: components["schemas"]["ConsoleCapacitySession"][];
+            /** Format: int64 */
+            limit: number;
+            /** Format: date-time */
+            observed_at: string;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            used: number;
+        };
+        ConsoleCapacitySession: {
+            can_close: boolean;
+            /** Format: int64 */
+            clients: number;
+            connector_kind: string;
+            /** Format: int64 */
+            generation: number;
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            last_activity: string;
+            name: string;
+            owner: string;
+            /** Format: int64 */
+            runtime_id: number;
+            state: string;
+            target_name: string;
         };
         DiagnosticsConnector: {
             kind: string;
@@ -4552,6 +4648,112 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApiConsoleCapacity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleCapacityReport"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApiConsoleCapacityAttach: {
+        parameters: {
+            query: {
+                /** @description Binds a browser WebSocket upgrade to the workspace observed by that browser tab. */
+                workspace: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postApiConsoleCapacityClose: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock. */
+                "X-AIPermission-Workspace": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleCapacityCloseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleCapacityCloseResult"];
+                };
+            };
+            /** @description Documented error response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
             /** @description Error response */
             default: {
                 headers: {

@@ -112,6 +112,9 @@ type BackupProviders interface {
 	DownloadProviderRecord(http.ResponseWriter, *http.Request)
 }
 type Console interface {
+	Capacity(http.ResponseWriter, *http.Request)
+	CapacityAttach(http.ResponseWriter, *http.Request)
+	CloseCapacity(http.ResponseWriter, *http.Request)
 	List(http.ResponseWriter, *http.Request)
 	Create(http.ResponseWriter, *http.Request)
 	Get(http.ResponseWriter, *http.Request)
@@ -363,6 +366,9 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("POST /api/databases/change-password", d.Workspaces.ChangePassword)
 	mux.HandleFunc("POST /api/console/bulk-exec", d.BulkConsole.Run)
 	mux.HandleFunc("GET /api/console/sessions", d.Console.List)
+	mux.HandleFunc("GET /api/console/capacity", d.Console.Capacity)
+	mux.HandleFunc("GET /api/console/capacity/attach", d.Console.CapacityAttach)
+	mux.HandleFunc("POST /api/console/capacity/close", d.Console.CloseCapacity)
 	mux.HandleFunc("POST /api/console/sessions", d.Console.Create)
 	mux.HandleFunc("GET /api/console/sessions/{id}", d.Console.Get)
 	mux.HandleFunc("POST /api/console/sessions/{id}/input", d.Console.Input)

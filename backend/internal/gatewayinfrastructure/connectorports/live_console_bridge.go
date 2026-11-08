@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/aipermission/aipermission/backend/internal/console"
+	"github.com/aipermission/aipermission/backend/internal/console/capacity"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 	"github.com/aipermission/aipermission/backend/internal/sessionenv"
 	"github.com/gorilla/websocket"
@@ -14,6 +15,22 @@ import (
 
 type sessions struct {
 	manager *console.Manager
+}
+
+func (value sessions) Capacity(ctx context.Context) (capacity.Report, error) {
+	return value.manager.Capacity(ctx)
+}
+
+func (value sessions) WaitCapacity(ctx context.Context, after uint64) (uint64, error) {
+	return value.manager.WaitCapacity(ctx, after)
+}
+
+func (value sessions) CloseCapacitySession(ctx context.Context, principal connectorapi.Principal, selection capacity.Selection, minutes int) error {
+	core, err := corePrincipal(principal)
+	if err != nil {
+		return err
+	}
+	return mapError(value.manager.CloseCapacitySession(ctx, core, selection, minutes))
 }
 
 func NewLiveConsoleSessions(manager *console.Manager) connectorapi.LiveConsoleSessions {
@@ -127,6 +144,8 @@ func mapError(err error) error {
 		return nil
 	case errors.Is(err, console.ErrNotFound):
 		return connectorapi.ErrLiveConsoleNotFound
+	case errors.Is(err, console.ErrSessionChanged):
+		return connectorapi.ErrLiveConsoleChanged
 	case errors.Is(err, console.ErrSessionLimit):
 		return connectorapi.ErrLiveConsoleSessionLimit
 	case errors.Is(err, console.ErrClientLimit):

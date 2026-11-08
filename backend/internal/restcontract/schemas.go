@@ -2,6 +2,7 @@ package restcontract
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
@@ -192,6 +193,7 @@ func sharedSchemas() map[string]any {
 	for name, schema := range permissionSchemas() {
 		schemas[name] = schema
 	}
+	maps.Copy(schemas, consoleCapacitySchemas())
 	return schemas
 }
 
@@ -271,7 +273,12 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/audit-logs/{id}"}:             okContract(refSchema("AuditEntry")),
 		{Method: "GET", Path: "/api/settings/diagnostics"}:        okContract(refSchema("DiagnosticsReport")),
 		{Method: "GET", Path: "/api/settings/connector-capacity"}: okContract(refSchema("ConnectorCapacityReport")),
-		{Method: "GET", Path: "/api/settings/security"}:           okContract(refSchema("SecuritySettingsDocument")),
+		{Method: "GET", Path: "/api/console/capacity"}:            okContract(refSchema("ConsoleCapacityReport")),
+		{Method: "POST", Path: "/api/console/capacity/close"}: {
+			StatusCode: "200", RequestSchema: refSchema("ConsoleCapacityCloseRequest"), ResponseSchema: refSchema("ConsoleCapacityCloseResult"),
+			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "403": refSchema("Error")},
+		},
+		{Method: "GET", Path: "/api/settings/security"}: okContract(refSchema("SecuritySettingsDocument")),
 		{Method: "PUT", Path: "/api/settings/security"}: {
 			StatusCode: "200", RequestSchema: refSchema("SecuritySettingsUpdate"), ResponseSchema: refSchema("SecuritySettingsDocument"),
 			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "409": refSchema("Error")},

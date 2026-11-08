@@ -1065,6 +1065,185 @@
         ],
         "type": "object"
       },
+      "ConsoleCapacityCloseRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "idle_minutes": {
+            "enum": [
+              0,
+              10,
+              20,
+              30,
+              45,
+              60,
+              120,
+              180,
+              360
+            ],
+            "type": "integer"
+          },
+          "sessions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "generation": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "id": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "last_activity": {
+                  "format": "date-time",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "generation",
+                "last_activity"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "idle_minutes",
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "ConsoleCapacityCloseResult": {
+        "additionalProperties": false,
+        "properties": {
+          "closed": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "uncertain": {
+            "items": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "closed",
+          "skipped",
+          "uncertain"
+        ],
+        "type": "object"
+      },
+      "ConsoleCapacityReport": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ConsoleCapacitySession"
+            },
+            "type": "array"
+          },
+          "limit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "used": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit",
+          "used",
+          "available",
+          "revision",
+          "observed_at",
+          "items"
+        ],
+        "type": "object"
+      },
+      "ConsoleCapacitySession": {
+        "additionalProperties": false,
+        "properties": {
+          "can_close": {
+            "type": "boolean"
+          },
+          "clients": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "connector_kind": {
+            "type": "string"
+          },
+          "generation": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "last_activity": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "runtime_id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "target_name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "runtime_id",
+          "generation",
+          "target_name",
+          "connector_kind",
+          "name",
+          "owner",
+          "state",
+          "clients",
+          "last_activity",
+          "can_close"
+        ],
+        "type": "object"
+      },
       "DiagnosticsConnector": {
         "additionalProperties": false,
         "properties": {
@@ -4856,6 +5035,145 @@
           "console"
         ],
         "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/capacity": {
+      "get": {
+        "operationId": "getApiConsoleCapacity",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCapacityReport"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "typed-response"
+      }
+    },
+    "/api/console/capacity/attach": {
+      "get": {
+        "operationId": "getApiConsoleCapacityAttach",
+        "parameters": [
+          {
+            "description": "Binds a browser WebSocket upgrade to the workspace observed by that browser tab.",
+            "in": "query",
+            "name": "workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/console/capacity/close": {
+      "post": {
+        "operationId": "postApiConsoleCapacityClose",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleCapacityCloseRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCapacityCloseResult"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "console"
+        ],
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/console/command-requests/{id}": {

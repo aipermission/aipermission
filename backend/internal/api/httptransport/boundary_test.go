@@ -155,6 +155,7 @@ func TestBoundaryRejectsStaleWorkspaceWebSocketAttach(t *testing.T) {
 	for _, path := range []string{
 		"/api/console/sessions/4/attach?workspace=workspace-a",
 		"/api/settings/maintenance-console/attach?workspace=workspace-a",
+		"/api/console/capacity/attach?workspace=workspace-a",
 	} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()

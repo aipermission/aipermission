@@ -743,6 +743,9 @@ request before retrying with a new idempotency key.
 
 ```txt
 POST /api/console/bulk-exec
+GET  /api/console/capacity
+GET  /api/console/capacity/attach
+POST /api/console/capacity/close
 GET  /api/console/sessions
 POST /api/console/sessions
 GET  /api/console/sessions/{id}
@@ -752,6 +755,29 @@ GET  /api/console/sessions/{id}/attach
 POST /api/console/runtime-surfaces/{id}/restart
 POST /api/console/targets/{id}/restart
 ```
+
+`GET /api/console/capacity` returns the current workspace's
+finite console limit, retained-session count, free slots, revision, observation
+time and transcript-free session metadata. It is a short UI-authenticated read,
+not an MCP tool. `GET /api/console/capacity/attach?workspace=<id>` upgrades through
+the existing authenticated WebSocket boundary, releases the workspace read lease
+on upgrade, and sends only revision-change notifications. It never reads database
+metadata after upgrade. The sidebar and dialog share one watch, coalesce changes,
+and reconcile every 30 seconds; hidden tabs stop watching. Terminal output only
+updates activity in memory. Idle watchers do not hold up database Lock/Switch.
+
+`POST /api/console/capacity/close` requires UI authentication, workspace/CSRF
+binding and a local operator. Body: `idle_minutes` and `sessions`, with each
+selection containing `id`, `generation`, and the exact `last_activity` timestamp
+from the snapshot. Supported bulk thresholds are 10, 20, 30 (UI default), 45, 60,
+120, 180 and 360 minutes. Zero is allowed only for one explicitly selected
+session. At most the shared console limit can be submitted, without duplicates.
+The backend rechecks activity and tracked execution atomically before closing;
+changed, running, unfinished or untracked sessions are protected. Results return
+`closed`, `skipped`, and `uncertain` ID arrays and are audited. Do not blindly
+retry an uncertain mutation; refresh and inspect the exact session first.
+Closing affects that shell and its viewers. Inactivity does not prove detached
+remote work has stopped. This is separate from per-token request storage capacity.
 
 `POST /api/console/bulk-exec` runs one local-UI command across selected SSH
 connector targets. It is not an MCP tool. The command runs through each
@@ -1628,6 +1654,9 @@ handlers cannot revive a removed token or overwrite a newer selection or draft.
 These views are informational; gateway authorization remains authoritative.
 
 ```txt
+GET    /api/console/capacity
+GET    /api/console/capacity/attach
+POST   /api/console/capacity/close
 GET    /api/console/sessions
 POST   /api/console/sessions
 GET    /api/console/sessions/{id}

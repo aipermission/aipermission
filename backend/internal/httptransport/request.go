@@ -53,7 +53,7 @@ func RejectWorkspaceBoundHead(w http.ResponseWriter, r *http.Request) bool {
 // workspace binding in a query parameter because the WebSocket API cannot set
 // custom request headers.
 func IsWorkspaceSocketRoute(path string) bool {
-	return path == "/api/settings/maintenance-console/attach" ||
+	return path == "/api/settings/maintenance-console/attach" || path == "/api/console/capacity/attach" ||
 		strings.HasPrefix(path, "/api/console/sessions/") && strings.HasSuffix(path, "/attach")
 }
 
