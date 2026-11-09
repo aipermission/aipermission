@@ -18,6 +18,12 @@ and this project uses semantic versioning for public releases.
   idle-cleanup policy in Settings; default disabled, with running, startup and uncertain
   work protected.
 
+### Security
+
+- Update SCRAM to 1.4.0 and lock rejected-password redaction with a regression through
+  the PostgreSQL managed-role verifier; retain pinned upstream checksums for the
+  reviewed local SQL Server driver patch.
+
 ## [0.2.77] - 2026-11-07
 
 ### Security

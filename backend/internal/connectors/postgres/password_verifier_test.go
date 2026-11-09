@@ -69,3 +69,15 @@ func TestRoleVerifierRejectsUnsafeWorkFactors(t *testing.T) {
 		})
 	}
 }
+
+func TestRoleVerifierNeverIncludesRejectedPasswordInError(t *testing.T) {
+	for _, password := range []string{"SCRAMFixtureForbidden-\x07-tail", "SCRAMFixtureForbidden-\uFFF9-tail"} {
+		verifier, err := rolePasswordVerifier(password, 4096)
+		if err == nil || verifier != "" {
+			t.Fatal("SASLprep must reject prohibited password characters")
+		}
+		if strings.Contains(err.Error(), "SCRAMFixtureForbidden") {
+			t.Fatal("SASLprep error contains rejected password material")
+		}
+	}
+}
