@@ -9,6 +9,7 @@ import { BackupRecordDialogs } from "../components/settings/backup-record-dialog
 import { DatabaseSettingsPanel } from "../components/settings/database-settings-panel";
 import { DiagnosticsPanel } from "../components/settings/diagnostics-panel";
 import { ConnectorCapacityPanel } from "../components/settings/connector-capacity-panel";
+import { ConsoleCleanupPanel } from "../components/settings/console-cleanup-panel";
 import { HistoryLabelsPanel } from "../components/settings/history-labels-panel";
 import { HistoryRetentionPanel } from "../components/settings/history-retention-panel";
 import { MaintenanceConsolePanel } from "../components/settings/maintenance-console-panel";
@@ -62,6 +63,7 @@ export function SettingsPage() {
       </Suspense>
       <DiagnosticsPanel />
       <ConnectorCapacityPanel />
+      <ConsoleCleanupPanel />
       <HistoryRetentionPanel />
       <HistoryLabelsPanel />
       <DatabaseSettingsPanel databaseName={databaseName} />

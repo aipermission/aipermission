@@ -14,6 +14,9 @@ and this project uses semantic versioning for public releases.
 - Show live shared console capacity below Transfers with a bounded, visibility-aware
   watch, grouped activity views, configurable idle thresholds and audited conditional
   single/bulk cleanup without closing tracked running commands.
+- Search loaded console sessions without extra requests and optionally save an hourly
+  idle-cleanup policy in Settings; default disabled, with running, startup and uncertain
+  work protected.
 
 ## [0.2.77] - 2026-11-07
 

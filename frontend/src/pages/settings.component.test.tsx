@@ -22,6 +22,7 @@ vi.mock("../components/settings/database-settings-panel", () => ({
 }));
 vi.mock("../components/settings/diagnostics-panel", () => ({ DiagnosticsPanel: () => null }));
 vi.mock("../components/settings/connector-capacity-panel", () => ({ ConnectorCapacityPanel: () => null }));
+vi.mock("../components/settings/console-cleanup-panel", () => ({ ConsoleCleanupPanel: () => null }));
 vi.mock("../components/settings/history-labels-panel", () => ({ HistoryLabelsPanel: () => null }));
 vi.mock("../components/settings/history-retention-panel", () => ({ HistoryRetentionPanel: () => null }));
 vi.mock("../components/settings/maintenance-console-panel", () => ({ MaintenanceConsolePanel: () => null }));

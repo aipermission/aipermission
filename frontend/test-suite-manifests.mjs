@@ -1,4 +1,5 @@
 export const asyncStateOwnerTests = {
+  "src/components/settings/console-cleanup-panel.tsx": ["src/components/settings/console-cleanup-panel.component.test.tsx"],
   "src/components/capacity/use-console-capacity.ts": ["src/components/capacity/use-console-capacity.component.test.tsx"],
   "src/lib/use-approval-decision-owner.ts": [
     "src/test/console-permissions/approval-decision-owner.component.test.tsx",

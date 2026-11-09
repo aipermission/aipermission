@@ -78,6 +78,12 @@ toward storage limits even when no action is running. Review
 [capacity and retention guidance](docs/api/rest-api.md#connector-capacity-and-retention) rather than
 assuming that waiting alone frees retained records.
 
+The sidebar's **Capacity** view separately tracks live console slots, searchable
+by connector, session or owner. Settings can opt into hourly cleanup with a saved
+idle threshold; it is disabled by default. Cleanup closes only eligible idle
+consoles, protects tracked or uncertain work, and retains history. Inactivity
+does not prove that detached remote processes have stopped.
+
 > **Local-only security boundary:** run AIPermission on your own machine and
 > keep its published Docker port bound to `127.0.0.1`. It is not a remote
 > multi-user service, LAN gateway, hosted control plane, or team RBAC system.
