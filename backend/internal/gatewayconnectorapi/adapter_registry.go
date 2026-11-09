@@ -163,8 +163,9 @@ type LiveConsoleOpenRequest struct {
 }
 
 type LiveConsoleSession struct {
-	Stdin  io.WriteCloser
-	Output <-chan console.RuntimeOutput
+	UntrackedStartup bool
+	Stdin            io.WriteCloser
+	Output           <-chan console.RuntimeOutput
 	// Output and Done are transport-owned. Close must stop the producers, wait
 	// for their pumps, close Output, and then report completion through Done.
 	Done                     <-chan error

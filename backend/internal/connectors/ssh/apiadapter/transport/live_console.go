@@ -203,6 +203,7 @@ func openLiveConsoleWithMaterial(ctx context.Context, gateway connectorapi.PeerI
 		Close:                    ownedOutput.Close,
 		PeerIdentity:             peerIdentity,
 		StartupInputAfterConnect: startupInputAfterConnect(target.StartupInputAfterConnect, hasEnvironment),
+		UntrackedStartup:         target.ForceShellCommand != "" || target.StartupInputAfterConnect != "",
 		ApplyEnvironment:         applyEnvironment,
 	}, nil
 }

@@ -135,7 +135,9 @@ func (m *Manager) CloseCapacitySession(ctx context.Context, principal executionp
 		return ErrNotFound
 	}
 	lock := m.runtimeLifecycle(session.runtimeID)
-	lock.Lock()
+	if !lock.TryLock() {
+		return ErrSessionChanged
+	}
 	defer lock.Unlock()
 	if m.active(selection.ID) != session {
 		return ErrSessionChanged

@@ -50,6 +50,7 @@ type SessionEnvironment interface {
 }
 
 type RuntimeSession struct {
+	UntrackedStartup         bool
 	Stdin                    io.WriteCloser
 	Output                   <-chan console.RuntimeOutput
 	Done                     <-chan error
@@ -79,7 +80,8 @@ func AdaptRuntimeOpener(opener RuntimeOpener) console.RuntimeOpener {
 			}
 		}
 		return &console.RuntimeSession{
-			Stdin: session.Stdin, Output: session.Output,
+			UntrackedStartup: session.UntrackedStartup,
+			Stdin:            session.Stdin, Output: session.Output,
 			Done: session.Done, Resize: session.Resize, Close: session.Close,
 			ApplyEnvironment: applyEnvironment, PeerIdentity: session.PeerIdentity,
 			StartupInputAfterConnect: session.StartupInputAfterConnect,

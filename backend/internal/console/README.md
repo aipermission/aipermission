@@ -87,3 +87,14 @@ transcript observers, so viewer presence alone is not proof of active work. Idle
 means no observed I/O for the selected period, not proof that remote detached
 processes are absent. Cleanup requires explicit confirmation, warns about this
 boundary, audits results, and distinguishes confirmed closures from uncertain ones.
+
+`idlecleanup` owns the opt-in encrypted policy and hourly worker. The workspace
+composition supplies its local-operator identity and required audit port; it
+reuses conditional cleanup rather than bypassing the execution guards. Policy
+updates are atomic with audit, and serialize with the hourly pass. Defaults are
+disabled/60 minutes. A single timer wakes at the next hour, not per session;
+disabled policy does not scan sessions. Manager shutdown cancels and drains the
+worker before database disposal. This closes transports and preserves history.
+Connector-owned startup provenance crosses the neutral runtime ports so the
+core can protect untracked startup work without understanding connector kinds.
+An interrupt request alone never proves a command exited for cleanup purposes.

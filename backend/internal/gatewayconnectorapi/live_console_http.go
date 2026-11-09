@@ -86,6 +86,7 @@ type LiveConsoleVaultSelection struct {
 }
 
 type LiveConsoleHTTPRuntime struct {
+	Mutate                  capacity.MutationRunner
 	Sessions                LiveConsoleSessions
 	Principal               func() (Principal, error)
 	PlanEnvironment         func(context.Context, int64, []LiveConsoleVaultSelection) (LiveConsoleEnvironmentPlan, error)

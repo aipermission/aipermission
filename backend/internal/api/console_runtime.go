@@ -42,6 +42,7 @@ func (s *Server) runtimeConsoleOpener(runtime *gatewayinfra.WorkspaceHandle) gat
 			ApplyEnvironment:         applyEnvironment,
 			PeerIdentity:             session.PeerIdentity,
 			StartupInputAfterConnect: session.StartupInputAfterConnect,
+			UntrackedStartup:         session.UntrackedStartup,
 		}, nil
 	}
 }

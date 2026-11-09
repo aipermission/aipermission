@@ -180,6 +180,7 @@ func (s *managedConsoleSession) publishRuntime(runtime *RuntimeSession) bool {
 	}
 	s.runtime = runtime
 	s.stdin = runtime.Stdin
+	s.cleanupUntracked = s.cleanupUntracked || runtime.UntrackedStartup || runtime.StartupInputAfterConnect != ""
 	s.mu.Unlock()
 	return true
 }

@@ -112,6 +112,8 @@ type BackupProviders interface {
 	DownloadProviderRecord(http.ResponseWriter, *http.Request)
 }
 type Console interface {
+	CleanupSettings(http.ResponseWriter, *http.Request)
+	UpdateCleanupSettings(http.ResponseWriter, *http.Request)
 	Capacity(http.ResponseWriter, *http.Request)
 	CapacityAttach(http.ResponseWriter, *http.Request)
 	CloseCapacity(http.ResponseWriter, *http.Request)
@@ -367,6 +369,8 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("POST /api/console/bulk-exec", d.BulkConsole.Run)
 	mux.HandleFunc("GET /api/console/sessions", d.Console.List)
 	mux.HandleFunc("GET /api/console/capacity", d.Console.Capacity)
+	mux.HandleFunc("GET /api/settings/console-cleanup", d.Console.CleanupSettings)
+	mux.HandleFunc("PUT /api/settings/console-cleanup", d.Console.UpdateCleanupSettings)
 	mux.HandleFunc("GET /api/console/capacity/attach", d.Console.CapacityAttach)
 	mux.HandleFunc("POST /api/console/capacity/close", d.Console.CloseCapacity)
 	mux.HandleFunc("POST /api/console/sessions", d.Console.Create)

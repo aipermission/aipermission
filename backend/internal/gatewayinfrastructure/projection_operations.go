@@ -124,6 +124,9 @@ func (component *OperationsOwner) LiveConsoleHTTPRuntime(handle *WorkspaceHandle
 		return nil, false
 	}
 	runtime.Sessions = connectorports.NewLiveConsoleSessions(capability.Sessions)
+	runtime.Mutate = func(ctx context.Context, action string, payload func() any, mutate func(*sql.Tx) error) error {
+		return component.observation.withObservationMutation(ctx, handle, "user", nil, 0, action, payload, mutate)
+	}
 	return &runtime, true
 }
 

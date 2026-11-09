@@ -665,11 +665,15 @@ func (m *Manager) BeginCloseAll() {
 	}
 	m.mu.Lock()
 	m.closed = true
+	cleanup := m.idleCleanup
 	sessions := make([]*managedConsoleSession, 0, len(m.sessions))
 	for _, session := range m.sessions {
 		sessions = append(sessions, session)
 	}
 	m.mu.Unlock()
+	if cleanup != nil {
+		cleanup.Cancel()
+	}
 	for _, session := range sessions {
 		session.beginClose()
 	}
@@ -685,11 +689,17 @@ func (m *Manager) CloseAll(ctx context.Context) error {
 	m.BeginCloseAll()
 	m.capacityChanged()
 	m.mu.Lock()
+	cleanup := m.idleCleanup
 	sessions := make([]*managedConsoleSession, 0, len(m.sessions))
 	for _, session := range m.sessions {
 		sessions = append(sessions, session)
 	}
 	m.mu.Unlock()
+	if cleanup != nil {
+		if err := cleanup.Stop(ctx); err != nil {
+			return err
+		}
+	}
 	for _, session := range sessions {
 		if err := session.waitDone(ctx); err != nil {
 			return err
