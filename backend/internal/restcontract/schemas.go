@@ -274,6 +274,8 @@ func typedOperationContracts() map[Route]operationContract {
 		{Method: "GET", Path: "/api/settings/diagnostics"}:        okContract(refSchema("DiagnosticsReport")),
 		{Method: "GET", Path: "/api/settings/connector-capacity"}: okContract(refSchema("ConnectorCapacityReport")),
 		{Method: "GET", Path: "/api/console/capacity"}:            okContract(refSchema("ConsoleCapacityReport")),
+		{Method: "GET", Path: "/api/settings/console-cleanup"}:    okContract(refSchema("ConsoleCleanupPolicy")),
+		{Method: "PUT", Path: "/api/settings/console-cleanup"}:    {StatusCode: "200", RequestSchema: refSchema("ConsoleCleanupPolicy"), ResponseSchema: refSchema("ConsoleCleanupPolicy"), AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "403": refSchema("Error")}},
 		{Method: "POST", Path: "/api/console/capacity/close"}: {
 			StatusCode: "200", RequestSchema: refSchema("ConsoleCapacityCloseRequest"), ResponseSchema: refSchema("ConsoleCapacityCloseResult"),
 			AdditionalResponses: map[string]map[string]any{"400": refSchema("Error"), "403": refSchema("Error")},

@@ -171,6 +171,11 @@ func (s *managedConsoleSession) interruptActiveCommand(ctx context.Context) erro
 	if active == nil {
 		return nil
 	}
+	// Sending SIGINT does not prove exit; retain cleanup protection even if the
+	// legacy interrupt path clears command tracking after its grace period.
+	s.mu.Lock()
+	s.cleanupUntracked = true
+	s.mu.Unlock()
 	if err := s.writeInput("\x03"); err != nil {
 		return err
 	}

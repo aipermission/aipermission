@@ -27,7 +27,7 @@ func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 			Stdin: nopWriteCloser{}, Output: output,
 			Done: done, Resize: func(int, int) error { return nil },
 			Close: func() error { return nil }, ApplyEnvironment: wantEnvironment,
-			PeerIdentity: "peer", StartupInputAfterConnect: "q",
+			PeerIdentity: "peer", StartupInputAfterConnect: "q", UntrackedStartup: true,
 		}, nil
 	})
 
@@ -41,7 +41,7 @@ func TestConsoleRuntimeOpenerPreservesRequestAndSessionContract(t *testing.T) {
 	if received.RuntimeID != 7 || received.Generation != 9 || received.Rows != 31 || received.Cols != 117 || !received.HasEnvironment || received.Params["container"] != "api" {
 		t.Fatalf("adapted request = %#v", received)
 	}
-	if session == nil || session.PeerIdentity != "peer" || session.StartupInputAfterConnect != "q" || session.ApplyEnvironment == nil {
+	if session == nil || !session.UntrackedStartup || session.PeerIdentity != "peer" || session.StartupInputAfterConnect != "q" || session.ApplyEnvironment == nil {
 		t.Fatalf("adapted session = %#v", session)
 	}
 	if event := <-session.Output; event.Kind != console.RuntimeStdout || event.Data != "stdout" {

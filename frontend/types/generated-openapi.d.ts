@@ -1716,6 +1716,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/console-cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getApiSettingsConsoleCleanup"];
+        put: operations["putApiSettingsConsoleCleanup"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/diagnostics": {
         parameters: {
             query?: never;
@@ -2636,6 +2652,11 @@ export interface components {
             runtime_id: number;
             state: string;
             target_name: string;
+        };
+        ConsoleCleanupPolicy: {
+            enabled: boolean;
+            /** @enum {integer} */
+            idle_minutes: 10 | 20 | 30 | 45 | 60 | 120 | 180 | 360;
         };
         DiagnosticsConnector: {
             kind: string;
@@ -6153,6 +6174,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ConnectorCapacityReport"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getApiSettingsConsoleCleanup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleCleanupPolicy"];
+                };
+            };
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putApiSettingsConsoleCleanup: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock. */
+                "X-AIPermission-Workspace": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConsoleCleanupPolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleCleanupPolicy"];
+                };
+            };
+            /** @description Documented error response */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Documented error response */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Error response */

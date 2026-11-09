@@ -746,6 +746,8 @@ POST /api/console/bulk-exec
 GET  /api/console/capacity
 GET  /api/console/capacity/attach
 POST /api/console/capacity/close
+GET  /api/settings/console-cleanup
+PUT  /api/settings/console-cleanup
 GET  /api/console/sessions
 POST /api/console/sessions
 GET  /api/console/sessions/{id}
@@ -778,6 +780,33 @@ changed, running, unfinished or untracked sessions are protected. Results return
 retry an uncertain mutation; refresh and inspect the exact session first.
 Closing affects that shell and its viewers. Inactivity does not prove detached
 remote work has stopped. This is separate from per-token request storage capacity.
+
+The dialog searches loaded connector/session names, kind, owner and session ID
+without an additional gateway request. Search does not clear the reviewed idle
+selection; confirmation lists every exact session that will be attempted.
+
+`GET /api/settings/console-cleanup` returns `enabled` (default false) and
+`idle_minutes` (default 60). `PUT` requires both fields, local UI authentication,
+the matching workspace and CSRF. The idle threshold must be one of 10, 20, 30, 45,
+60, 120, 180, 360 minutes; zero is not an automatic-cleanup option. Policy and audit
+commit together in the encrypted workspace. Saving does not immediately close
+sessions. Checks run at the start of each hour while that workspace is unlocked,
+with a 30-second operation budget, and stop when its console manager shuts down.
+Disabled cleanup reads only its small policy row, without scanning sessions.
+
+Automatic cleanup reuses the same exact-identity/activity and tracked-work guards
+as reviewed cleanup. Startup commands, interrupted work without confirmed exit,
+and uncertain manual work remain protected. The operator's opt-in includes idle
+agent sessions and attached viewers; no new MCP cleanup privilege is granted.
+An audit intent must be accepted before closure; outcomes distinguish closed,
+skipped and uncertain sessions, including items not attempted after cancellation.
+It closes live transports, not history or audit rows.
+
+A full console pool returns `console_session_limit_reached`, `used` and `limit`
+from the UI create endpoint, with guidance to review Capacity. Connector/MCP
+errors retain the same human-readable counts and ownership guidance through the
+existing error path. This is not request-storage backpressure, and no blind retry
+or new permission is implied.
 
 `POST /api/console/bulk-exec` runs one local-UI command across selected SSH
 connector targets. It is not an MCP tool. The command runs through each
@@ -1657,6 +1686,8 @@ These views are informational; gateway authorization remains authoritative.
 GET    /api/console/capacity
 GET    /api/console/capacity/attach
 POST   /api/console/capacity/close
+GET    /api/settings/console-cleanup
+PUT    /api/settings/console-cleanup
 GET    /api/console/sessions
 POST   /api/console/sessions
 GET    /api/console/sessions/{id}

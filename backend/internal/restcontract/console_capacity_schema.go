@@ -9,6 +9,7 @@ func consoleCapacitySchemas() map[string]any {
 	}, []string{"id", "runtime_id", "generation", "target_name", "connector_kind", "name", "owner", "state", "clients", "last_activity", "can_close"})
 	selection := objectSchema(map[string]any{"id": integerSchema(), "generation": integerSchema(), "last_activity": dateTimeSchema()}, []string{"id", "generation", "last_activity"})
 	return map[string]any{
+		"ConsoleCleanupPolicy":   objectSchema(map[string]any{"enabled": map[string]any{"type": "boolean"}, "idle_minutes": map[string]any{"type": "integer", "enum": []int{10, 20, 30, 45, 60, 120, 180, 360}}}, []string{"enabled", "idle_minutes"}),
 		"ConsoleCapacitySession": session,
 		"ConsoleCapacityReport": objectSchema(map[string]any{
 			"limit": integerSchema(), "used": integerSchema(), "available": integerSchema(), "revision": integerSchema(), "observed_at": dateTimeSchema(), "items": arraySchema(refSchema("ConsoleCapacitySession")),

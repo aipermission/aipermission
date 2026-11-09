@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/console/capacity"
+	"github.com/aipermission/aipermission/backend/internal/console/idlecleanup"
 	"github.com/aipermission/aipermission/backend/internal/console/manualinput"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/streamoutput"
@@ -132,6 +133,7 @@ type RuntimeOpenRequest struct {
 type RuntimeOpener func(context.Context, RuntimeOpenRequest) (*RuntimeSession, error)
 
 type RuntimeSession struct {
+	UntrackedStartup         bool
 	Stdin                    io.WriteCloser
 	Output                   <-chan RuntimeOutput
 	Done                     <-chan error // Transport-owned completion signal.
@@ -178,6 +180,7 @@ type Manager struct {
 	closed           bool
 	capacityRevision uint64
 	capacitySignal   chan struct{}
+	idleCleanup      *idlecleanup.Service
 
 	lifecycleMu sync.Mutex
 	lifecycle   map[int64]*sync.Mutex

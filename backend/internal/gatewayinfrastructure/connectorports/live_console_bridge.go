@@ -17,6 +17,14 @@ type sessions struct {
 	manager *console.Manager
 }
 
+func (value sessions) CleanupPolicy(ctx context.Context) (capacity.CleanupPolicy, error) {
+	return value.manager.CleanupPolicy(ctx)
+}
+
+func (value sessions) UpdateCleanupPolicy(ctx context.Context, policy capacity.CleanupPolicy, mutate capacity.MutationRunner) error {
+	return value.manager.UpdateCleanupPolicy(ctx, policy, mutate)
+}
+
 func (value sessions) Capacity(ctx context.Context) (capacity.Report, error) {
 	return value.manager.Capacity(ctx)
 }

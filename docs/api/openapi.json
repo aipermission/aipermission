@@ -1244,6 +1244,32 @@
         ],
         "type": "object"
       },
+      "ConsoleCleanupPolicy": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "idle_minutes": {
+            "enum": [
+              10,
+              20,
+              30,
+              45,
+              60,
+              120,
+              180,
+              360
+            ],
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "idle_minutes"
+        ],
+        "type": "object"
+      },
       "DiagnosticsConnector": {
         "additionalProperties": false,
         "properties": {
@@ -7213,6 +7239,109 @@
           "settings"
         ],
         "x-aipermission-contract-level": "typed-response"
+      }
+    },
+    "/api/settings/console-cleanup": {
+      "get": {
+        "operationId": "getApiSettingsConsoleCleanup",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCleanupPolicy"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "typed-response"
+      },
+      "put": {
+        "operationId": "putApiSettingsConsoleCleanup",
+        "parameters": [
+          {
+            "description": "Binds an authenticated browser operation to the workspace observed by that browser tab. Required after unlock.",
+            "in": "header",
+            "name": "X-AIPermission-Workspace",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "pattern": "\\S",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsoleCleanupPolicy"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsoleCleanupPolicy"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Documented error response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "settings"
+        ],
+        "x-aipermission-contract-level": "typed-request-response"
       }
     },
     "/api/settings/diagnostics": {
