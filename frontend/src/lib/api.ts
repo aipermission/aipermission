@@ -24,6 +24,7 @@ import type { PreparedRetry } from "./local-action-retry/records";
 import { observeLocalActionRetryResponse } from "./local-action-retry/observations.ts";
 import { consoleCommandBatch } from "./gateway-contracts/console-command-contract.ts";
 import { invalidateUISession } from "./ui-session-events.ts";
+import { boundedRequestSignal } from "./request-signal.ts";
 
 const viteEnv = import.meta.env || {};
 const workspaceHeaderName = "X-AIPermission-Workspace";
@@ -38,7 +39,7 @@ export async function apiGet(path: string, options: APIOptions = {}): Promise<un
   const requestWorkspace = options.workspaceBinding ?? currentWorkspaceBinding();
   if (options.workspaceBinding !== undefined && !requestWorkspace) throw new Error("Gateway read workspace binding is required.");
   const discovery = path === "/api/unlock/status" && options.workspaceBinding === undefined;
-  const request = boundedReadSignal(options.signal, options.timeoutMs);
+  const request = boundedRequestSignal(options.signal, options.timeoutMs);
   try {
     const response = await fetch(`${apiUrl}${path}`, {
       signal: request.signal,
@@ -97,11 +98,11 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
       data = await readResponse(response, { captureWorkspace: !pinnedWorkspace && path !== "/api/console/bulk-exec" });
     } catch (error) {
       // Observe lock/session failures before rejecting foreign replies; they cannot retire this workspace's retry.
-      assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
+      assertMutationWorkspace(response, requestWorkspace, pinnedWorkspace, "POST");
       finalized = await finalizePostError(prepared, error, response);
       throw error;
     }
-    assertPostWorkspace(response, requestWorkspace, pinnedWorkspace);
+    assertMutationWorkspace(response, requestWorkspace, pinnedWorkspace, "POST");
     assertPostAcknowledgement(path, response, prepared, data, requestWorkspace);
     if (prepared.retry && response.ok && prepared.pending?.(data)) {
       await preserveLocalActionRetryAttempt(prepared.retry, data);
@@ -124,9 +125,9 @@ export async function apiPost(path: string, body: Record<string, unknown>, optio
   }
 }
 
-function assertPostWorkspace(response: Response, requestWorkspace: string, pinnedWorkspace: boolean) {
+function assertMutationWorkspace(response: Response, requestWorkspace: string, pinnedWorkspace: boolean, method: "POST" | "PUT") {
   if (pinnedWorkspace && response.headers.get(workspaceHeaderName) !== requestWorkspace)
-    throw new Error("Gateway POST workspace binding mismatch.");
+    throw new Error(`Gateway ${method} workspace binding mismatch.`);
 }
 
 function assertPostAcknowledgement(path: string, response: Response, prepared: PreparedPost, data: unknown, requestWorkspace: string) {
@@ -251,14 +252,34 @@ export async function apiPostForm(path: string, formData: FormData, options: API
 }
 
 export async function apiPut(path: string, body: unknown, options: APIOptions = {}): Promise<unknown> {
-  const response = await fetch(`${apiUrl}${path}`, {
-    method: "PUT",
-    headers: mutationHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(body),
-    signal: options.signal,
-    credentials: "include",
-  });
-  return readResponse(response);
+  const pinnedWorkspace = options.workspaceBinding !== undefined;
+  const requestWorkspace = options.workspaceBinding ?? currentWorkspaceBinding();
+  if (pinnedWorkspace && !requestWorkspace.trim()) throw new Error("Gateway PUT workspace binding is required.");
+  const request = boundedRequestSignal(options.signal, options.timeoutMs);
+  try {
+    const response = await fetch(`${apiUrl}${path}`, {
+      method: "PUT",
+      headers: mutationHeaders({ "Content-Type": "application/json" }, requestWorkspace),
+      body: JSON.stringify(body),
+      signal: request.signal,
+      credentials: "include",
+    });
+    let data: unknown;
+    try {
+      data = await readResponse(response, { captureWorkspace: !pinnedWorkspace });
+    } catch (error) {
+      assertMutationWorkspace(response, requestWorkspace, pinnedWorkspace, "PUT");
+      throw error;
+    }
+    request.signal?.throwIfAborted();
+    assertMutationWorkspace(response, requestWorkspace, pinnedWorkspace, "PUT");
+    return data;
+  } catch (error) {
+    if (request.timedOut()) throw new Error(`Gateway PUT timed out after ${options.timeoutMs}ms.`, { cause: error });
+    throw error;
+  } finally {
+    request.cleanup();
+  }
 }
 
 export async function apiDelete(path: string, options: APIOptions = {}): Promise<unknown> {
@@ -418,28 +439,6 @@ function sourceApiUrl() {
   const url = new URL(browserOrigin());
   url.port = "8080";
   return url.origin;
-}
-
-function boundedReadSignal(parent: AbortSignal | undefined, timeoutMs: number | undefined) {
-  if (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
-    return { signal: parent, timedOut: () => false, cleanup: () => {} };
-  const controller = new AbortController();
-  let timeoutReached = false;
-  const abortFromParent = () => controller.abort(parent?.reason);
-  if (parent?.aborted) abortFromParent();
-  else parent?.addEventListener("abort", abortFromParent, { once: true });
-  const timer = setTimeout(() => {
-    timeoutReached = true;
-    controller.abort();
-  }, timeoutMs);
-  return {
-    signal: controller.signal,
-    timedOut: () => timeoutReached,
-    cleanup: () => {
-      clearTimeout(timer);
-      parent?.removeEventListener("abort", abortFromParent);
-    },
-  };
 }
 
 function csrfHeaders(base: Record<string, string> = {}) {

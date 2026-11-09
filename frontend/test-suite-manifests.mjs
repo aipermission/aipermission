@@ -142,7 +142,8 @@ export const asyncStateOwnerTests = {
   "src/connectors/templates/ssh/use-cleanup-reconciliation.ts": [
     "src/connectors/templates/ssh/use-cleanup-reconciliation.component.test.tsx",
   ],
-  "src/lib/api.ts": [
+  "src/lib/request-signal.ts": [
+    "src/test/http/put-bounds.component.test.tsx",
     "src/lib/api/workspace-ownership.component.test.ts",
     "src/lib/gateway-contracts/api-transport.component.test.tsx",
     "src/lib/api/pending-mutation.component.test.ts",
