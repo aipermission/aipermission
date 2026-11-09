@@ -9,6 +9,12 @@
       ]
     },
     {
+      "title": "Maintenance",
+      "items": [
+        "Refresh reviewed CodeQL 4.39.3 and Cosign installer 4.1.3 action commits without weakening workflow checks, permissions or source verification."
+      ]
+    },
+    {
       "title": "Security",
       "items": [
         "Update SCRAM to 1.4.0 and lock rejected-password redaction with a regression through the PostgreSQL managed-role verifier; retain pinned upstream checksums for the reviewed local SQL Server driver patch."
