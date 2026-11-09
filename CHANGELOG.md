@@ -18,6 +18,11 @@ and this project uses semantic versioning for public releases.
   idle-cleanup policy in Settings; default disabled, with running, startup and uncertain
   work protected.
 
+### Maintenance
+
+- Refresh reviewed CodeQL 4.39.3 and Cosign installer 4.1.3 action commits without
+  weakening workflow checks, permissions or source verification.
+
 ### Security
 
 - Update SCRAM to 1.4.0 and lock rejected-password redaction with a regression through
