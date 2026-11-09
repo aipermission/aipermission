@@ -1,5 +1,11 @@
 # Dependency License Metadata Inventory
 
+The pending Capacity release records SCRAM 1.4.0 and removes its obsolete
+`xdg-go/pbkdf2` dependency. SCRAM's named license hash is unchanged. Reviewed
+upstream MSSQL snapshot checksums remain present even though `go mod tidy`
+omits the replaced module; the patched-driver integrity check is not relaxed.
+Other evidence and the 38 acknowledged historical gaps remain preserved.
+
 [`dependency-licenses.json`](dependency-licenses.json) records dependency
 identities, declared npm licenses, and available offline Go license-file
 evidence. It is a reviewed metadata baseline, not a legal compliance decision,

@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "94c905ab76cdd8cf724291f8b9ab6dbdb0cedda9a9f301c48af35cef18fe6c38"
+      "sha256": "d60e77f47f6831b6891667639993a0eeed86e18b0a5e2ef104d03ea17442547a"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "ece91da10227cdfb8d7c0f1b3ca7c4dba992ffb481164abcd8434ce54318732c"
+      "sha256": "0e7382e04aca156702d22c0f1bd974764281194666e225c86ac56f6b85dbf5b8"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6126,6 +6126,10 @@
         "Version": "v0.25.0"
       },
       {
+        "Path": "github.com/golang-sql/sqlexp",
+        "Version": "v0.1.0"
+      },
+      {
         "Path": "github.com/gorilla/websocket",
         "Version": "v1.5.3"
       },
@@ -6171,7 +6175,7 @@
       },
       {
         "Path": "github.com/xdg-go/scram",
-        "Version": "v1.2.0"
+        "Version": "v1.4.0"
       },
       {
         "Path": "golang.org/x/crypto",
@@ -6229,11 +6233,6 @@
         "Indirect": true
       },
       {
-        "Path": "github.com/golang-sql/sqlexp",
-        "Version": "v0.1.0",
-        "Indirect": true
-      },
-      {
         "Path": "github.com/google/uuid",
         "Version": "v1.6.0",
         "Indirect": true
@@ -6274,11 +6273,6 @@
         "Indirect": true
       },
       {
-        "Path": "github.com/xdg-go/pbkdf2",
-        "Version": "v1.0.0",
-        "Indirect": true
-      },
-      {
         "Path": "github.com/xdg-go/stringprep",
         "Version": "v1.0.4",
         "Indirect": true
@@ -6312,120 +6306,6 @@
   },
   "go": [
     {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/azcore",
-      "version": "v1.23.1",
-      "checksums": {
-        "module": "h1:zvXfGJCWvywnCA814d8ZiVyt+fm9nnTE8xSb99zRyfo=",
-        "go_mod": "h1:iptorS+VYKFL2N6PnebpS91dubG35eAOEERnT4PJbQU="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure/azure-sdk-for-go/sdk/azcore@v1.23.1/LICENSE.txt",
-            "sha256": "646f8936b8ddcd14e13e578ff6857e368780b0d1a4f6066bee89211923a373e2",
-            "bytes": 1073
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/azidentity",
-      "version": "v1.14.1",
-      "checksums": {
-        "module": "h1:u93s+zU2JD62im61Bm5CZIc1ZrOJaIAWEg0WOrMVkEo=",
-        "go_mod": "h1:oXtinPO4OLj9d1DOTrqrL1oRwGhcqadvAmrl6wTeGlk="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure/azure-sdk-for-go/sdk/azidentity@v1.14.1/LICENSE.txt",
-            "sha256": "646f8936b8ddcd14e13e578ff6857e368780b0d1a4f6066bee89211923a373e2",
-            "bytes": 1073
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/internal",
-      "version": "v1.12.0",
-      "checksums": {
-        "module": "h1:fhqpLE3UEXi9lPaBRpQ6XuRW0nU7hgg4zlmZZa+a9q4=",
-        "go_mod": "h1:7dCRMLwisfRH3dBupKeNCioWYUZ4SS09Z14H+7i8ZoY="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure/azure-sdk-for-go/sdk/internal@v1.12.0/LICENSE.txt",
-            "sha256": "646f8936b8ddcd14e13e578ff6857e368780b0d1a4f6066bee89211923a373e2",
-            "bytes": 1073
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys",
-      "version": "v1.5.0",
-      "checksums": {
-        "module": "h1:MaKvxE6D0KkjOg6Wd9M00iqP5PR0kUxCfiezes4JweM=",
-        "go_mod": "h1:i2h9fsTFKZorh8RdV2IcSUf/Qj98GlTkrTvUbX/s8as="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure/azure-sdk-for-go/sdk/security/keyvault/azkeys@v1.5.0/LICENSE.txt",
-            "sha256": "a096a435e19bb6b631da46992c011a39be563e97ce7366879ad516c772904632",
-            "bytes": 1161
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal",
-      "version": "v1.2.0",
-      "checksums": {
-        "module": "h1:nCYfgcSyHZXJI8J0IWE5MsCGlb2xp9fJiXyxWgmOFg4=",
-        "go_mod": "h1:ucUjca2JtSZboY8IoUqyQyuuXvwbMBVwFOm0vdQPNhA="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure/azure-sdk-for-go/sdk/security/keyvault/internal@v1.2.0/LICENSE.txt",
-            "sha256": "a096a435e19bb6b631da46992c011a39be563e97ce7366879ad516c772904632",
-            "bytes": 1161
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/AzureAD/microsoft-authentication-library-for-go",
-      "version": "v1.8.0",
-      "checksums": {
-        "module": "h1:Nljr4q1GRA/5vCrMONS+g4u4LRHNgOXVSh3O43J2CnI=",
-        "go_mod": "h1:Y33QHnf0FfdVewFFISOGe20mkZbxX4H839o955/PoeI="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!azure!a!d/microsoft-authentication-library-for-go@v1.8.0/LICENSE",
-            "sha256": "9906940f61b1f0b533fa7d99baf55178b2808fbe113ea51dfbfad8572ccd5f2b",
-            "bytes": 1162
-          }
-        ]
-      }
-    },
-    {
       "module": "github.com/ClickHouse/ch-go",
       "version": "v0.74.0",
       "checksums": {
@@ -6440,25 +6320,6 @@
             "path": "github.com/!click!house/ch-go@v0.74.0/LICENSE",
             "sha256": "22e7fd421de32ec18e6f9e4f62655696386d9d5dc661722df0b6324351e8cb08",
             "bytes": 11388
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/ClickHouse/clickhouse-go/v2",
-      "version": "v2.48.0",
-      "checksums": {
-        "module": "h1:auzd4VkapQYhQF8F2Gog7s3x78Bi1JZmByxGbrw3C+4=",
-        "go_mod": "h1:lBjUCPRG6RpRQdMbkXq+JV8rY0/O5lw+Z7jShgReFjM="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/!click!house/clickhouse-go/v2@v2.48.0/LICENSE",
-            "sha256": "27099b82691d1d17cb18138319e2a4f9980ef59c1186c9b02a3273c757c0f91b",
-            "bytes": 11389
           }
         ]
       }
@@ -6497,54 +6358,6 @@
             "path": "github.com/!s!e-!i-!t-!digital/go-sqlcipher@v0.0.0-20260614154805-8f19266d2b27/LICENSE",
             "sha256": "ef2d92d66e98123cd5dbd12ba0c3b39c7fbb04a62ebda3008f1ad22e73908e3c",
             "bytes": 1115
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/andybalholm/brotli",
-      "version": "v1.2.2",
-      "checksums": {
-        "module": "h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=",
-        "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/andybalholm/brotli@v1.2.2/LICENSE",
-            "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
-            "bytes": 1084
-          },
-          {
-            "path": "github.com/andybalholm/brotli@v1.2.2/flate/LICENSE",
-            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
-            "bytes": 1479
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/andybalholm/brotli",
-      "version": "v1.2.6",
-      "checksums": {
-        "module": "h1:ftYnfj6usCp+UGV5kSJ3+chpMQgU+gJf/AxsUQ52REI=",
-        "go_mod": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/andybalholm/brotli@v1.2.6/LICENSE",
-            "sha256": "3d180008e36922a4e8daec11c34c7af264fed5962d07924aea928c38e8663c94",
-            "bytes": 1084
-          },
-          {
-            "path": "github.com/andybalholm/brotli@v1.2.6/flate/LICENSE",
-            "sha256": "2d36597f7117c38b006835ae7f537487207d8ec407aa9d9980794b2030cbc067",
-            "bytes": 1479
           }
         ]
       }
@@ -6854,25 +6667,6 @@
       }
     },
     {
-      "module": "github.com/golang-jwt/jwt/v5",
-      "version": "v5.3.1",
-      "checksums": {
-        "module": "h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=",
-        "go_mod": "h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/golang-jwt/jwt/v5@v5.3.1/LICENSE",
-            "sha256": "fe26ca41577b9b2b4448050a24b25e5753af66b5d5945d5d36094e7790bfcb2f",
-            "bytes": 1100
-          }
-        ]
-      }
-    },
-    {
       "module": "github.com/golang-sql/civil",
       "version": "v0.0.0-20220223132316-b832511892a9",
       "checksums": {
@@ -6898,7 +6692,7 @@
         "module": "h1:ZCD6MBpcuOVfGVqsEmY5/4FtYiKz6tSyUv9LPEDei6A=",
         "go_mod": "h1:J4ad9Vo8ZCWQ2GMrC4UCQy1JpCbwU9m3EOqtpKwwwHI="
       },
-      "requirement": "indirect",
+      "requirement": "direct",
       "evidence": {
         "status": "files-recorded",
         "files": [
@@ -7189,25 +6983,6 @@
       }
     },
     {
-      "module": "github.com/kylelemons/godebug",
-      "version": "v1.1.0",
-      "checksums": {
-        "module": "h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=",
-        "go_mod": "h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/kylelemons/godebug@v1.1.0/LICENSE",
-            "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-            "bytes": 11358
-          }
-        ]
-      }
-    },
-    {
       "module": "github.com/microcosm-cc/bluemonday",
       "version": "v1.0.27",
       "checksums": {
@@ -7299,25 +7074,6 @@
       }
     },
     {
-      "module": "github.com/pkg/browser",
-      "version": "v0.0.0-20240102092130-5ac0b6a4141c",
-      "checksums": {
-        "module": "h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=",
-        "go_mod": "h1:7rwL4CYBLnjLxUqIJNnCWiEdr3bn6IUYi15bNlnbCCU="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/pkg/browser@v0.0.0-20240102092130-5ac0b6a4141c/LICENSE",
-            "sha256": "4801bb0c5d70b980b3e1f63d1d2df8d84fec22548e3d73f03a68df1fb808791f",
-            "bytes": 1312
-          }
-        ]
-      }
-    },
-    {
       "module": "github.com/pkg/sftp",
       "version": "v1.13.11",
       "checksums": {
@@ -7388,25 +7144,6 @@
             "path": "github.com/segmentio/asm@v1.2.1/LICENSE",
             "sha256": "cca993712df289a5958bdef69031a5dac0f951ac15afeb313f9eeea55ed59443",
             "bytes": 902
-          }
-        ]
-      }
-    },
-    {
-      "module": "github.com/shopspring/decimal",
-      "version": "v1.4.0",
-      "checksums": {
-        "module": "h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=",
-        "go_mod": "h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/shopspring/decimal@v1.4.0/LICENSE",
-            "sha256": "b92ba0f6ee02f2309628bfdadb123668a17c016e475ba477b857d33470d9d625",
-            "bytes": 2245
           }
         ]
       }
@@ -7580,37 +7317,18 @@
       }
     },
     {
-      "module": "github.com/xdg-go/pbkdf2",
-      "version": "v1.0.0",
-      "checksums": {
-        "module": "h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=",
-        "go_mod": "h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT5RDeI="
-      },
-      "requirement": "indirect",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "github.com/xdg-go/pbkdf2@v1.0.0/LICENSE",
-            "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
-            "bytes": 10142
-          }
-        ]
-      }
-    },
-    {
       "module": "github.com/xdg-go/scram",
-      "version": "v1.2.0",
+      "version": "v1.4.0",
       "checksums": {
-        "module": "h1:bYKF2AEwG5rqd1BumT4gAnvwU/M9nBp2pTSxeZw7Wvs=",
-        "go_mod": "h1:3dlrS0iBaWKYVt2ZfA4cj48umJZ+cAEbR6/SjLA88I8="
+        "module": "h1:3/wY9vMc786lAsuowR1CGxl0oVQDUWnCliDnWKhiZJs=",
+        "go_mod": "h1:rWC+ac5XyfRhG8rI7Css3P9K+/sjzldRjM9PI7VPlNM="
       },
       "requirement": "direct",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
-            "path": "github.com/xdg-go/scram@v1.2.0/LICENSE",
+            "path": "github.com/xdg-go/scram@v1.4.0/LICENSE",
             "sha256": "09e8a9bcec8067104652c168685ab0931e7868f9c8284b66f5ae6edae5f1130b",
             "bytes": 10142
           }
@@ -7670,25 +7388,6 @@
     },
     {
       "module": "go.opentelemetry.io/otel/trace",
-      "version": "v1.44.0",
-      "checksums": {
-        "module": "h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/6gtIk=",
-        "go_mod": "h1:oLl1jrMQAVo6v3GAggN+1VH9VIz9iUSvW53sW1Q8PIE="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "go.opentelemetry.io/otel/trace@v1.44.0/LICENSE",
-            "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
-            "bytes": 12892
-          }
-        ]
-      }
-    },
-    {
-      "module": "go.opentelemetry.io/otel/trace",
       "version": "v1.47.0",
       "checksums": {
         "module": "h1:JOjX/Oci8K94QHddo+bbfya/Ai/nf6/dt9ZfrFNWSrM=",
@@ -7700,25 +7399,6 @@
         "files": [
           {
             "path": "go.opentelemetry.io/otel/trace@v1.47.0/LICENSE",
-            "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
-            "bytes": 12892
-          }
-        ]
-      }
-    },
-    {
-      "module": "go.opentelemetry.io/otel",
-      "version": "v1.44.0",
-      "checksums": {
-        "module": "h1:JjwHmHpA4iZ3wBxluu2fbbE7j4kqlE8jXyAyPXH7HqU=",
-        "go_mod": "h1:BMgjTHL9WPRlRjL2oZCBTL4whCGtXch2H4BhOPIAyYc="
-      },
-      "requirement": "sum-only",
-      "evidence": {
-        "status": "files-recorded",
-        "files": [
-          {
-            "path": "go.opentelemetry.io/otel@v1.44.0/LICENSE",
             "sha256": "1ae07514be1d7bb33f0698f8d91fb51b8b9fe1463157ec1c72081a49b9bc6f40",
             "bytes": 12892
           }
@@ -8434,7 +8114,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed 0.2.76 root metadata and Brotli 1.2.7 checksums with unchanged MIT/flate BSD evidence; historical gaps preserved; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed SCRAM 1.4.0 exact checksums and unchanged named license evidence; retained other evidence and acknowledged historical gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
