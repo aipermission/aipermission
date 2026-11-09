@@ -780,6 +780,10 @@ changed, running, unfinished or untracked sessions are protected. Results return
 retry an uncertain mutation; refresh and inspect the exact session first.
 Closing affects that shell and its viewers. Inactivity does not prove detached
 remote work has stopped. This is separate from per-token request storage capacity.
+Manual terminal input retains cleanup protection for the lifetime of that
+session, even if best-effort History recognizes a prompt or a later automated
+command completes. Prompt-shaped process output does not prove manual work
+exited. Use normal explicit End Session/restart after reviewing such a session.
 
 The dialog searches loaded connector/session names, kind, owner and session ID
 without an additional gateway request. Search does not clear the reviewed idle

@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.78] - 2026-11-09
+
 ### Added
 
 - Show live shared console capacity below Transfers with a bounded, visibility-aware
@@ -18,6 +20,12 @@ and this project uses semantic versioning for public releases.
   idle-cleanup policy in Settings; default disabled, with running, startup and uncertain
   work protected.
 
+### Fixed
+
+- Render console capacity with the shared native progress bar and static semantic
+  colors, retaining CSP inline-style restrictions and bounded accessible progress
+  values.
+
 ### Maintenance
 
 - Refresh reviewed CodeQL 4.39.3 and Cosign installer 4.1.3 action commits without
@@ -25,12 +33,18 @@ and this project uses semantic versioning for public releases.
 - Update frontend Lucide to 1.70.0, Playwright to 1.65.0, Tailwind to the reviewed 4.3.5
   patch and Globals to 17.14.0; align MCP development Globals and exact dependency
   license metadata.
+- Separate SQL Server grammar acceptance tests from load-sensitive admission timing
+  while retaining the fixed one-second production deadline, syntax-work limits and
+  zero-dispatch timeout evidence.
 
 ### Security
 
 - Update SCRAM to 1.4.0 and lock rejected-password redaction with a regression through
   the PostgreSQL managed-role verifier; retain pinned upstream checksums for the
   reviewed local SQL Server driver patch.
+- Keep sessions with manual terminal input protected from idle cleanup independently of
+  best-effort History prompt detection; abandoned automation and prompt-shaped process
+  output cannot certify that manual work exited.
 
 ## [0.2.77] - 2026-11-07
 
