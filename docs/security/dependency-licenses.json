@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "2061ee5939e8018167a8bfbd3178be3a4507b237bba139582721a3b58a5ce4d7"
+      "sha256": "0f797371642b86f43b4be1fdf0836cdda1ff1057a124cb4aa862d08b56e63132"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "5aac6d5077936f02d42371e5b7525d659a051bdc1dae44e79f92f90c48ef5522"
+      "sha256": "2dc5d85a0e657e00bddb828c15b67def3719162ebd4ced42c52eb08079155e64"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "edcea8316302a0fab06459fd42adfab44937e1899bd61c2582a4299e7fa7949d"
+      "sha256": "83cdff6a848064b6e9c2936e57cf1861e126b6dd58d18fe6143a63970966fd8d"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "6d3e2ec9221c4ce92b1c3f8ea243bfbb0094d005dc4bd5f61523da9a0cc55db9"
+      "sha256": "b76aecde32257d63cceaef14708a3d97a257a268bf35ab7a3e0a789d84326b3c"
     },
     {
       "path": "scripts/package.json",
@@ -59,7 +59,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "669829c8f751a209f4756787724ed83d75a550c84860f48cd065893fb0fde387"
+      "metadata_sha256": "2c866e7281ca12c6c12bcfd74a2ed181399e33e082b6630df4915185fcf446cc"
     },
     {
       "source": "frontend/package-lock.json",
@@ -825,11 +825,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@jridgewell/sourcemap-codec",
       "name": "@jridgewell/sourcemap-codec",
-      "version": "1.5.5",
+      "version": "1.6.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@jridgewell/sourcemap-codec/-/sourcemap-codec-1.5.5.tgz",
-      "integrity": "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==",
-      "metadata_sha256": "864860ba6741184e48087a55fd1dee5d59220d8344527a78aabff6dfca8e6a82"
+      "resolved": "https://registry.npmjs.org/@jridgewell/sourcemap-codec/-/sourcemap-codec-1.6.0.tgz",
+      "integrity": "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw==",
+      "metadata_sha256": "b253140fa80bce30673f9470ca2a16257304b2b0b93064219e3db32e16e7fedd"
     },
     {
       "source": "frontend/package-lock.json",
@@ -865,11 +865,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@playwright/test",
       "name": "@playwright/test",
-      "version": "1.64.1",
+      "version": "1.65.0",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.64.1.tgz",
-      "integrity": "sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==",
-      "metadata_sha256": "d99beeb4303925a82628c296c218106c275dd515da860917fabd4f9646db0ea7"
+      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.65.0.tgz",
+      "integrity": "sha512-iGURLGuKDLakSEl7Pgfv8h7f+XLT+V861Wfhz0zlEl5nyFuKUopdkFBPKqTllTUp06aOwPuH8iuUEb3yp3MpbQ==",
+      "metadata_sha256": "4908cc444c16667dc2aef999104f27bf4af6585c28484ef257d34268dcc101ee"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1385,171 +1385,181 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/node",
       "name": "@tailwindcss/node",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/node/-/node-4.3.3.tgz",
-      "integrity": "sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==",
-      "metadata_sha256": "8589756b5234f94bb890163acd56116cacb1cc297d5d0b5c47937cde641b01a7"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/node/-/node-4.3.5.tgz",
+      "integrity": "sha512-yT53FzV4ke0cr/BguDxhWMpm5MJu1O2muzk+tKw6lKHjODAsYArBbWwFbJiaksfzFv1tpkO9QHGzmfs1hJT66g==",
+      "metadata_sha256": "548219b11606b9b4d1330a64064c5671818712e3b8bbbe1c1651af1503a331ae"
+    },
+    {
+      "source": "frontend/package-lock.json",
+      "location": "node_modules/@tailwindcss/node/node_modules/magic-string",
+      "name": "magic-string",
+      "version": "1.4.5",
+      "declared_license": "MIT",
+      "resolved": "https://registry.npmjs.org/magic-string/-/magic-string-1.4.5.tgz",
+      "integrity": "sha512-oLLC2+YvQUfAa+vxoufE/yc1icb87M9iXIRqAoR/2EhE/8cb3SF/+Gi0c2By1B+5Vz2e2vQtUvHiu1+63Znh+w==",
+      "metadata_sha256": "bc3fcba34f5e45f26937eb5583519070a4fcda128344879c177ce5c8cacc86a3"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide",
       "name": "@tailwindcss/oxide",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide/-/oxide-4.3.3.tgz",
-      "integrity": "sha512-krXjAikiaFSPaK/FkAQT5UTx3VormQaiZ5hBFlJZ9UFQGB/rwg1MZIhHAG9smMQRTdyJxP6Qt5MwMtdyU5FWrA==",
-      "metadata_sha256": "229a2224e026c0643d01f1ee8a62e771edf2f02119202686ed63f384153940c7"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide/-/oxide-4.3.5.tgz",
+      "integrity": "sha512-PynqGLZsZvwM9tqD/CUxkOIfyd6K5elZ2MooauzJryP/UqXYgi3yYbtt3N0Xe+MHV/eFKPFQCEfIKAqlAS1CBg==",
+      "metadata_sha256": "bc7c47c88596141cc4f8e6bfe8549b518d81ffaea9a82ce05e7ee00c8161b977"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-android-arm64",
       "name": "@tailwindcss/oxide-android-arm64",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-android-arm64/-/oxide-android-arm64-4.3.3.tgz",
-      "integrity": "sha512-Y85A2gmPSkl5Ve5qR86GL4HT509cFqQh1aes9p3sSkyTPwt0Pppf3GkwGe4JPACcRYjgJIEhQgM6dBClnr0NYw==",
-      "metadata_sha256": "28599f117c507942c1c3cc0b351990f4acf6f33e54c5a9e3fc086952b181d953"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-android-arm64/-/oxide-android-arm64-4.3.5.tgz",
+      "integrity": "sha512-Se0z5xMqcSQanJD1IYmO0cGpK3iv0fp3ZsIT7xRJZ1Da5PghvNoc46zz4jIQn+aan3dV9T8AermFNN9QPmsh0Q==",
+      "metadata_sha256": "079297e0af93c7191e54869b4de39dc6a1d7c2711c19833a1d0ac652bedce65c"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-darwin-arm64",
       "name": "@tailwindcss/oxide-darwin-arm64",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-arm64/-/oxide-darwin-arm64-4.3.3.tgz",
-      "integrity": "sha512-BiaWatpBcERQFDlOjRDpIVXuFK5PJez5SA4JMg6VYZdBYU+qKfV/vqjcIs+IYmtitf1xYQZTwXvU/8y4lfZUGw==",
-      "metadata_sha256": "6bc78deac7e61558e901eb445944711d64c36c1e3d3a3a26d7a7c222acb752bc"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-arm64/-/oxide-darwin-arm64-4.3.5.tgz",
+      "integrity": "sha512-UPrgTDuUbvmqGMZuCnmI3FKee/tYKzKdp00/kuB4oSGB213VYg8QTdF7lVhnPoBXq/mIfJ+ILoBFqNOboWcMwQ==",
+      "metadata_sha256": "83cd1a8c86ab9d136d89c89f844055fb01099ac6ed1674e6d3af73dc13437935"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-darwin-x64",
       "name": "@tailwindcss/oxide-darwin-x64",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-x64/-/oxide-darwin-x64-4.3.3.tgz",
-      "integrity": "sha512-fAeUqfV5ndhxRwai8cXGzdLvul9utWOmeTkv69unv4ZXixjn61Z+p9lCWdwOwA3TYboG3BwdVuN/RDjhBRl0mw==",
-      "metadata_sha256": "327736275e07341aa115d8d7b67b31bf509492d8e5d7e108e492f27afba46a4f"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-darwin-x64/-/oxide-darwin-x64-4.3.5.tgz",
+      "integrity": "sha512-E+p7HEtjI0b8D7kbbWxH067cGui6d4c79COGko9fAPVE3rwc1E7ld2HFCbaG86AOGWS5VKQYqZOaf38ya4uxTQ==",
+      "metadata_sha256": "7cee03d7f26068049089caa7c3dc237588bb944b0e2766f752f803c15a7effd0"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-freebsd-x64",
       "name": "@tailwindcss/oxide-freebsd-x64",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-freebsd-x64/-/oxide-freebsd-x64-4.3.3.tgz",
-      "integrity": "sha512-iyf5bV6+wnAlflVeEy7R25dupxTNECZN5QMI0qNT6eT+EgaGdZcKhGkr5SdoaWiLJ3spLqIY9VCeSGrwmtg4kw==",
-      "metadata_sha256": "450d68ab5fff2b1f6211d6d8f1b143e5674ce64b73ed42234f227670d8473a10"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-freebsd-x64/-/oxide-freebsd-x64-4.3.5.tgz",
+      "integrity": "sha512-yWEWcWyAG7rWOcTpJTjdhQ3pcaFY2h+0bqTRfgU3G2fz87ZU3AKdvdZKhslD+kyHnjBUWKvNdRYwIYC5dI1tIg==",
+      "metadata_sha256": "46b2189ab100c03e6d822a1123266a40d76dba6fe9231ccc452e106869685361"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-linux-arm-gnueabihf",
       "name": "@tailwindcss/oxide-linux-arm-gnueabihf",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm-gnueabihf/-/oxide-linux-arm-gnueabihf-4.3.3.tgz",
-      "integrity": "sha512-aAYUprJAJQWWbRrPvtjdroZ56Md+JM8pMiopS6xGEwDfLhqj+2ver2p4nU4Mb3CRqcMmNBjo8KkUgcxhkzVQGQ==",
-      "metadata_sha256": "f40bc7aacf724128cda109113eecc87971b5100e6cf6df9e4778159adc560655"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm-gnueabihf/-/oxide-linux-arm-gnueabihf-4.3.5.tgz",
+      "integrity": "sha512-WmeVjtJhZlr+smpqcdR2kQkkn6arHIJnUIBxTO2EJcTLGY1ecVXNo2hbSn8xc0IH2aEtys936iMWKGyj0GaKnA==",
+      "metadata_sha256": "3aedbf5d833534ef9822e0f33c96737d931c5b52d2c96b9478068b045d5b74ce"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-linux-arm64-gnu",
       "name": "@tailwindcss/oxide-linux-arm64-gnu",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-gnu/-/oxide-linux-arm64-gnu-4.3.3.tgz",
-      "integrity": "sha512-nDxldcEENOxZRzC2uu9jrutZdAAQtb+8WWDCSnWL1zvBk1+FN+x6MtDViPB5AJMfttVCUhehGWus3XBPgatM/w==",
-      "metadata_sha256": "2e8eccf9e1aeb160acad1a40ae363f1b3815958372fee6e3bfb92aca82857500"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-gnu/-/oxide-linux-arm64-gnu-4.3.5.tgz",
+      "integrity": "sha512-DTCSyucc6ShMp1QMqV5R94Z7xlgNgUzkGmFF1rL5HH2Qjy4eSmEqy+YLGkqqYvWa4sILtgrBt1JjRKbneQtiFQ==",
+      "metadata_sha256": "27d1f96d59ff44f0c426bff8288a3e4d96faf5a014cac58e328f51e9b8e1ad27"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-linux-arm64-musl",
       "name": "@tailwindcss/oxide-linux-arm64-musl",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-musl/-/oxide-linux-arm64-musl-4.3.3.tgz",
-      "integrity": "sha512-Md44bD6veX/PC5iyF8cDVnw4HBIANZepRZZ7a8DQOvkfo5WUBwcp6iAuCUz23u+4SUkhJlD3eL7hNdW8ezd/kA==",
-      "metadata_sha256": "dfdd65d2813b443df3ca64cd319d829bf495568db0d6a9225f9d49201f7b51f7"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-arm64-musl/-/oxide-linux-arm64-musl-4.3.5.tgz",
+      "integrity": "sha512-H9lsvO4x9E4nE4Hi8h7NHHw0O/kcVSu+iOyFHNGdYzazGgDjFHZbE6S3hQ8kMcbNXSBlMdNi67LV5EVqtpaJtw==",
+      "metadata_sha256": "06baea946bc27b8c55ddc2ee9c87c1170a837d57262f28c5995fd175cac2a107"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-linux-x64-gnu",
       "name": "@tailwindcss/oxide-linux-x64-gnu",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-gnu/-/oxide-linux-x64-gnu-4.3.3.tgz",
-      "integrity": "sha512-tx7us1muwOKAKWao2v/GaafFeQboE6aj88vC6ziN2NCGcRm8gWUhwjzg+YdVB1e4boAtdtma4L43onunI6NS4w==",
-      "metadata_sha256": "c8f9ce63d68f81871902d9437d4f769b136da47e97b93f3ebb887e0c47bf012b"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-gnu/-/oxide-linux-x64-gnu-4.3.5.tgz",
+      "integrity": "sha512-4uxQvtBvPuIdl13WfUBj9xMZHH14PtHZ8OZdtLmdyDtG66sCa1t599NZT+jagkUzRtWhuul1qRZQ1nAJscXN5g==",
+      "metadata_sha256": "3386947055f98330b97f45b64bc88a7e86c64b2eb25c8934b4ef74dd87fece0d"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-linux-x64-musl",
       "name": "@tailwindcss/oxide-linux-x64-musl",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-musl/-/oxide-linux-x64-musl-4.3.3.tgz",
-      "integrity": "sha512-SJxX60smvHgasZoBy11dX6YRjXJFovwWBoedhbQPOBzgFWBHGB+TVPWB9BxzR7TTxU8FQZAI2AyiNCMzFm8Img==",
-      "metadata_sha256": "40ef750100f84ee83c915840400c337783720462a0ff71bc41ee819191c09164"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-linux-x64-musl/-/oxide-linux-x64-musl-4.3.5.tgz",
+      "integrity": "sha512-0JQAzs7jwbA7O6+z/adU+Jk3AXwsu3npAhtr5escXS7TqEqWcaDV7qHuI+0Vy/KQRuVGnLQREcSJWYauyV3oqg==",
+      "metadata_sha256": "42c80620cea9958c1c741224bf2347eb4b39e251390f1f84aee0170f0d3ffc22"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi",
       "name": "@tailwindcss/oxide-wasm32-wasi",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.3.3.tgz",
-      "integrity": "sha512-jx1+rPhY/5Ympkktd656HBWEBLxP7dH06losBLjjf5vgCODXvi9KhtftWcMIwTFIDqBr7cRnQkdLnAG+IOlGvQ==",
-      "metadata_sha256": "c8a8e385f7ca1912d914716fd1d745a0674e0209056d50104884f8139052f4f7"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-wasm32-wasi/-/oxide-wasm32-wasi-4.3.5.tgz",
+      "integrity": "sha512-OJhFmlEfdzMr+avACdi40RPtnkW0B6hXyxL/8r+tnEHBWZji36CYRjEXrrvgBmaYsD3oEOBqwYFRKsYvzFe7Bw==",
+      "metadata_sha256": "4cff2e48fe93e8be6c3971072b4f83f57eb018a5cb6a162cff0cae245fcad456"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/core",
       "name": "@emnapi/core",
-      "version": "1.11.1",
+      "version": "1.11.3",
       "declared_license": "MIT",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "986fff29f4ba36ff6360738ad5446b2a3c12adefe2d9c27b5ba7686e4db8e882"
+      "metadata_sha256": "6697de6c86e3725d26dcd4ad8705c35415a3ee53bffbeb141c688ffebeaa70c4"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/runtime",
       "name": "@emnapi/runtime",
-      "version": "1.11.1",
+      "version": "1.11.3",
       "declared_license": "MIT",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "6731c6d3318fdc55e6a5ab91a241d1c78f6766003dd6fea7e7be641c940826aa"
+      "metadata_sha256": "5fca0a711a4a90be3af2b72cec7a64d0d709843527bc44b35e08e8fb36a88938"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@emnapi/wasi-threads",
       "name": "@emnapi/wasi-threads",
-      "version": "1.2.2",
+      "version": "1.2.3",
       "declared_license": "MIT",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "08c000c37e7fe55e4db094b3d45b92d99c416c108c9a8e52108b5c8898ad5b54"
+      "metadata_sha256": "d127b3a7152f7f52f2c5fd709e2811052daf51297af38483cb43db128ea5c3fe"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@napi-rs/wasm-runtime",
       "name": "@napi-rs/wasm-runtime",
-      "version": "1.1.4",
+      "version": "1.2.2",
       "declared_license": "MIT",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "1b53bae1291bef7af1e6923f8d0abc9993f31640df547fa92861789c2d3930a0"
+      "metadata_sha256": "b814d086721840a45e13a3d8a8279c008b6cc7549211cf5e1cc1b774d7cb579d"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-wasm32-wasi/node_modules/@tybys/wasm-util",
       "name": "@tybys/wasm-util",
-      "version": "0.10.2",
+      "version": "0.10.3",
       "declared_license": "MIT",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "fd617d29afceeb3d89f904fefdcb092142c2342bc495b1a4071162897357ad21"
+      "metadata_sha256": "a0ae93d579b29ccaacf1f6611d44a9953e812b4d7b10a7f1f81eb45a4e8f16bb"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1565,31 +1575,31 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-win32-arm64-msvc",
       "name": "@tailwindcss/oxide-win32-arm64-msvc",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-arm64-msvc/-/oxide-win32-arm64-msvc-4.3.3.tgz",
-      "integrity": "sha512-3rc292Ca2ceK6Ulcc/bAVnTs/3nDtoPhyEKlgPv+yQJQi/JS/AMJlqzxvlDacL1nekbrcf6bTqp/jV4qgnPxNQ==",
-      "metadata_sha256": "1d7cf308f5f6df34debcaf0471b84309da5f4d52f177ac3696304df8f8946573"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-arm64-msvc/-/oxide-win32-arm64-msvc-4.3.5.tgz",
+      "integrity": "sha512-9o8jgthi+QE5eandnboiJT64VQfnIArfZzSTdgbhEK5aafdiu2jTW9Honi/mwYHxBZuH1vAC57IFyrh+0iK5Gg==",
+      "metadata_sha256": "be906bdbcee772a10bfb9ca0f7c11ed3c90dab0e2f950247fac7f94d2b8dbf07"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/oxide-win32-x64-msvc",
       "name": "@tailwindcss/oxide-win32-x64-msvc",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-x64-msvc/-/oxide-win32-x64-msvc-4.3.3.tgz",
-      "integrity": "sha512-yJ0pwIVc/nYeGoV02WtsN8KYyLQv7kyI2wDnkezyJlGGjkd4QLwDGAwl47YpPJeuI0M0ObaXGSPjvWDPeTPggw==",
-      "metadata_sha256": "1ebf6d6c85aef23186fc1c7413c35a3c1c6e21f600dba109843d08c2d1efdc3b"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/oxide-win32-x64-msvc/-/oxide-win32-x64-msvc-4.3.5.tgz",
+      "integrity": "sha512-XiKFfIy1RWe7qK4WqByxNW7Oz1/nkOy8o/BWhHminyV1PmpUd8Eedj5v2A8h2kpqeVlz6xRnwk9Fr/ZXNLcZfg==",
+      "metadata_sha256": "e8195e59fde2f453e4dff0b8ccf97d3e4811fbf7759385a5af5b79db89df3a8f"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@tailwindcss/vite",
       "name": "@tailwindcss/vite",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.3.3.tgz",
-      "integrity": "sha512-yYU8cogLeSh/ms2jh8Fj7jaba/EWa7Ja6GoUqYZaraEuCI5YS6ms6ObZgjjedm+jm6XZjdNRWBpPP6Z86oOxcw==",
-      "metadata_sha256": "40aac0da32ce197d474c11c877d77ca4c5c6193615cd6feee63cb5a70ef61342"
+      "resolved": "https://registry.npmjs.org/@tailwindcss/vite/-/vite-4.3.5.tgz",
+      "integrity": "sha512-BCNiY0a1ZjdOHVqw7kyb7U72BwfMF3dfUuN+tQsLWky/J5JOI/r7abibglXfygrZhVO/3u3V+E25kkKTeMkXaQ==",
+      "metadata_sha256": "5bce3df194d61db5c4ac3fe378f6981dd56785a376f3fa3fb7ed99146140d98d"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2415,11 +2425,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/enhanced-resolve",
       "name": "enhanced-resolve",
-      "version": "5.24.4",
+      "version": "5.26.1",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/enhanced-resolve/-/enhanced-resolve-5.24.4.tgz",
-      "integrity": "sha512-GVoi+ICHocoOIU7qVVM48wOJziRsqrsyqlI0Ce0LdowRn6v3bcH2zUa9kp85ncx0nwIb9/HOCOLS3fdThDG/XQ==",
-      "metadata_sha256": "a672f22ea077e83eaaaf6d131450e6d0ce53d8f61d29599799c2d4817bc08efe"
+      "resolved": "https://registry.npmjs.org/enhanced-resolve/-/enhanced-resolve-5.26.1.tgz",
+      "integrity": "sha512-PPnnSJq3azKOIewXR/uppBV/6h98dprBJ/WaQ9Qgj10xX1lJLNfg+XShpbsrSqcDSy2yYYyhfXM1wWhftqgyzw==",
+      "metadata_sha256": "a479416eced8614eb5181a63f78e46d2a99aee52ce456d98fd334b0a2c6f0cbd"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2735,11 +2745,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/globals",
       "name": "globals",
-      "version": "17.13.0",
+      "version": "17.14.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
-      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
-      "metadata_sha256": "514fe0e203f06056565da38ea9d8640a9a3d449640b5fb049857cd5374cd73d0"
+      "resolved": "https://registry.npmjs.org/globals/-/globals-17.14.0.tgz",
+      "integrity": "sha512-UtdkTVyAJePQv0J2M9Xe4L0ruNSDV314XiIJsADI2Zf40bcdAonE/D/OhAU8AT99oij9mhLByb+NvA3QWZYgCg==",
+      "metadata_sha256": "55339ef888314093722bd6199982c5b16b0b895575c5658924004b4eeeeaf646"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3195,121 +3205,121 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss",
       "name": "lightningcss",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.32.0.tgz",
-      "integrity": "sha512-NXYBzinNrblfraPGyrbPoD19C1h9lfI/1mzgWYvXUTe414Gz/X1FD2XBZSZM7rRTrMA8JL3OtAaGifrIKhQ5yQ==",
-      "metadata_sha256": "5699648744d4a2c44fbe1847d604d342c66618435ca43963f169dc081c9e9ca0"
+      "resolved": "https://registry.npmjs.org/lightningcss/-/lightningcss-1.33.0.tgz",
+      "integrity": "sha512-WkUDrojuJs0xkgGf2udWxa3yGBRxPtxUkB79i6aCZLRgc7PM8fZe9TosfPDcvEpQZbuFASnHYmRLBLUbmLOIIA==",
+      "metadata_sha256": "24dc2dfaa9ef4c3f3c227234c6347d7e4d5636d7b078e8cbc4383d641e5b8931"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-android-arm64",
       "name": "lightningcss-android-arm64",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-android-arm64/-/lightningcss-android-arm64-1.32.0.tgz",
-      "integrity": "sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==",
-      "metadata_sha256": "9460d6a0b22b47773ffadb5c708177b1b485d2339d3ccd9a14285637da7c67a7"
+      "resolved": "https://registry.npmjs.org/lightningcss-android-arm64/-/lightningcss-android-arm64-1.33.0.tgz",
+      "integrity": "sha512-gEpRTalKdosp4Bb8qWtc2iOgE5SeIHlpS1up9bFq2wAyYhl1UdTObYiHe98zEM9SQvSoqQZ1IQD0JNpg3Ml5pg==",
+      "metadata_sha256": "c0eebceca5c3f877603f04a26696d7ce9a0f5acb712a4e0d65d7a06920c7fe94"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-darwin-arm64",
       "name": "lightningcss-darwin-arm64",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-darwin-arm64/-/lightningcss-darwin-arm64-1.32.0.tgz",
-      "integrity": "sha512-RzeG9Ju5bag2Bv1/lwlVJvBE3q6TtXskdZLLCyfg5pt+HLz9BqlICO7LZM7VHNTTn/5PRhHFBSjk5lc4cmscPQ==",
-      "metadata_sha256": "4fb7729985dfdb44d0ea1ded3b7387c791b857393ca00523d6d3c0aa8513706f"
+      "resolved": "https://registry.npmjs.org/lightningcss-darwin-arm64/-/lightningcss-darwin-arm64-1.33.0.tgz",
+      "integrity": "sha512-Sciaz8eenNTKn9b3t7+xr0ipTp9YxKQY4npwQ3mrRuL0BAVHBLyZxofhaKBAVtzmtRZ/zTyo0/to4B1uWG/Djg==",
+      "metadata_sha256": "4723e096734e3df91715a911c7ebc5701d6b1e63bcdedd004f4897a352f8ee99"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-darwin-x64",
       "name": "lightningcss-darwin-x64",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-darwin-x64/-/lightningcss-darwin-x64-1.32.0.tgz",
-      "integrity": "sha512-U+QsBp2m/s2wqpUYT/6wnlagdZbtZdndSmut/NJqlCcMLTWp5muCrID+K5UJ6jqD2BFshejCYXniPDbNh73V8w==",
-      "metadata_sha256": "01d5c7524503474e1cd473a059658b897f0ed5bdc8d80c1fbdf78714ee178044"
+      "resolved": "https://registry.npmjs.org/lightningcss-darwin-x64/-/lightningcss-darwin-x64-1.33.0.tgz",
+      "integrity": "sha512-Z5UPAxzrjlWNNyGy6i65cJzzvgJ5D3T6wMvs+gWpY9d7qRhANrxqAp6LhxIgZhWEw18RfJTGcRxjuLIBr+m8XQ==",
+      "metadata_sha256": "29657eb55548b5e451cc3424d4b700c630388357ed00021397a43772a7e44b17"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-freebsd-x64",
       "name": "lightningcss-freebsd-x64",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-freebsd-x64/-/lightningcss-freebsd-x64-1.32.0.tgz",
-      "integrity": "sha512-JCTigedEksZk3tHTTthnMdVfGf61Fky8Ji2E4YjUTEQX14xiy/lTzXnu1vwiZe3bYe0q+SpsSH/CTeDXK6WHig==",
-      "metadata_sha256": "7e0816815c68c915ba9183baf0b7cf1ab0dbb30cdcb4f3a83dd1817db9861a26"
+      "resolved": "https://registry.npmjs.org/lightningcss-freebsd-x64/-/lightningcss-freebsd-x64-1.33.0.tgz",
+      "integrity": "sha512-QQM/Ti/hQajJwCY+RiWuCZ9sdtI/XQk7nDK5vC8kkdwixezOlDgvDx7+RT+QjK6FcFT4MpsuoBnHIo/O3StRRg==",
+      "metadata_sha256": "694cbe35328513818ca9494216d25d67b4452d534659effe0bcbf6413f966748"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-linux-arm-gnueabihf",
       "name": "lightningcss-linux-arm-gnueabihf",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm-gnueabihf/-/lightningcss-linux-arm-gnueabihf-1.32.0.tgz",
-      "integrity": "sha512-x6rnnpRa2GL0zQOkt6rts3YDPzduLpWvwAF6EMhXFVZXD4tPrBkEFqzGowzCsIWsPjqSK+tyNEODUBXeeVHSkw==",
-      "metadata_sha256": "034312be9adfd8749a157dce47f88858db793503b91cf32ef19d13c78b0081f5"
+      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm-gnueabihf/-/lightningcss-linux-arm-gnueabihf-1.33.0.tgz",
+      "integrity": "sha512-N7FVBe6iS24MlM6R/4RBTxGhQheZGs7tiQ9U32UtF75NzP5Q7xWPRqLBCKxlRQRk3rY1jCIPLzx7WzOhuUIRLQ==",
+      "metadata_sha256": "b59f97962d8c9273a191e60f091bb6e552db26445a2673c8e02c3df35999f8bf"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-linux-arm64-gnu",
       "name": "lightningcss-linux-arm64-gnu",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-gnu/-/lightningcss-linux-arm64-gnu-1.32.0.tgz",
-      "integrity": "sha512-0nnMyoyOLRJXfbMOilaSRcLH3Jw5z9HDNGfT/gwCPgaDjnx0i8w7vBzFLFR1f6CMLKF8gVbebmkUN3fa/kQJpQ==",
-      "metadata_sha256": "2b79102922beae2ff8da39ea7898f279146d89100ffa79b97745a10f06a1ec68"
+      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-gnu/-/lightningcss-linux-arm64-gnu-1.33.0.tgz",
+      "integrity": "sha512-j2v/itmy4HlNxlc6voKXYgBqNi0Ng2LShg4z7GufpEgs05P+2suBVyi9I6YHq5uoVFx9ETin3eCEhLVyXGQnKg==",
+      "metadata_sha256": "fa2cde647f02e62e88a71ffcfb92a5da10b9248c0a79e3cfb2d12a410723247d"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-linux-arm64-musl",
       "name": "lightningcss-linux-arm64-musl",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-musl/-/lightningcss-linux-arm64-musl-1.32.0.tgz",
-      "integrity": "sha512-UpQkoenr4UJEzgVIYpI80lDFvRmPVg6oqboNHfoH4CQIfNA+HOrZ7Mo7KZP02dC6LjghPQJeBsvXhJod/wnIBg==",
-      "metadata_sha256": "ccc2c7c6bc0636625118e699bd0858bf2cded1ff6d46d01cb5d0c3a195bb7474"
+      "resolved": "https://registry.npmjs.org/lightningcss-linux-arm64-musl/-/lightningcss-linux-arm64-musl-1.33.0.tgz",
+      "integrity": "sha512-yiO5ROMuYQgXbC60yjZU5CYSFZGKXL0HFATXt9mHJn1+zW55oCtMI9NfcVhYLMFDL7gV7oBPon/EmMMGg2OvtQ==",
+      "metadata_sha256": "2d279b8206c1c1211aa42b49069da28c605318a6d19d3c537a136688ad615342"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-linux-x64-gnu",
       "name": "lightningcss-linux-x64-gnu",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.32.0.tgz",
-      "integrity": "sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==",
-      "metadata_sha256": "29dab8b89f0adeef2536c63fb345513bed1efc5cb5fd638b37f361896b615111"
+      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-gnu/-/lightningcss-linux-x64-gnu-1.33.0.tgz",
+      "integrity": "sha512-ar+Ju7LmcN0Jo4FpL4hpFybwNG9/3A/Br5KW2n2jyODg3MEZXaDYADdemoNS+BDNfMgKvylJLj4S5tyRActuAg==",
+      "metadata_sha256": "6a2da93896cd6e20c84a4bce857902ae306b03ea40222283d4a3ff8387f81952"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-linux-x64-musl",
       "name": "lightningcss-linux-x64-musl",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.32.0.tgz",
-      "integrity": "sha512-bYcLp+Vb0awsiXg/80uCRezCYHNg1/l3mt0gzHnWV9XP1W5sKa5/TCdGWaR/zBM2PeF/HbsQv/j2URNOiVuxWg==",
-      "metadata_sha256": "b50a3374f3f78d706272f0ddfba1731408eb55c4c152b8f492b702b5380607ed"
+      "resolved": "https://registry.npmjs.org/lightningcss-linux-x64-musl/-/lightningcss-linux-x64-musl-1.33.0.tgz",
+      "integrity": "sha512-RYiYbkokw0trfKqqzfF55lginwEPrD3OJDfTuJzFs1MK6iFnDenaz1fqLLtX4ITG3OktJQXOeTaw1awrBAlZPw==",
+      "metadata_sha256": "d0550179d4751b17de8b88566d85c4b5f509c40c988173243e28051609bea348"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-win32-arm64-msvc",
       "name": "lightningcss-win32-arm64-msvc",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.32.0.tgz",
-      "integrity": "sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==",
-      "metadata_sha256": "e4d1bc52e89d39e0d89012c487fff833b81cc4aecdc49ecf072793da4f96ae54"
+      "resolved": "https://registry.npmjs.org/lightningcss-win32-arm64-msvc/-/lightningcss-win32-arm64-msvc-1.33.0.tgz",
+      "integrity": "sha512-1K+MPfLSFVpphzpdbfkhlWk6wBrTObBzS2T6db10PNOZgR9GoVsAWzwNyuhUYYbTp23j+4RrncfujZ4uAzXvwA==",
+      "metadata_sha256": "f65fa6f7087a7737d756e1914679d966f0932027aa1834787313194fa57aae1c"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/lightningcss-win32-x64-msvc",
       "name": "lightningcss-win32-x64-msvc",
-      "version": "1.32.0",
+      "version": "1.33.0",
       "declared_license": "MPL-2.0",
-      "resolved": "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.32.0.tgz",
-      "integrity": "sha512-Amq9B/SoZYdDi1kFrojnoqPLxYhQ4Wo5XiL8EVJrVsB8ARoC1PWW6VGtT0WKCemjy8aC+louJnjS7U18x3b06Q==",
-      "metadata_sha256": "74dc725230fabd206bfdc3c36cf21a34d77ba5bd465e7aafefe98c3889a5acb4"
+      "resolved": "https://registry.npmjs.org/lightningcss-win32-x64-msvc/-/lightningcss-win32-x64-msvc-1.33.0.tgz",
+      "integrity": "sha512-OlEICDx/Xl0FqSp4bry8zFnCvGpig3Gl4gCquvYwHuqJKEC1+n9NgDniFvqHGmMv1ZkqDJrDqKKSykTDX+ehuA==",
+      "metadata_sha256": "caa0ed206b1a9d5d2fd3f5981f978b3836af1bba53fb02086358a7a22c4cf5cc"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3335,11 +3345,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.66.0",
+      "version": "1.70.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.66.0.tgz",
-      "integrity": "sha512-8zjbi/Us+ETXqfBwmXF/FHrWGIqOdE6zT1yUdRJLQVoptomSkB0zdFWVIM667t9K8djWDaXdkBkqi2qVTuDNiw==",
-      "metadata_sha256": "5c407e6f9affe2a190cf70bd39fd4b8783652f01c8e3ecc764a0994dd1f938b2"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.70.0.tgz",
+      "integrity": "sha512-gCTPPN1MlQUBtUgdsUv+0CAUj+X8hifRUiRBw4E5v7lvDIOIpx0EZezdGQMSimS8pKA6esvullJub4GYr0mCHA==",
+      "metadata_sha256": "c08263c643f30b99f6e825e1afd6290e47bc4bcc9177c8e9024d095664e91219"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3615,21 +3625,21 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/playwright",
       "name": "playwright",
-      "version": "1.64.1",
+      "version": "1.65.0",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.64.1.tgz",
-      "integrity": "sha512-HCrVhHr5QQuwYoswEUGTb7gGp522yflbv/ST8nF4sFWGuLjQCt17Q/EubpGGSNKYn1tsTCPZxqHhHCfVURu7UA==",
-      "metadata_sha256": "7c1f39003521f1930e6727b5af4de634b24b428098ff3f1564713898f605966e"
+      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.65.0.tgz",
+      "integrity": "sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==",
+      "metadata_sha256": "ec52918dc895425cfa374741492afe46594d8c9e76af01110f301da52e5bff4b"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/playwright-core",
       "name": "playwright-core",
-      "version": "1.64.1",
+      "version": "1.65.0",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.64.1.tgz",
-      "integrity": "sha512-BC4s8y6SEVA6Q1rSxZTto8hI1KUI3xXlHGZgvGqP4IqPdI/a6FX9H29IDNz7vKo9l21b6LfYosScPL6M3xxyDQ==",
-      "metadata_sha256": "0268bfc09f92ddf4cbeb5bddaa5b5d77d3958e1959f5e76a722cc5263565adab"
+      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.0.tgz",
+      "integrity": "sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==",
+      "metadata_sha256": "72651e8717a34d627f9c553e8e6f4a7d881c6c0b105c102b10d3f9fb6447c8fa"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3975,11 +3985,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/tailwindcss",
       "name": "tailwindcss",
-      "version": "4.3.3",
+      "version": "4.3.5",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.3.3.tgz",
-      "integrity": "sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ==",
-      "metadata_sha256": "dc07c219fadc77c71d1c4818a5b2f075e641f120d991186ed83eb241f0e112d0"
+      "resolved": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-4.3.5.tgz",
+      "integrity": "sha512-FcQk9BuffmEHJP2G0XmB2SplU1aLTI7j07Kunk+U74Ny+XiWOtzXz9aujFZ/avntw1e2cOv/3PkgzflQ7gX2vQ==",
+      "metadata_sha256": "e0d2756f0eae87010e1df6ce0906a1a41b0735b85926e47012eed6c8feb62e91"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4379,7 +4389,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "67f6aab2b971f48ae9d89aa1f61599bf6bbb43fee8bb05e8c34d39841ece0085"
+      "metadata_sha256": "91e568b5d30ca17bd7ed7d18e84d57daa9fa18231b34a92a090eec319bce1af4"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -5215,11 +5225,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/globals",
       "name": "globals",
-      "version": "17.13.0",
+      "version": "17.14.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/globals/-/globals-17.13.0.tgz",
-      "integrity": "sha512-RwMTC61u7hrG3ZJMkZQOK4JLJrKS8QtoTii63EmWvFXHqycY9FObBJQCbsLxSO8kjKhWE5kV1GC+Vb1g3RI0Zg==",
-      "metadata_sha256": "514fe0e203f06056565da38ea9d8640a9a3d449640b5fb049857cd5374cd73d0"
+      "resolved": "https://registry.npmjs.org/globals/-/globals-17.14.0.tgz",
+      "integrity": "sha512-UtdkTVyAJePQv0J2M9Xe4L0ruNSDV314XiIJsADI2Zf40bcdAonE/D/OhAU8AT99oij9mhLByb+NvA3QWZYgCg==",
+      "metadata_sha256": "55339ef888314093722bd6199982c5b16b0b895575c5658924004b4eeeeaf646"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8114,7 +8124,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed SCRAM 1.4.0 exact checksums and unchanged named license evidence; retained other evidence and acknowledged historical gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed frontend and MCP npm dependency identities and unchanged declared license families, SCRAM 1.4.0 evidence and preserved historical gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

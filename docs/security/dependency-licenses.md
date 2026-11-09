@@ -6,6 +6,11 @@ upstream MSSQL snapshot checksums remain present even though `go mod tidy`
 omits the replaced module; the patched-driver integrity check is not relaxed.
 Other evidence and the 38 acknowledged historical gaps remain preserved.
 
+The same batch records frontend Lucide 1.70.0 (ISC), Playwright 1.65.0
+(Apache-2.0), Tailwind 4.3.5 (MIT) and Globals 17.14.0 (MIT), with Globals also
+updated in MCP development tooling. The resolved CSS/native transitive packages
+retain their declared license families, including Lightning CSS MPL-2.0.
+
 [`dependency-licenses.json`](dependency-licenses.json) records dependency
 identities, declared npm licenses, and available offline Go license-file
 evidence. It is a reviewed metadata baseline, not a legal compliance decision,
