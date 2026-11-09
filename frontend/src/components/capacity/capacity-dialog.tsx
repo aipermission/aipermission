@@ -22,21 +22,26 @@ const groups: { key: Group; label: string }[] = [
   { key: "other", label: "Other states" },
 ];
 
+function sessionRows(data: Report | null, group: Group, minutes: number, oldestFirst: boolean, query: string) {
+  return (data?.items || [])
+    .filter((item) => group === "all" || sessionGroup(item, data!, minutes) === group)
+    .filter((item) =>
+      [item.target_name, item.name, item.owner, item.connector_kind, `#${item.id}`].some((value) => value.toLowerCase().includes(query)),
+    )
+    .sort((a, b) => (Date.parse(a.last_activity) - Date.parse(b.last_activity)) * (oldestFirst ? 1 : -1) || a.id - b.id);
+}
+
 export function CapacityDialog({ data, error, message, saving, onClose, onRefresh, onClean }: Props) {
   const [minutes, setMinutes] = useState(30);
   const [group, setGroup] = useState<Group>("all");
+  const [search, setSearch] = useState("");
   const [oldestFirst, setOldestFirst] = useState(true);
   const [confirmation, setConfirmation] = useState<{ items: Session[]; minutes: number } | null>(null);
   const [selected, setSelected] = useState<Set<string> | null>(null);
   const identity = (item: Session) => `${item.id}:${item.generation}:${item.last_activity}`;
+  const query = search.trim().toLowerCase();
   const idle = useMemo(() => data?.items.filter((item) => sessionGroup(item, data, minutes) === "idle") || [], [data, minutes]);
-  const rows = useMemo(
-    () =>
-      (data?.items || [])
-        .filter((item) => group === "all" || sessionGroup(item, data!, minutes) === group)
-        .sort((a, b) => (Date.parse(a.last_activity) - Date.parse(b.last_activity)) * (oldestFirst ? 1 : -1) || a.id - b.id),
-    [data, group, minutes, oldestFirst],
-  );
+  const rows = useMemo(() => sessionRows(data, group, minutes, oldestFirst, query), [data, group, minutes, oldestFirst, query]);
   const candidates = idle.filter((item) => selected === null || selected.has(identity(item)));
   function changeMinutes(value: number) {
     setMinutes(value);
@@ -129,7 +134,16 @@ export function CapacityDialog({ data, error, message, saving, onClose, onRefres
             </Button>
           </aside>
           <section role="tabpanel" id="capacity-sessions" aria-labelledby={`capacity-tab-${group}`} className="min-w-0">
-            <div className="mb-4 flex items-center justify-end gap-2">
+            <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+              <input
+                type="search"
+                aria-label="Search sessions"
+                placeholder="Search sessions"
+                maxLength={200}
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="h-9 min-w-0 basis-full rounded-md border border-stone-300 bg-white px-3 text-sm sm:flex-1 sm:basis-0"
+              />
               <select
                 aria-label="Session order"
                 value={oldestFirst ? "oldest" : "newest"}
@@ -224,7 +238,7 @@ export function CapacityDialog({ data, error, message, saving, onClose, onRefres
                     })}
                   </tbody>
                 </table>
-                {rows.length === 0 ? <Notice>No sessions in this group.</Notice> : null}
+                {rows.length === 0 ? <Notice>{query ? "No sessions match your search." : "No sessions in this group."}</Notice> : null}
               </div>
             )}
           </section>
