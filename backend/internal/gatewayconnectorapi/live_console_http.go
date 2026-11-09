@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/console/capacity"
 	"github.com/aipermission/aipermission/backend/internal/httptransport"
 	"github.com/gorilla/websocket"
 )
@@ -174,6 +175,11 @@ func (h *LiveConsoleHTTPHandlers) Create(w http.ResponseWriter, r *http.Request)
 	}
 	item, err := runtime.Sessions.Create(r.Context(), request)
 	if errors.Is(err, ErrLiveConsoleSessionLimit) {
+		var limit capacity.LimitError
+		if errors.As(err, &limit) {
+			httptransport.WriteJSON(w, http.StatusConflict, map[string]any{"error": limit.Error(), "code": "console_session_limit_reached", "used": limit.Used, "limit": capacity.Limit})
+			return
+		}
 		httptransport.WriteError(w, http.StatusConflict, err.Error())
 		return
 	}

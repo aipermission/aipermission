@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/console/capacity"
 	consolepersistence "github.com/aipermission/aipermission/backend/internal/console/persistence"
 	"github.com/aipermission/aipermission/backend/internal/console/terminaltext"
 	"github.com/aipermission/aipermission/backend/internal/executionprincipal"
@@ -177,9 +178,10 @@ func (m *Manager) createLocked(ctx context.Context, request CreateRequest) (Reco
 		return Record{}, nil, ErrManagerClosed
 	}
 	if m.activeSessionCountLocked() >= maxActiveConsoleSessions {
+		used := m.activeSessionCountLocked()
 		m.mu.Unlock()
 		destroyCreateResources(request)
-		return Record{}, nil, ErrSessionLimit
+		return Record{}, nil, capacity.LimitError{Used: used, Cause: ErrSessionLimit}
 	}
 	var generation int64
 	err = m.db.QueryRowContext(ctx, `SELECT COALESCE(MAX(generation), 0) + 1 FROM console_sessions WHERE runtime_id = ?`, request.RuntimeID).Scan(&generation)
