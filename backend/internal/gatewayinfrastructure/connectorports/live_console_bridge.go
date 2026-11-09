@@ -147,6 +147,10 @@ func mapError(err error) error {
 	case errors.Is(err, console.ErrSessionChanged):
 		return connectorapi.ErrLiveConsoleChanged
 	case errors.Is(err, console.ErrSessionLimit):
+		var limit capacity.LimitError
+		if errors.As(err, &limit) {
+			return capacity.LimitError{Used: limit.Used, Cause: connectorapi.ErrLiveConsoleSessionLimit}
+		}
 		return connectorapi.ErrLiveConsoleSessionLimit
 	case errors.Is(err, console.ErrClientLimit):
 		return connectorapi.ErrLiveConsoleClientLimit
