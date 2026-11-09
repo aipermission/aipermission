@@ -27,6 +27,12 @@ func compileExecutionSQL(ctx context.Context, script string) (batches []string, 
 	initializeSQLGrammar()
 	ctx, cancel := context.WithTimeout(ctx, executionParserTimeout)
 	defer cancel()
+	return parseExecutionSQL(ctx, script)
+}
+
+// Keep grammar correctness independent of a caller's wall-clock admission budget.
+// Runtime callers always enter through compileExecutionSQL's fixed deadline.
+func parseExecutionSQL(ctx context.Context, script string) (batches []string, err error) {
 	defer func() {
 		if recover() != nil {
 			batches, err = nil, fmt.Errorf("execute_sql exceeded supported T-SQL syntax complexity")

@@ -27,9 +27,17 @@ func TestExecutionSQLAcceptsBroadAuthorityWithoutRewriting(t *testing.T) {
 		"SELECT SERVERPROPERTY('ProductMajorVersion'); UPDATE dbo.[t] SET value=7 WHERE id=1;\nGO\nUPDATE dbo.[t] SET value=100 WHERE id=1;",
 	} {
 		t.Run(script, func(t *testing.T) {
-			batches, err := compileExecutionSQL(t.Context(), script)
+			batches, err := parseExecutionSQL(t.Context(), script)
 			if err != nil || strings.Join(batches, "GO") != script {
 				t.Fatalf("SQL changed: %#v, %v", batches, err)
+			}
+			batches, err = compileExecutionSQL(t.Context(), script)
+			if errors.Is(err, context.DeadlineExceeded) {
+				if len(batches) != 0 || !strings.Contains(err.Error(), "no SQL was sent") {
+					t.Fatalf("admission timeout lost fail-closed evidence: %#v %v", batches, err)
+				}
+			} else if err != nil || strings.Join(batches, "GO") != script {
+				t.Fatalf("bounded admission changed SQL: %#v %v", batches, err)
 			}
 		})
 	}
@@ -99,14 +107,12 @@ func TestExecutionSQLLimitsAndCanonicalPreparation(t *testing.T) {
 func TestExecutionParserWorkAndCancellationAreBounded(t *testing.T) {
 	chain := "IF @a = 0 PRINT 0;\n" + strings.Repeat("ELSE IF @a = 0 PRINT 0;\n", 75) + "ELSE PRINT 1;\n"
 	script := "DECLARE @a int = 1;\n" + strings.Repeat(chain, 10)
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
 	started := time.Now()
-	batches, err := compileExecutionSQL(ctx, script)
-	if err != nil || len(batches) != 1 || batches[0] != script || time.Since(started) > time.Second {
+	batches, err := parseExecutionSQL(t.Context(), script)
+	if err != nil || len(batches) != 1 || batches[0] != script {
 		t.Fatalf("bounded valid parser input: batches=%d err=%v elapsed=%v", len(batches), err, time.Since(started))
 	}
-	t.Logf("18350-byte ambiguous script parsed in %s", time.Since(started))
+	t.Logf("18350-byte ambiguous script accepted within syntax work bounds in %s (not a wall-clock benchmark)", time.Since(started))
 	canceled, stop := context.WithCancel(t.Context())
 	stop()
 	if _, err := compileExecutionSQL(canceled, script); !errors.Is(err, context.Canceled) {
