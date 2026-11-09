@@ -38,10 +38,13 @@ func TestExecutionParserColdStart(t *testing.T) {
 }
 
 func TestExecutionValidationDeadlineIsActionableAndWrapped(t *testing.T) {
+	if executionParserTimeout != time.Second {
+		t.Fatal("production parser admission budget changed")
+	}
 	ctx, cancel := context.WithDeadline(t.Context(), time.Now().Add(-time.Second))
 	defer cancel()
-	_, err := compileExecutionSQL(ctx, "SELECT 1;")
-	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "T-SQL validation") || !strings.Contains(err.Error(), "no SQL was sent") {
+	batches, err := compileExecutionSQL(ctx, "SELECT 1;")
+	if len(batches) != 0 || !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "T-SQL validation") || !strings.Contains(err.Error(), "no SQL was sent") {
 		t.Fatalf("unhelpful validation timeout: %v", err)
 	}
 }

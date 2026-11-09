@@ -63,6 +63,12 @@ A trailing comment-only chunk is dispatched separately and counts toward the
 inside SQL literals are not expanded. Parsing is syntax validation, not a
 statement/function allowlist, authorization check or server compatibility proof.
 
+Grammar acceptance tests exercise the same parser core separately from runtime
+admission timing. A valid script can still exhaust the fixed one-second budget
+under CPU contention; that returns zero batches and sends no SQL. Keep the
+runtime deadline, cancellation and syntax-work checks intact rather than treating
+shared-runner race timings as a universal parsing-performance guarantee.
+
 Execution re-prepares the action and validates runtime, target, profile, action
 identity and risk before secret resolution. A dedicated native connection is
 authenticated and initialized before dispatch; no pool retries or session
