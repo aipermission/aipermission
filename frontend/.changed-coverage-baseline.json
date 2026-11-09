@@ -52,10 +52,10 @@
       "lines": 100
     },
     "src/components/capacity/capacity-dialog.tsx": {
-      "statements": 80.85,
-      "branches": 71.64,
-      "functions": 85.18,
-      "lines": 82.92
+      "statements": 92.45,
+      "branches": 76.81,
+      "functions": 93.54,
+      "lines": 95.55
     },
     "src/components/capacity/model.ts": {
       "statements": 100,
@@ -438,6 +438,12 @@
     "src/components/settings/connector-capacity-panel.tsx": {
       "statements": 100,
       "branches": 100,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/components/settings/console-cleanup-panel.tsx": {
+      "statements": 98.59,
+      "branches": 94.82,
       "functions": 100,
       "lines": 100
     },
@@ -2500,10 +2506,10 @@
       "lines": 100
     },
     "src/lib/api.ts": {
-      "statements": 96.73,
-      "branches": 90.71,
+      "statements": 97.12,
+      "branches": 92.01,
       "functions": 100,
-      "lines": 98
+      "lines": 98.42
     },
     "src/lib/async-resource.ts": {
       "statements": 100,
@@ -2754,6 +2760,12 @@
     "src/lib/request-guard.ts": {
       "statements": 100,
       "branches": 95,
+      "functions": 100,
+      "lines": 100
+    },
+    "src/lib/request-signal.ts": {
+      "statements": 100,
+      "branches": 100,
       "functions": 100,
       "lines": 100
     },

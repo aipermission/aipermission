@@ -151,9 +151,7 @@ test("loads canonical release notes only when the changelog opens", async ({ pag
 });
 
 test("renders security settings and updates MCP metadata exposure", async ({ page, apiIsolation }) => {
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.getByRole("link", { name: /Security/ }).click();
 
   await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
@@ -179,9 +177,7 @@ test("@high-risk imports a database from the unlock screen", async ({ page }) =>
 });
 
 test("renders settings retention controls", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.getByRole("link", { name: /Settings/ }).click();
 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
@@ -270,9 +266,7 @@ async function readReconciliationProofs(page) {
 }
 
 test("@accessibility keeps modal focus contained and returns it to the opener", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.getByRole("link", { name: /Settings/ }).click();
 
   const opener = page.getByRole("button", { name: "Add provider" });
@@ -328,9 +322,7 @@ for (const width of [320, 360]) {
 }
 
 test("@high-risk updates token connector permission from the Tokens page", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.locator('aside a[href="/tokens"]').click();
 
   await page.getByRole("button", { name: "Connectors" }).click();
@@ -343,9 +335,7 @@ test("@high-risk updates token connector permission from the Tokens page", async
 });
 
 test("@high-risk updates project Vault permissions from the Tokens page", async ({ page }) => {
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.locator('aside a[href="/tokens"]').click();
 
   await page.getByRole("button", { name: "Vault", exact: true }).click();
@@ -444,9 +434,7 @@ test("moves an edited connector to another project", async ({ page, apiIsolation
     });
   });
 
-  await page.goto("/");
-  await page.getByRole("textbox").fill("local-password");
-  await page.getByRole("button", { name: "Unlock", exact: true }).click();
+  await unlock(page);
   await page.locator('aside a[href="/connectors"]').click();
 
   await page.getByTitle("Edit connector").click();

@@ -3,14 +3,19 @@ import { test, installStaticMockRoutes, fulfillWorkspace, mockResponse, workspac
 
 test("console capacity updates and guarded cleanup stay usable on desktop/mobile @high-risk", async ({ page, apiIsolation }, testInfo) => {
   await installStaticMockRoutes(page, apiIsolation);
-  await apiIsolation.route(page, "http://localhost:8080/api/settings/mcp-runtime", ["GET"], (route) =>
-    fulfillWorkspace(route, { json: { enabled: true, start_enabled: false, updated_at: "2026-11-08T12:00:00Z" } }),
-  );
   await apiIsolation.route(page, "http://localhost:8080/api/unlock/status", ["GET"], (route) =>
     fulfillWorkspace(route, { headers: workspaceHeaders, json: mockResponse("unlockedStatus") }),
   );
   let items = mockResponse("consoleCapacityItems");
   let revision = 1;
+  let policy = { enabled: false, idle_minutes: 60 };
+  await apiIsolation.route(page, "http://localhost:8080/api/settings/console-cleanup", ["GET", "PUT"], async (route) => {
+    if (route.request().method() === "PUT") {
+      policy = route.request().postDataJSON();
+      expect(policy).toEqual({ enabled: true, idle_minutes: 30 });
+    }
+    await fulfillWorkspace(route, { json: policy });
+  });
   await apiIsolation.route(page, "http://localhost:8080/api/console/capacity", ["GET"], (route) =>
     fulfillWorkspace(route, {
       json: { limit: 32, used: items.length, available: 32 - items.length, revision, observed_at: "2026-11-08T12:00:00Z", items },
@@ -44,4 +49,11 @@ test("console capacity updates and guarded cleanup stay usable on desktop/mobile
     .click();
   await expect(dialog.getByText(/1 closed/)).toBeVisible();
   await expect(dialog.getByText("My Container", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.goto("/settings");
+  await expect(page.getByLabel("Automatic idle cleanup")).not.toBeChecked();
+  await page.getByLabel("Automatic idle cleanup").check();
+  await page.getByLabel("Idle threshold").selectOption("30");
+  await page.getByRole("button", { name: "Save console cleanup" }).click();
+  await expect(page.getByText(/Next check is at the start of the next hour/)).toBeVisible();
 });
