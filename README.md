@@ -82,7 +82,9 @@ The sidebar's **Capacity** view separately tracks live console slots, searchable
 by connector, session or owner. Settings can opt into hourly cleanup with a saved
 idle threshold; it is disabled by default. Cleanup closes only eligible idle
 consoles, protects tracked or uncertain work, and retains history. Inactivity
-does not prove that detached remote processes have stopped.
+does not prove that detached remote processes have stopped. Sessions with manual
+terminal input remain protected until explicitly ended; prompt-shaped output
+alone is not a verified process exit.
 
 > **Local-only security boundary:** run AIPermission on your own machine and
 > keep its published Docker port bound to `127.0.0.1`. It is not a remote

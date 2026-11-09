@@ -1,6 +1,40 @@
 {
-  "version": "0.2.77",
+  "version": "0.2.78",
   "entries": [
+    {
+      "version": "0.2.78",
+      "label": "Live console capacity and opt-in idle cleanup",
+      "sections": [
+        {
+          "title": "Added",
+          "items": [
+            "Show live shared console capacity below Transfers with a bounded, visibility-aware watch, grouped activity views, configurable idle thresholds and audited conditional single/bulk cleanup without closing tracked running commands.",
+            "Search loaded console sessions without extra requests and optionally save an hourly idle-cleanup policy in Settings; default disabled, with running, startup and uncertain work protected."
+          ]
+        },
+        {
+          "title": "Fixed",
+          "items": [
+            "Render console capacity with the shared native progress bar and static semantic colors, retaining CSP inline-style restrictions and bounded accessible progress values."
+          ]
+        },
+        {
+          "title": "Maintenance",
+          "items": [
+            "Refresh reviewed CodeQL 4.39.3 and Cosign installer 4.1.3 action commits without weakening workflow checks, permissions or source verification.",
+            "Update frontend Lucide to 1.70.0, Playwright to 1.65.0, Tailwind to the reviewed 4.3.5 patch and Globals to 17.14.0; align MCP development Globals and exact dependency license metadata.",
+            "Separate SQL Server grammar acceptance tests from load-sensitive admission timing while retaining the fixed one-second production deadline, syntax-work limits and zero-dispatch timeout evidence."
+          ]
+        },
+        {
+          "title": "Security",
+          "items": [
+            "Update SCRAM to 1.4.0 and lock rejected-password redaction with a regression through the PostgreSQL managed-role verifier; retain pinned upstream checksums for the reviewed local SQL Server driver patch.",
+            "Keep sessions with manual terminal input protected from idle cleanup independently of best-effort History prompt detection; abandoned automation and prompt-shaped process output cannot certify that manual work exited."
+          ]
+        }
+      ]
+    },
     {
       "version": "0.2.77",
       "label": "Connector boundaries and action lifecycle hardening",
@@ -285,46 +319,6 @@
           "items": [
             "AIPermission remains local-only, single-user and developer-focused; token permissions, Always grants and finite resource limits are unchanged.",
             "Back up the encrypted database before upgrading. No new database schema migration is introduced.",
-            "The MCP package must be published separately after the GitHub release."
-          ]
-        }
-      ]
-    },
-    {
-      "version": "0.2.70",
-      "label": "Connector identity and request ownership hardening",
-      "sections": [
-        {
-          "title": "Security",
-          "items": [
-            "MCP config updates retain private recovery snapshots, detect conflicting writers and reject tracked recovery paths, including case variants; filesystem limitations remain explicit.",
-            "MCP structural dispatch identifiers are canonicalized while exact response identity checks and opaque action inputs remain unchanged.",
-            "Redis query changes and refresh retire stale confirmations and UI results without canceling an already dispatched mutation."
-          ]
-        },
-        {
-          "title": "Fixed",
-          "items": [
-            "Kafka preserves exact consumer group identities, including whitespace, and reports payload bytes only for returned records.",
-            "Redis scan cursors, results and selections belong to their applied query; backup provider collections reject stale replies across refresh and workspace changes.",
-            "RabbitMQ binary previews enforce decoded-byte limits and preserve valid Base64; text previews retain valid UTF-8 boundaries.",
-            "Unknown SMTP submission outcomes use the canonical dispatch-stage and reconciliation metadata without automatic retry."
-          ]
-        },
-        {
-          "title": "Maintenance",
-          "items": [
-            "The npm placeholder ships the AGPL license with package-content verification.",
-            "Packaged MCP stdio behavior is exercised on the minimum Node.js 20.0.0 runtime on Linux x64; maintained Node.js releases remain recommended.",
-            "Credential documentation distinguishes mandatory registered-secret masking from best-effort handling of unrelated or transformed data."
-          ]
-        },
-        {
-          "title": "Notes",
-          "items": [
-            "AIPermission remains local-only, single-user and developer-focused; permissions, Always grants and finite resource limits are unchanged.",
-            "Back up the encrypted database before upgrading. No new database schema migration is introduced.",
-            "Config recovery is not a portable filesystem compare-and-swap guarantee; review retained snapshots before removing them. Windows filesystems without hard links reject first-time credential config creation with recovery guidance.",
             "The MCP package must be published separately after the GitHub release."
           ]
         }
