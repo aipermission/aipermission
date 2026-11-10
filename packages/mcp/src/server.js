@@ -25,6 +25,7 @@ import { projectGatewaySuccess, responseContracts } from "./response-contracts.j
 import { jsonActionToolResult, jsonToolResult } from "./results.js";
 import { readGatewayResponseText } from "./response-body.js";
 import { externalActionAnnotations, localMutationAnnotations, localReadAnnotations } from "./tool-annotations.js";
+import { connectorActionsPath, defaultUploadTimeoutMs, registerUploadTool } from "./upload-tool.js";
 
 const packageMetadata = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 let apiUrl = "";
@@ -37,6 +38,8 @@ try {
 const apiToken = process.env.AIPERMISSION_API_TOKEN || "";
 const apiTimeoutMs = parseHTTPTimeout(process.env.AIPERMISSION_HTTP_TIMEOUT_MS);
 const gatewayDispatcher = createHTTPDispatcher(apiTimeoutMs);
+const uploadTimeoutMs = process.env.AIPERMISSION_HTTP_TIMEOUT_MS?.trim() ? apiTimeoutMs : defaultUploadTimeoutMs;
+const uploadDispatcher = createHTTPDispatcher(uploadTimeoutMs);
 const connectorIdentifierSchema = z.string().trim().min(1);
 
 const server = new McpServer(
@@ -46,6 +49,14 @@ const server = new McpServer(
   },
   { instructions: MCP_SERVER_INSTRUCTIONS },
 );
+
+registerUploadTool(server, {
+  apiGet,
+  apiRequest: (path, options, key, context) =>
+    apiRequest(path, options, key, { ...context, timeoutMs: uploadTimeoutMs, dispatcher: uploadDispatcher }),
+  configuredRoots: process.env.AIPERMISSION_UPLOAD_ROOTS,
+  timeoutMs: uploadTimeoutMs,
+});
 
 server.tool(
   "list_connector_targets",
@@ -87,10 +98,7 @@ server.tool(
   localReadAnnotations,
   async ({ target_ref }, { signal }) => {
     return jsonToolResult(
-      () => {
-        const params = new URLSearchParams({ target_ref });
-        return apiGet(`/api/mcp/connector-actions?${params.toString()}`, { signal });
-      },
+      () => apiGet(connectorActionsPath(target_ref), { signal }),
       (value) => projectGatewaySuccess(responseContracts.connectorActions, value),
     );
   },
@@ -215,6 +223,7 @@ server.tool(
 const transport = new StdioServerTransport();
 server.server.onclose = () => {
   void gatewayDispatcher.destroy().catch(() => {});
+  void uploadDispatcher.destroy().catch(() => {});
 };
 process.stdin.once("end", () => {
   void server.close().catch(() => {});
@@ -263,7 +272,7 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
   } catch {
     throw new Error("Invalid local gateway request configuration; check the API URL and token.");
   }
-  const timeout = apiTimeoutMs;
+  const timeout = context.timeoutMs ?? apiTimeoutMs;
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -279,7 +288,7 @@ async function apiRequest(path, options, idempotencyKey, context = {}) {
       throw new Error("MCP request was canceled.");
     }
     dispatchStarted = true;
-    const response = await fetch(request, { signal: controller.signal, dispatcher: gatewayDispatcher });
+    const response = await fetch(request, { signal: controller.signal, dispatcher: context.dispatcher ?? gatewayDispatcher });
     const text = await readGatewayResponseText(response);
     const data = response.status === 204 ? null : parseResponseBody(text);
     bodyReceived = true;

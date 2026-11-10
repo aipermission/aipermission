@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { connectorActionStatuses, connectorRetryClasses, connectorActionMaximumInputBytes } from "./generated-connector-contract.js";
+import {
+  connectorActionStatuses,
+  connectorRetryClasses,
+  connectorActionMaximumInputBytes,
+  connectorActionMaximumUploadBytes,
+} from "./generated-connector-contract.js";
 
 // Array early exit requires non-continuable element failures, including refinements.
 const positiveID = z.number().int({ abort: true }).positive({ abort: true });
@@ -118,6 +123,7 @@ const actionDefinitionSchema = z
     output_hint: outputHintSchema.optional(),
     retry_policy: retryPolicySchema,
     max_input_bytes: positiveID.max(connectorActionMaximumInputBytes, { abort: true }),
+    max_upload_bytes: positiveID.max(connectorActionMaximumUploadBytes, { abort: true }).optional(),
   })
   .strict();
 

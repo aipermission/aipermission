@@ -1,6 +1,13 @@
 {
   "inAppReleaseLimit": 8,
-  "unreleased": [],
+  "unreleased": [
+    {
+      "title": "Added",
+      "items": [
+        "Stream MCP client-local files to SSH through token-scoped SFTP upload actions, with workspace-bounded source access, optional explicit directories, size and checksum verification, approval, and transfer status."
+      ]
+    }
+  ],
   "releases": [
     {
       "version": "0.2.78",
