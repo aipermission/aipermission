@@ -251,6 +251,7 @@ type MCPConnectorReads interface {
 }
 type MCPConnectorActions interface {
 	Call(http.ResponseWriter, *http.Request)
+	Upload(http.ResponseWriter, *http.Request)
 	GetRequest(http.ResponseWriter, *http.Request)
 }
 type MCPVaultActions interface {
@@ -427,6 +428,7 @@ func Register(mux *http.ServeMux, d Dependencies) {
 	mux.HandleFunc("GET /api/mcp/connector-help", d.MCPConnectorReads.GetHelp)
 	mux.HandleFunc("GET /api/mcp/connector-actions", d.MCPConnectorReads.GetActions)
 	mux.HandleFunc("POST /api/mcp/connector-actions/call", d.MCPConnectorActions.Call)
+	mux.HandleFunc("POST /api/mcp/connector-actions/upload", d.MCPConnectorActions.Upload)
 	mux.HandleFunc("GET /api/mcp/connector-action-requests/{id}", d.MCPConnectorActions.GetRequest)
 	mux.HandleFunc("GET /api/mcp/vault-items", d.MCPVaultActions.ListItems)
 	mux.HandleFunc("POST /api/mcp/vault-actions/call", d.MCPVaultActions.Call)

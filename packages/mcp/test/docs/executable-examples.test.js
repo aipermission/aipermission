@@ -1,24 +1,13 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { AjvJsonSchemaValidator } from "@modelcontextprotocol/sdk/validation/ajv";
+import { readActionExamples } from "../support/doc-action-examples.js";
 import { withGateway } from "../support/http-gateway.js";
 import { connectorActionResponse } from "../support/response-fixtures.js";
 
 const approvedDocs = ["docs/api/rest-api.md", "docs/api/mcp-tools.md", "docs/setup/mcp-client-setup.md", "packages/mcp/README.md"];
-const examples = [];
-for (const file of approvedDocs) {
-  const markdown = await readFile(new URL(`../../../../${file}`, import.meta.url), "utf8");
-  for (const match of markdown.matchAll(/^```json\r?\n([\s\S]*?)^```\s*$/gm)) {
-    // Other REST fences include JSON message streams, not single MCP envelopes.
-    if (!/"action_name"\s*:/.test(match[1]) || !/"(?:target_ref|project_ref)"\s*:/.test(match[1])) continue;
-    const value = JSON.parse(match[1]);
-    if (!value.action_name || !(value.target_ref || value.project_ref)) continue;
-    const line = markdown.slice(0, match.index).split("\n").length;
-    examples.push({ file, line, value });
-  }
-}
-const requests = examples.filter(({ value }) => !Object.hasOwn(value, "status"));
+const examples = (await Promise.all(approvedDocs.map(readActionExamples))).flat();
+const requests = examples.filter(({ value }) => !Object.hasOwn(value, "status") && !Object.hasOwn(value, "local_path"));
 const responses = examples.filter(({ value }) => Object.hasOwn(value, "status"));
 const download = requests.find(({ file, value }) => file === approvedDocs[0] && value.action_name === "start_file_download");
 

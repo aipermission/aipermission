@@ -138,7 +138,7 @@ func adaptMCPActionScopeProvider(provider gatewayaccess.MCPActionScopeProvider) 
 		if scope.ResourcePolicy != nil {
 			resourcePolicy = func(ctx context.Context, targetRef, actionName string) (mcpconnector.ActionResourcePolicy, error) {
 				policy, err := scope.ResourcePolicy(ctx, targetRef, actionName)
-				return mcpconnector.ActionResourcePolicy{MaxInputBytes: policy.MaxInputBytes}, err
+				return mcpconnector.ActionResourcePolicy{MaxInputBytes: policy.MaxInputBytes, MaxUploadBytes: policy.MaxUploadBytes}, err
 			}
 		}
 		var call func(context.Context, mcpconnector.ActionCall) (mcpconnector.ActionCallResult, error)
@@ -158,6 +158,10 @@ func adaptMCPActionScopeProvider(provider gatewayaccess.MCPActionScopeProvider) 
 			ReplayExists:   scope.ReplayExists,
 			ResourcePolicy: resourcePolicy,
 			Call:           call, Observe: scope.Observe, Redact: scope.Redact,
+			StageUpload:           scope.StageUpload,
+			AcquireUploadDispatch: scope.AcquireUploadDispatch,
+			ValidateUpload:        scope.ValidateUpload,
+			RefreshRequest:        scope.RefreshRequest,
 			RunningHint: func(request connectortargets.ActionRequest) string {
 				if scope.RunningHint == nil {
 					return ""

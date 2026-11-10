@@ -12,6 +12,7 @@ import (
 
 type MCPActionResourcePolicy struct {
 	MaxInputBytes  int
+	MaxUploadBytes int64
 	PersistedRows  int64
 	PersistedBytes int64
 }
@@ -62,6 +63,7 @@ func (catalog Catalog) MCPActionResourcePolicy(ctx context.Context, tokenID int6
 	for _, definition := range definitions {
 		if definition.Name == actionName {
 			policy.MaxInputBytes = definition.MaxInputBytes
+			policy.MaxUploadBytes = definition.MaxUploadBytes
 			break
 		}
 	}

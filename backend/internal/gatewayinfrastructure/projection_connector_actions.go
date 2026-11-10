@@ -131,6 +131,11 @@ func (component *ConnectorActionApplication) ValidateUpload(ctx context.Context,
 	return err
 }
 
+func (component *ConnectorActionApplication) RequestRefresh(handle *WorkspaceHandle) gatewayaccess.MCPRequestRefresh {
+	workspace, _ := component.workspace(handle)
+	return component.application.RequestRefresh(workspace)
+}
+
 func (component *ConnectorActionApplication) Approval(handle *WorkspaceHandle) (gatewayactions.ApprovalWorkflow, error) {
 	workspace, _ := component.workspace(handle)
 	return component.application.Approval(workspace)

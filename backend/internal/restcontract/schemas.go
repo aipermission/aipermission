@@ -217,6 +217,7 @@ func connectorActionDefinitionSchema(stringMap map[string]any) map[string]any {
 		"output_hint":            stringMap,
 		"retry_policy":           retryPolicySchema(),
 		"max_input_bytes":        map[string]any{"type": "integer", "minimum": 1, "maximum": connectors.MaximumActionInputBytes},
+		"max_upload_bytes":       map[string]any{"type": "integer", "minimum": 1, "maximum": connectors.MaximumFileUploadBytes},
 	}, []string{"name", "label", "description", "risk", "input_schema", "retry_policy", "max_input_bytes"})
 }
 

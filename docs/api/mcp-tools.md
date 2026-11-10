@@ -24,6 +24,7 @@ list_connector_targets()
 get_connector_help(target_ref)
 get_connector_actions(target_ref)
 call_connector_action(target_ref, action_name, input?, reason?, idempotency_key)
+upload_connector_file(target_ref, action_name, local_path, input, reason, idempotency_key)
 get_connector_action_request(request_id)
 list_vault_items(project_ref?)
 call_vault_action(project_ref, action_name, input, reason, idempotency_key)
@@ -265,6 +266,8 @@ read_console
 restart_console_session
 browse_remote_files
 start_file_download
+upload_file
+get_file_upload_status
 ```
 
 Postgres actions include schema/table inspection, bounded `query_readonly`, and
@@ -647,6 +650,64 @@ Example S3 list response (the required request envelope is included):
   }
 }
 ```
+
+## MCP File Upload
+
+Stream a local file to a connector action advertising `max_upload_bytes`.
+The file is read on the MCP client's machine, not inside the gateway container.
+Client-local uploads are disabled unless the operator sets
+`AIPERMISSION_UPLOAD_ROOTS` to a JSON array of absolute directories in the MCP
+server environment and restarts that MCP server. This source reader requires
+Linux with `/proc/self/fd`. Use a dedicated directory for files approved for
+transfer, never an entire home directory, credential store, or Vault backup.
+Symlinks, hard-linked files, and non-regular files are rejected.
+
+```json
+{
+  "target_ref": "ssh:1:1",
+  "action_name": "upload_file",
+  "local_path": "/home/operator/aipermission-uploads/release.tar.gz",
+  "input": { "remote_path": "/srv/releases/release.tar.gz", "overwrite": false },
+  "reason": "Upload the approved release archive",
+  "idempotency_key": "upload-release-archive-2026-11"
+}
+```
+
+SSH accepts one file up to 512 MiB, including empty files. The path must be the
+exact absolute destination file. The gateway stages bytes in its private
+temporary directory, verifies the size and SHA-256, then submits the standard
+connector action with metadata only. Bytes are not in tool JSON, History, or
+SQLCipher; staging files are protected by local filesystem permissions, not
+encrypted by the database. Do not send credentials or arbitrary local files. Staged uploads
+must start within 15 minutes of staging. Polling an expired pending approval
+returns `stale`; retrying an expired stage without an action record returns
+`upload_stage_expired`. Use a fresh idempotency key and submission after
+reconciling the original transfer. Files are streamed, but interrupted streams do not
+resume from an offset.
+
+The gateway rechecks permission during SFTP streaming and before the atomic
+destination write. Revocation can stop an active transfer, but cannot recall
+bytes the remote SSH server has already received.
+
+Grant `upload_file` and `get_file_upload_status` separately on the exact SSH
+profile. Prompt requires operator approval; Always queues immediately. Set
+the read-only `get_file_upload_status` action to Always for unattended polling. The
+action's `completed` status only means the queue accepted it. For Prompt,
+first poll `get_connector_action_request`. Then call `get_file_upload_status`
+through `call_connector_action`, with `input: {"upload_ref": "<original upload
+idempotency key>"}` on the same target and token. Use a fresh idempotency key
+for each status read and wait a few seconds between polls. Only
+`output.status: "completed"` confirms publication. After a lost reply, use
+the original upload reference in the status action to recover the
+`output.action_request_id`, without rereading the local file. Do not blindly resubmit
+with a new key after a lost reply or a transfer with
+`failure_kind: "outcome_unknown"`; inspect the remote destination first.
+
+The upload tool has a ten-minute total budget by default. An explicit
+`AIPERMISSION_HTTP_TIMEOUT_MS` overrides it, up to ten minutes. The MCP host
+may impose its own shorter tool timeout; increase it for larger files.
+Standalone MCP uploads are visible in History; they are not batch controls
+in the Transfer Center. Prompt uploads may be declined in Approvals.
 
 ## approval_pending
 
