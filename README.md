@@ -245,6 +245,11 @@ Supported client presets and source-development setup are documented in
 [MCP Client Setup](docs/setup/mcp-client-setup.md). The MCP tool contract is
 documented in [MCP Tools](docs/api/mcp-tools.md).
 
+For SSH file uploads, the Linux MCP bridge can stream a client-local file
+from the current MCP workspace (or explicitly configured directories) through
+the same token and approval
+pipeline. See [MCP file upload](docs/api/mcp-tools.md#mcp-file-upload).
+
 Replace `VERSION` with the exact published version you intend to pin.
 When reading a development branch, use the matching local package build instead
 of copying a placeholder command.

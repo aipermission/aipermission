@@ -655,12 +655,22 @@ Example S3 list response (the required request envelope is included):
 
 Stream a local file to a connector action advertising `max_upload_bytes`.
 The file is read on the MCP client's machine, not inside the gateway container.
-Client-local uploads are disabled unless the operator sets
-`AIPERMISSION_UPLOAD_ROOTS` to a JSON array of absolute directories in the MCP
-server environment and restarts that MCP server. This source reader requires
-Linux with `/proc/self/fd`. Use a dedicated directory for files approved for
-transfer, never an entire home directory, credential store, or Vault backup.
-Symlinks, hard-linked files, and non-regular files are rejected.
+By default, local files must be inside a workspace directory advertised by the
+MCP client through `roots/list`. Clients without roots support use the directory
+where the MCP process was started. Advertised empty, invalid, or unavailable
+roots never fall back to that directory. Home directories, their ancestors and
+the filesystem root are not automatic upload roots. Workspace roots are read
+again for each upload; a workspace-change notification cancels in-flight local
+uploads. Reconcile the original upload reference before retrying a canceled call.
+
+No environment setting is needed for ordinary project-local uploads. To select
+different directories, set `AIPERMISSION_UPLOAD_ROOTS` to a JSON array of absolute
+directories and restart the MCP server. This explicit list replaces workspace
+discovery; `[]` disables local uploads. Use a dedicated staging subdirectory to
+narrow access. Every regular file inside an allowed directory is eligible,
+including configuration files: do not stage secrets or Vault backups. The source
+reader requires Linux with `/proc/self/fd`; symlinks, hard-linked files,
+non-regular files and mount crossings below an allowed root are rejected.
 
 ```json
 {

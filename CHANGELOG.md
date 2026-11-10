@@ -9,6 +9,12 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+### Added
+
+- Stream MCP client-local files to SSH through token-scoped SFTP upload actions, with
+  workspace-bounded source access, optional explicit directories, size and checksum
+  verification, approval, and transfer status.
+
 ## [0.2.78] - 2026-11-09
 
 ### Added

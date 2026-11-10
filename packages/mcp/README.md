@@ -167,6 +167,7 @@ does not claim to verify the historical anti-regression ratchet.
 - `get_connector_help`
 - `get_connector_actions`
 - `call_connector_action`
+- `upload_connector_file`
 - `get_connector_action_request`
 - `list_vault_items`
 - `call_vault_action`
@@ -204,8 +205,24 @@ environment values.
 
 For SSH, call `get_connector_actions(target_ref)` to discover actions such as
 `exec`, `read_console`, `restart_console_session`, `browse_remote_files`, and
-`start_file_download`. SSH `exec` is intended for non-interactive commands. Use
-the web console for truly interactive work.
+`start_file_download`, `upload_file`, and `get_file_upload_status`.
+SSH `exec` is intended for non-interactive commands. Use the web console for
+truly interactive work.
+
+To upload over SFTP, grant the SSH profile's `upload_file` and
+`get_file_upload_status` actions. Files inside the MCP client's open workspace
+roots are available by default. Without client roots support, the bridge uses
+its launch directory, never an automatic home-directory or filesystem-wide
+grant. Empty or failing advertised roots do not fall back to the launch directory.
+Optionally set `AIPERMISSION_UPLOAD_ROOTS` to a JSON array such as
+`["/home/operator/aipermission-uploads"]` to replace workspace discovery with
+an explicit directory list, or `[]` to disable uploads; restart MCP after changing
+this setting. The Linux bridge streams one local file (up to 512 MiB); no host
+mount or base64 is needed. Dedicated staging directories narrow access; all
+regular files inside the selected roots are eligible, so do not stage secrets.
+Workspace changes cancel in-flight local reads. The action
+response acknowledges the queue, so poll the transfer before reporting
+success. See [the upload tool contract](../../docs/api/mcp-tools.md#mcp-file-upload).
 
 For Postgres, call `get_connector_actions(target_ref)` to discover schema,
 table, and bounded read-only query actions. Postgres targets can connect

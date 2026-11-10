@@ -78,7 +78,7 @@ test("packaged CLI completes a clean MCP stdio handshake", { timeout: 10_000 }, 
     ]) {
       assert.deepEqual(byName[name].annotations, localReadAnnotations, name);
     }
-    for (const name of ["call_connector_action", "call_vault_action"]) {
+    for (const name of ["call_connector_action", "call_vault_action", "upload_connector_file"]) {
       assert.deepEqual(byName[name].annotations, externalActionAnnotations, name);
     }
     assert.deepEqual(byName.cancel_vault_action_request.annotations, localMutationAnnotations, "cancel_vault_action_request");

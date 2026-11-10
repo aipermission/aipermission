@@ -224,6 +224,28 @@ files or inspect remote paths. Prefer the smallest explicit path set. Do not use
 globs, recursive copy, or directory transfer unless a connector action
 explicitly supports that behavior.
 
+For SSH uploads, discover `upload_file` and its `max_upload_bytes`, then call
+`upload_connector_file` with an absolute client-local file path in an approved
+workspace directory, the exact absolute remote file path, a reason, and a stable
+idempotency key. Leave `overwrite` false unless the operator explicitly asks to
+replace the destination. Never paste file bytes into a tool argument or
+substitute a shell command to bypass upload policy.
+
+The MCP client's open workspace roots are available by default, or its launch
+directory if the client does not support roots. Empty or failing advertised roots
+are not permission to read other directories. `AIPERMISSION_UPLOAD_ROOTS` is an
+optional explicit override; `[]` disables uploads. Never broaden it automatically
+after a refusal. Workspace-change notifications cancel local reads; reconcile
+the original upload reference before retrying. All regular files under an allowed
+root are eligible, including configuration files: do not transfer secrets.
+
+Handle approval through `get_connector_action_request`. A completed upload
+action only accepted the queue. Call `get_file_upload_status` through
+`call_connector_action` with the original `upload_ref` (upload idempotency key),
+on the same target/profile and token. Poll with a fresh read key every few
+seconds. Only report success when the transfer's `output.status` is
+`completed`. Inspect the destination before repeating an uncertain upload.
+
 File-transfer queue and status responses do not include transferred file bytes,
 gateway temp paths, archive staging paths, or local upload contents. Explicitly
 authorized connector read actions may return bounded content, such as S3
