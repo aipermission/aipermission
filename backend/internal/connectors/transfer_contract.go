@@ -12,6 +12,10 @@ type TransferOptions struct {
 	MaxBytes      int64
 	RecordStaging func(context.Context, string) error
 	ClearStaging  func(context.Context, string) error
+	// ExpectedContent must be verified before publishing an uploaded destination.
+	// Adapters that cannot enforce this guard must reject it before dispatch.
+	ExpectedContent  *FileContentIdentity
+	AuthorizePublish FileUploadAuthorization
 }
 
 type TransferResult struct {

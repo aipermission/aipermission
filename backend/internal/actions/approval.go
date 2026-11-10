@@ -47,6 +47,9 @@ func BuildApprovalContext(prepared PreparedRequest, token ApprovalTokenSnapshot,
 		"sensitive_input_fields": prepared.ActionDefinition.SensitiveInputFields,
 		"output_hint":            prepared.ActionDefinition.OutputHint,
 	}
+	if prepared.ActionDefinition.MaxUploadBytes > 0 {
+		actionDefinition["max_upload_bytes"] = prepared.ActionDefinition.MaxUploadBytes
+	}
 	actionDefinitionHashMaterial, err := json.Marshal(actionDefinition)
 	if err != nil {
 		return "", "", err

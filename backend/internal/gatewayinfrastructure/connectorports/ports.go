@@ -48,6 +48,7 @@ type WorkspaceActionPorts struct {
 }
 
 type WorkspaceTransferPorts struct {
+	Uploads             connectorapi.FileUploadGateway
 	RunDownloadBatch    func(context.Context, connectorapi.TransferAuthorization, int64, []string, string, string) (connectorapi.TransferBatch, error)
 	RuntimeCapabilities func(string) connectors.RuntimeCapabilityResolver
 }

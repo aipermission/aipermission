@@ -220,6 +220,7 @@ func (component *Component) workflow(runtime Workspace) (*workflowHandle, error)
 				return runtime.Workflow.Capabilities(kind, dependencies)
 			},
 			RunningActions: runningPort{component: component, runtime: runtime},
+			UploadReady:    runtime.Workflow.UploadReady,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("initialize connector action workflow: %w", err)

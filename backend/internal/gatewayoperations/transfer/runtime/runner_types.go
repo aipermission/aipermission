@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/actionresult"
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	connectorapi "github.com/aipermission/aipermission/backend/internal/gatewayconnectorapi"
 )
 
@@ -16,11 +17,13 @@ var ErrExecutionStale = errors.New("file transfer credential or target changed a
 // Execution is an immutable, credential-redacted capability snapshot accepted
 // before a worker is launched.
 type Execution struct {
-	RuntimeID int64
-	Adapter   connectorapi.FileTransferAdapter
-	Gateway   connectorapi.FileTransferGateway
-	Runtime   connectorapi.TransferRuntime
-	Boundary  actionresult.CredentialBoundary
+	RuntimeID       int64
+	Adapter         connectorapi.FileTransferAdapter
+	Gateway         connectorapi.FileTransferGateway
+	Runtime         connectorapi.TransferRuntime
+	Boundary        actionresult.CredentialBoundary
+	UploadTokenID   int64
+	AuthorizeUpload connectors.FileUploadAuthorization
 }
 
 func (execution Execution) ValidFor(runtimeID int64) bool {

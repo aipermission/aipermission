@@ -120,6 +120,7 @@ type ActionDefinition struct {
 	OutputHint           OutputHint  `json:"output_hint,omitempty"`
 	RetryPolicy          RetryPolicy `json:"retry_policy"`
 	MaxInputBytes        int         `json:"max_input_bytes"`
+	MaxUploadBytes       int64       `json:"max_upload_bytes,omitempty"`
 }
 
 // ActionRequest is a side-effect-free request to prepare a target action.

@@ -183,7 +183,14 @@ func (component *OperationsOwner) TransferWorkspace(handle *WorkspaceHandle) gat
 	if component == nil || !component.valid(handle) {
 		return gatewaytransfer.Workspace{}
 	}
-	return gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID, StorageID: handle.Identity().UIRetryID}
+	return gatewaytransfer.Workspace{RuntimeID: handle.Identity().RuntimeID, StorageID: handle.Identity().UIRetryID, WorkspaceID: handle.Identity().WorkspaceID}
+}
+
+func (component *OperationsOwner) Uploads(handle *WorkspaceHandle) gatewaytransfer.WorkspaceUploads {
+	if component == nil || component.transfers == nil {
+		return gatewaytransfer.WorkspaceUploads{}
+	}
+	return component.transfers.UploadGateway(component.TransferWorkspace(handle), component.transferHTTP)
 }
 
 func (component *OperationsOwner) StopTransferWorkspace(handle *WorkspaceHandle) {

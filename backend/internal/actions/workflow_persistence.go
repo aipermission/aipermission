@@ -245,6 +245,10 @@ func (r *Runtime) Replay(ctx context.Context, tokenID *int64, call Call) (CallRe
 	if request.IdempotencyIdentityHash != identityHash {
 		return CallResult{}, false, connectortargets.ErrActionRequestIdempotency
 	}
+	request, err = r.refreshUploadReplay(ctx, request, call.TargetRef)
+	if err != nil {
+		return CallResult{}, false, err
+	}
 	return replayedCallResult(request), true, nil
 }
 

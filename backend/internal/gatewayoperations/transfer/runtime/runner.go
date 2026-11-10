@@ -53,6 +53,9 @@ func (s Runner) LaunchUpload(ctx context.Context, runtime *Runtime, transferID i
 	if !execution.ValidFor(item.RuntimeID) {
 		return ErrExecutionStale
 	}
+	if item.Source == filetransfer.SourceMCP && (execution.AuthorizeUpload == nil || execution.UploadTokenID < 1) {
+		return ErrExecutionStale
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), s.transferTimeout)
 	return transferLaunchError(runtime.jobs.Files.TryLaunch(transferID, cancel, func() {
 		s.RunUpload(ctx, runtime, transferID, overwrite, execution)
@@ -76,8 +79,8 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 		log.Printf("read file upload failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	result, err := execution.Adapter.UploadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite,
-		s.transferOptions(runtime, transferID, nil, 0))
+	options := s.transferOptions(runtime, transferID, nil, 0)
+	result, err := runBoundUpload(ctx, execution, item, overwrite, options)
 	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
 		log.Printf("file upload final evidence unavailable transfer=%d error=%v", transferID, evidenceErr)
 		return
@@ -98,7 +101,8 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 	if !completed {
 		return
 	}
-	runtime.Observe(context.Background(), "user", nil, item.RuntimeID, "file_transfer.upload.completed", map[string]any{
+	actor, tokenID := uploadActor(execution)
+	runtime.Observe(context.Background(), actor, tokenID, item.RuntimeID, "file_transfer.upload.completed", map[string]any{
 		"transfer_id":     transferID,
 		"remote_path":     item.RemotePath,
 		"bytes":           result.Bytes,
@@ -423,7 +427,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 	options := s.transferOptions(runtime, transferID, control.Wait, s.maxObjectBytes)
 	var result connectors.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
-		result, err = execution.Adapter.UploadFile(itemCtx, execution.Gateway, execution.Runtime, item.RuntimeID, item.TempPath, item.RemotePath, overwrite, options)
+		result, err = runBoundUpload(itemCtx, execution, item, overwrite, options)
 	} else {
 		result, err = s.downloadBatchItem(itemCtx, runtime, item, execution, options, budget)
 	}

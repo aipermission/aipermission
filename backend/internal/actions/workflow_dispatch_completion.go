@@ -38,7 +38,8 @@ func (r *Runtime) completeDispatch(
 	finish := func(status connectors.ResultStatus, output any, displayText, errorText string) (connectortargets.ActionRequest, error) {
 		return r.Finish(finishCtx, requestID, status, output, displayText, errorText, prepared.ActionDefinition.OutputHint)
 	}
-	result, err := r.ExecutePrepared(ctx, principal, prepared, snapshot)
+	executionCtx := r.withUploadDispatch(ctx, request, prepared, options)
+	result, err := r.ExecutePrepared(executionCtx, principal, prepared, snapshot)
 	if err != nil {
 		finished, finishErr := finish(ExecutionFailureStatus(err), FailureOutput(err), "", err.Error())
 		if finishErr != nil {

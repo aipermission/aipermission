@@ -341,6 +341,14 @@ Do not import the SSH connector package from another connector. Ask for a
 generic capability such as `NetworkTransport` or `CommandTransport`; the
 gateway resolves the selected transport profile.
 
+Streamed MCP uploads are opt-in. Advertise `MaxUploadBytes` only on an action
+using the shared file upload manifest and a `file_transfer` runtime. Keep the
+destination policy in the connector, and enforce both `ExpectedContent` and
+`AuthorizePublish` in the adapter before its atomic remote write. Reject those
+guards before dispatch when the protocol cannot enforce them. The gateway owns
+local staging, quotas, token-bound references, and the standard approval flow;
+connector actions never accept a local filesystem path or inline file bytes.
+
 Connector-owned HTTP adapter routes are exceptional and declarative. A
 `gatewayconnectorapi.RouteDefinition` must declare `RoutePolicyUIRead` for a
 safe `GET` or `HEAD` route, or `RoutePolicyUIMutation` for a state-changing

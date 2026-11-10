@@ -39,6 +39,7 @@ type Storage interface {
 	CreateIdempotent(context.Context, filetransfer.CreateRequest, filetransfer.IdempotencyClaim) (filetransfer.Record, bool, error)
 	CreateMCPUpload(context.Context, filetransfer.MCPUploadStage, time.Time) (filetransfer.Record, bool, error)
 	GetMCPUpload(context.Context, int64, string, filetransfer.UploadIdentity) (filetransfer.Record, error)
+	MCPUploadStatus(context.Context, int64, string, string, string) (filetransfer.Record, int64, error)
 	DeclineBatch(context.Context, int64, string) (filetransfer.BatchRecord, []filetransfer.Record, error)
 	Get(context.Context, int64) (filetransfer.Record, error)
 	GetBatch(context.Context, int64) (filetransfer.BatchRecord, error)

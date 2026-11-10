@@ -18,6 +18,7 @@ type ConnectorActionPorts struct {
 	Capabilities    func(*WorkspaceHandle, string, []connectors.ResolvedDependency, ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver
 	SupportsRunning func(gatewayactions.PreparedRequest) bool
 	FinishRunning   func(context.Context, *WorkspaceHandle, int64, gatewayactions.PreparedRequest, gatewayaccess.Principal, connectors.ActionHandles, ConnectorActionFinishPort)
+	UploadReady     func(*WorkspaceHandle) connectors.FileUploadApprovalCheck
 }
 
 type ConnectorActionApplication struct {
@@ -80,6 +81,9 @@ func (component *ConnectorActionApplication) workspace(handle *WorkspaceHandle) 
 			component.ports.FinishRunning(ctx, handle, id, prepared, principal, handles, component.finishPort())
 		},
 	}
+	if component.ports.UploadReady != nil {
+		workflow.UploadReady = component.ports.UploadReady(handle)
+	}
 	return gatewayactions.Workspace{
 		Storage: gatewayactions.ActionStorage{
 			Database: capability.Database, Tokens: capability.Tokens,
@@ -119,6 +123,12 @@ func (component *ConnectorActionApplication) RunLocal(ctx context.Context, handl
 func (component *ConnectorActionApplication) MCPCall(handle *WorkspaceHandle) func(context.Context, gatewayactions.Call) (gatewayactions.CallResult, error) {
 	workspace, _ := component.workspace(handle)
 	return component.application.MCPCall(workspace)
+}
+
+func (component *ConnectorActionApplication) ValidateUpload(ctx context.Context, handle *WorkspaceHandle, request gatewayactions.PrepareRequest) error {
+	workspace, _ := component.workspace(handle)
+	_, err := component.application.Prepare(workspace, ctx, request)
+	return err
 }
 
 func (component *ConnectorActionApplication) Approval(handle *WorkspaceHandle) (gatewayactions.ApprovalWorkflow, error) {

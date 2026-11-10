@@ -257,6 +257,12 @@ func validateActionLimits(action ActionDefinition, usage string) error {
 	if action.MaxInputBytes != 0 && (action.MaxInputBytes < 1 || action.MaxInputBytes > MaximumActionInputBytes) {
 		return fmt.Errorf("%s action %q max_input_bytes must be between 1 and %d", usage, action.Name, MaximumActionInputBytes)
 	}
+	if action.MaxUploadBytes < 0 || action.MaxUploadBytes > MaximumFileUploadBytes {
+		return fmt.Errorf("%s action %q max_upload_bytes must be between 0 and %d", usage, action.Name, MaximumFileUploadBytes)
+	}
+	if action.MaxUploadBytes > 0 && action.Risk == RiskRead {
+		return fmt.Errorf("%s action %q file uploads cannot be read-only", usage, action.Name)
+	}
 	if limit := action.OutputHint.FinalMaxBytes; limit != 0 && limit < 4 {
 		return fmt.Errorf("%s action %q final_max_bytes must allow at least JSON null (4 bytes)", usage, action.Name)
 	}

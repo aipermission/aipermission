@@ -15,8 +15,9 @@ import (
 
 // Workspace is the transfer-owned identity of an unlocked workspace.
 type Workspace struct {
-	RuntimeID string
-	StorageID string
+	RuntimeID   string
+	StorageID   string
+	WorkspaceID string
 }
 
 type Jobs = transferapp.Jobs

@@ -114,6 +114,38 @@ func (s *Store) GetMCPUpload(ctx context.Context, tokenID int64, key string, ide
 	return item, nil
 }
 
+func (s *Store) MCPUploadStatus(ctx context.Context, tokenID int64, key, targetRef, actionName string) (Record, int64, error) {
+	if tokenID < 1 || key == "" || len(key) > MaxIdempotencyKeyBytes {
+		return Record{}, 0, ErrNotFound
+	}
+	kind, targetID, profileID, valid := connectors.ParseTargetRef(targetRef)
+	if !valid || !connectors.ValidIdentifier(actionName) {
+		return Record{}, 0, ErrNotFound
+	}
+	var id, requestID int64
+	err := s.db.QueryRowContext(ctx, `SELECT i.resource_id, COALESCE(a.id, 0)
+		FROM file_transfer_start_idempotency i
+		LEFT JOIN connector_action_requests a ON a.token_id = ? AND a.source = 'mcp'
+			AND a.idempotency_key = i.idempotency_key AND a.connector_kind = ? AND a.target_id = ?
+			AND a.profile_id = ? AND a.action_name = ?
+		WHERE i.scope = ? AND i.idempotency_key = ? AND i.resource_kind = ?`,
+		tokenID, kind, targetID, profileID, actionName, mcpUploadScope(tokenID), key, IdempotencyResourceTransfer).Scan(&id, &requestID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Record{}, 0, ErrNotFound
+	}
+	if err != nil {
+		return Record{}, 0, err
+	}
+	item, err := s.createdTransfer(ctx, id)
+	if err != nil {
+		return Record{}, 0, err
+	}
+	if item.Source != SourceMCP || item.Direction != DirectionUpload || item.BatchID != 0 {
+		return Record{}, 0, ErrNotFound
+	}
+	return item, requestID, validateMCPUploadRuntime(ctx, s.db, item.RuntimeID, targetRef)
+}
+
 type uploadRuntimeReader interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
@@ -135,11 +167,17 @@ func validateMCPUploadRuntime(ctx context.Context, database uploadRuntimeReader,
 
 func (s *Store) ExpireMCPUploads(ctx context.Context, now time.Time) error {
 	cutoff := now.UTC().Format(mcpUploadTimeLayout)
+	const disposableStage = `EXISTS (SELECT 1 FROM file_transfer_start_idempotency i
+		WHERE i.resource_id = f.id AND i.resource_kind = 'transfer' AND i.scope LIKE 'mcp-upload:%'
+		AND (f.temp_expires_at <= ? OR EXISTS (
+			SELECT 1 FROM connector_action_requests a
+			WHERE a.token_id = CAST(substr(i.scope, length('mcp-upload:') + 1) AS INTEGER)
+			AND a.source = 'mcp' AND a.idempotency_key = i.idempotency_key
+			AND a.status IN ('declined', 'stale', 'blocked', 'failed', 'error', 'canceled')
+		)))`
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id FROM file_transfers f
-		WHERE f.source = ? AND f.direction = ? AND f.status = ? AND f.temp_expires_at <= ?
-		AND EXISTS (SELECT 1 FROM file_transfer_start_idempotency i
-			WHERE i.resource_id = f.id AND i.resource_kind = ? AND i.scope LIKE 'mcp-upload:%')
-		ORDER BY f.id LIMIT ?`, SourceMCP, DirectionUpload, StatusPending, cutoff, IdempotencyResourceTransfer, MaxMCPUploadStagedFiles)
+		WHERE f.source = ? AND f.direction = ? AND f.status = ? AND `+disposableStage+`
+		ORDER BY f.id LIMIT ?`, SourceMCP, DirectionUpload, StatusPending, cutoff, MaxMCPUploadStagedFiles)
 	if err != nil {
 		return err
 	}
@@ -157,10 +195,10 @@ func (s *Store) ExpireMCPUploads(ctx context.Context, now time.Time) error {
 		return err
 	}
 	for _, id := range ids {
-		_, err := s.updateTransferWithHistory(ctx, id, "expire MCP upload", `UPDATE file_transfers
-			SET status = ?, error = ?, completed_at = ?, updated_at = ?
-			WHERE id = ? AND status = ? AND temp_expires_at <= ?`, StatusCanceled,
-			"MCP upload expired before dispatch", cutoff, cutoff, id, StatusPending, cutoff)
+		_, err := s.updateTransferWithHistory(ctx, id, "expire MCP upload", `UPDATE file_transfers AS f
+			SET status = ?, error = ?, completed_at = ?, updated_at = ?, temp_expires_at = ?
+			WHERE f.id = ? AND f.status = ? AND `+disposableStage, StatusCanceled,
+			"MCP upload canceled before dispatch", cutoff, cutoff, cutoff, id, StatusPending, cutoff)
 		if err != nil {
 			return err
 		}

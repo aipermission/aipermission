@@ -73,6 +73,9 @@ func (adapter) ListRecursiveFiles(ctx context.Context, server connectorapi.FileT
 }
 
 func (adapter) UploadFile(ctx context.Context, server connectorapi.FileTransferGateway, gatewayRuntime connectorapi.TransferRuntime, runtimeID int64, localPath string, remotePath string, overwrite bool, options connectors.TransferOptions) (connectors.TransferResult, error) {
+	if options.ExpectedContent != nil {
+		return connectors.TransferResult{}, fmt.Errorf("S3 file transfer does not support approved-content guards")
+	}
 	runtime, err := transferRuntime(ctx, server, gatewayRuntime, runtimeID)
 	if err != nil {
 		return connectors.TransferResult{}, err

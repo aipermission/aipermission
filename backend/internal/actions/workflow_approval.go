@@ -167,6 +167,19 @@ func (r *Runtime) preparePending(ctx context.Context, id int64, userNote string)
 		reason := "connector approval context changed; ask the AI to send a fresh request"
 		return pendingExecution{}, r.staleApproval(ctx, item.ID, reason, reason, "target_or_action")
 	}
+	if prepared.ActionDefinition.MaxUploadBytes > 0 {
+		ready, err := r.pendingUploadReady(ctx, item, targetRef)
+		if err != nil {
+			return pendingExecution{}, err
+		}
+		if !ready {
+			reason := connectors.ErrUploadStageExpired.Error()
+			if _, err := r.finishStaleApproval(ctx, item.ID, reason, "upload_stage", []connectors.ResultStatus{connectors.ResultApprovalPending}); err != nil {
+				return pendingExecution{}, err
+			}
+			return pendingExecution{}, errors.New(reason)
+		}
+	}
 	permission, err := store.GetActionPermission(ctx, token.ID, item.TargetID, item.ProfileID, item.ActionName, r.now().UTC())
 	if err != nil && !errors.Is(err, connectortargets.ErrActionPermissionNotFound) {
 		return pendingExecution{}, err
@@ -312,6 +325,7 @@ func (r *Runtime) executePending(ctx context.Context, execution pendingExecution
 	release()
 	claimHeld = false
 	completed, err := r.completeDispatch(ctx, context.Background(), ctx, item, prepared, execution.principal, snapshot, ExecutionOptions{
+		RequiredPermissionRule:  connectortargets.ActionPermissionApprovalRequired,
 		UnsupportedRunningError: "connector returned running for an action that does not support asynchronous execution",
 		ApprovalPendingError:    "connector returned approval_pending after approval was already granted",
 		FollowupTool:            "get_connector_action_request",
@@ -350,18 +364,29 @@ func (r *Runtime) observeApproval(ctx context.Context, item connectortargets.Act
 }
 
 func (r *Runtime) FinishStaleApproval(ctx context.Context, requestID int64, reason string, drift string) (connectortargets.ActionRequest, error) {
+	return r.finishStaleApproval(ctx, requestID, reason, drift, ApprovalFinishStatuses())
+}
+
+func (r *Runtime) finishStaleApproval(ctx context.Context, requestID int64, reason, drift string, allowed []connectors.ResultStatus) (connectortargets.ActionRequest, error) {
 	var stale connectortargets.ActionRequest
 	err := r.mutations.WithMutation(ctx, "gateway", nil, 0, "connector_action.request.stale",
 		func() any { return RequestAuditPayload(stale) },
 		func(tx *sql.Tx) error {
 			var finishErr error
-			stale, finishErr = connectortargets.NewTxStore(tx).FinishActionRequest(ctx, connectortargets.FinishActionRequestInput{
+			var changed bool
+			stale, changed, finishErr = connectortargets.NewTxStore(tx).FinishActionRequestWithChange(ctx, connectortargets.FinishActionRequestInput{
 				ID: requestID, Status: connectors.ResultStale, Error: reason,
-				ApprovalDrift: drift, AllowedStatuses: ApprovalFinishStatuses(),
+				ApprovalDrift: drift, AllowedStatuses: allowed,
 			})
+			if finishErr == nil && !changed {
+				return ErrMutationUnchanged
+			}
 			return finishErr
 		},
 	)
+	if errors.Is(err, ErrMutationUnchanged) {
+		err = nil
+	}
 	return stale, err
 }
 

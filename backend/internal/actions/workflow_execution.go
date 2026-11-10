@@ -62,6 +62,9 @@ func (r *Runtime) Call(ctx context.Context, call Call) (CallResult, error) {
 	if err != nil {
 		return CallResult{}, err
 	}
+	if prepared.ActionDefinition.MaxUploadBytes > 0 && !connectors.StagedUploadAdmitted(ctx) {
+		return CallResult{}, errors.New("use upload_connector_file to stage and dispatch this action")
+	}
 	if call.Source == SourceMCP && call.IdempotencyKey == "" && prepared.Action.Risk != connectors.RiskRead {
 		return CallResult{}, errors.New("idempotency_key is required for connector mutations; update the MCP client and retry with a caller-stable key")
 	}
