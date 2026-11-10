@@ -254,6 +254,9 @@ func (s Runner) RecoverTempCleanup(ctx context.Context, runtime *Runtime) error 
 	if runtime == nil {
 		return fmt.Errorf("file transfer runtime is unavailable")
 	}
+	if err := runtime.store.ExpireMCPUploads(ctx, time.Now()); err != nil {
+		return fmt.Errorf("expire pending MCP uploads: %w", err)
+	}
 	var cleanupErrors []error
 	if err := s.scavengeOrphanedTempFiles(ctx, runtime); err != nil {
 		cleanupErrors = append(cleanupErrors, err)
