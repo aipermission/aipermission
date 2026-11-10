@@ -44,6 +44,7 @@ type WorkflowPorts struct {
 	Observe       func(context.Context, string, *int64, int64, string, any)
 	Capabilities  func(string, []connectors.ResolvedDependency) connectors.RuntimeCapabilityResolver
 	FinishRunning FinishRunning
+	UploadReady   connectors.FileUploadApprovalCheck
 }
 
 type FinishRunning func(context.Context, int64, PreparedRequest, executionprincipal.Principal, connectors.ActionHandles)

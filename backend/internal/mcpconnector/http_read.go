@@ -154,8 +154,9 @@ func (h *HTTPHandlers) GetActions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filtered := make([]connectors.ActionDefinition, 0, len(definitions))
+	streamingUploads := r.URL.Query().Get("upload") == "stream-v1"
 	for _, definition := range definitions {
-		if allowed[definition.Name] {
+		if allowed[definition.Name] && (definition.MaxUploadBytes == 0 || streamingUploads) {
 			filtered = append(filtered, definition)
 		}
 	}

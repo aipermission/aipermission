@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	dbpkg "github.com/aipermission/aipermission/backend/internal/db"
+	"github.com/aipermission/aipermission/backend/internal/tokens"
 )
 
 func TestMCPUploadStagedPathHasExactlyOneOwner(t *testing.T) {
@@ -34,6 +37,42 @@ func TestMCPUploadStagedPathHasExactlyOneOwner(t *testing.T) {
 	}
 	assertRowCount(t, database, "file_transfers", 1)
 	assertRowCount(t, database, "file_transfer_start_idempotency", 1)
+}
+
+func TestMCPUploadCleanupReclaimsDeclinedStageBeforeExpiry(t *testing.T) {
+	database, err := dbpkg.OpenEncrypted(filepath.Join(t.TempDir(), "secure.db"), "TransferPassword123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	token, err := tokens.NewStore(database).Create(t.Context(), tokens.CreateRequest{Name: "upload-fixture"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := CreateRequest{RuntimeID: insertUploadTestRuntime(t, database), FileName: "release",
+		RemotePath: "/tmp/release", TempPath: filepath.Join(t.TempDir(), "declined"), ChecksumSHA256: strings.Repeat("a", 64)}
+	store := NewStore(database)
+	now := time.Now()
+	stage := testUploadStage(input, token.ID, "declined-stage")
+	item, _, err := store.CreateMCPUpload(t.Context(), stage, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = connectortargets.NewStore(database).InsertActionRequest(t.Context(), connectortargets.InsertActionRequestInput{
+		TokenID: &token.ID, TargetID: 1, ProfileID: 1, ConnectorKind: "ssh", ActionName: stage.Identity.ActionName,
+		Title: "fixture action", Source: "mcp", Status: connectors.ResultDeclined,
+		IdempotencyKey: stage.IdempotencyKey, IdempotencyIdentityHash: strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ExpireMCPUploads(t.Context(), now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.Get(t.Context(), item.ID)
+	if err != nil || current.Status != StatusCanceled {
+		t.Fatalf("declined stage was not reclaimed: status=%s err=%v", current.Status, err)
+	}
 }
 
 func TestMCPUploadRejectsAliasesAndRuntimeMisbinding(t *testing.T) {

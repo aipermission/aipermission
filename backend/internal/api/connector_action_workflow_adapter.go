@@ -13,6 +13,9 @@ import (
 
 func (s *Server) configureConnectorActionApplication() error {
 	application, err := s.connectorActionOwner.NewConnectorActionApplication(httptransport.ConnectorActionJSONBodyBytes, gatewayinfra.ConnectorActionPorts{
+		UploadReady: func(runtime *gatewayinfra.WorkspaceHandle) connectors.FileUploadApprovalCheck {
+			return s.operationsOwner.Uploads(runtime).ApprovalReady
+		},
 		Capabilities: func(runtime *gatewayinfra.WorkspaceHandle, kind string, dependencies []connectors.ResolvedDependency, finish gatewayinfra.ConnectorActionFinishPort) connectors.RuntimeCapabilityResolver {
 			return s.connectorRuntime.ActionCapabilities(runtime, kind, dependencies, finish)
 		},

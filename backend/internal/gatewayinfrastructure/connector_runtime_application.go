@@ -52,6 +52,7 @@ type ConnectorRuntimeDependencies struct {
 // connector implementation or constructing a connector workspace.
 type ConnectorRuntimeApplication struct {
 	owner       *ConnectorPortsOwner
+	operations  *OperationsOwner
 	adapters    connectorapi.Catalog
 	ports       *connectorports.PortsComponent
 	execution   ConnectorRuntimeExecutionPorts
@@ -74,7 +75,7 @@ func NewConnectorRuntimeApplication(owner *ConnectorPortsOwner, operations *Oper
 		return nil, errors.New("connector runtime ports are incomplete")
 	}
 	application := &ConnectorRuntimeApplication{
-		owner: owner, adapters: adapters, execution: dependencies.Execution,
+		owner: owner, operations: operations, adapters: adapters, execution: dependencies.Execution,
 		transfers: dependencies.Transfers, observation: dependencies.Observation,
 		trust: dependencies.TrustStorePath,
 	}
@@ -133,6 +134,7 @@ func (application *ConnectorRuntimeApplication) workspace(handle *WorkspaceHandl
 			}),
 		}
 		bindings.Transfers = connectorports.WorkspaceTransferPorts{
+			Uploads: application.operations.Uploads(handle),
 			RunDownloadBatch: func(ctx context.Context, authorization connectorapi.TransferAuthorization, runtimeID int64, paths []string, archiveName, source string) (connectorapi.TransferBatch, error) {
 				if application.transfers.Download == nil {
 					return connectorapi.TransferBatch{}, errors.New("connector download port is unavailable")

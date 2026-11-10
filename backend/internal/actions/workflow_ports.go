@@ -72,6 +72,7 @@ type RuntimeDependencies struct {
 	Mutations      MutationPort
 	Capabilities   CapabilityProvider
 	RunningActions RunningActions
+	UploadReady    connectors.FileUploadApprovalCheck
 	Now            func() time.Time
 	Logf           func(string, ...any)
 }
@@ -91,6 +92,7 @@ type Runtime struct {
 	mutations      MutationPort
 	capabilities   CapabilityProvider
 	runningActions RunningActions
+	uploadReady    connectors.FileUploadApprovalCheck
 	now            func() time.Time
 	logf           func(string, ...any)
 
@@ -131,6 +133,7 @@ func NewRuntime(dependencies RuntimeDependencies) (*Runtime, error) {
 		delivery: dependencies.Delivery, mcpStarted: dependencies.MCPStarted, identity: dependencies.Identity,
 		redactor: dependencies.Redactor, sealedRecords: dependencies.SealedRecords, mutations: dependencies.Mutations,
 		capabilities: dependencies.Capabilities, runningActions: dependencies.RunningActions, now: now, logf: logf,
+		uploadReady:  dependencies.UploadReady,
 		boundaries:   make(map[int64]actionresult.CredentialBoundary),
 		finalizerCtx: finalizerCtx, finalizerCancel: finalizerCancel,
 		finalizerDone: make(chan struct{}),
