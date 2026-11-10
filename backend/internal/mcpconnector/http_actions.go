@@ -51,21 +51,26 @@ type ActionCallResult struct {
 }
 
 type ActionResourcePolicy struct {
-	MaxInputBytes int
+	MaxInputBytes  int
+	MaxUploadBytes int64
 }
 
 type ActionScope struct {
-	Database       *sql.DB
-	RuntimeID      string
-	TokenID        int64
-	Output         *OutputAuthorization
-	ActionVisible  func(context.Context, string, string) (bool, error)
-	ReplayExists   func(context.Context, string) (bool, error)
-	ResourcePolicy func(context.Context, string, string) (ActionResourcePolicy, error)
-	Call           func(context.Context, ActionCall) (ActionCallResult, error)
-	Observe        func(context.Context, string, any)
-	Redact         func(context.Context, string) string
-	RunningHint    func(connectortargets.ActionRequest) string
+	Database              *sql.DB
+	RuntimeID             string
+	TokenID               int64
+	Output                *OutputAuthorization
+	ActionVisible         func(context.Context, string, string) (bool, error)
+	ReplayExists          func(context.Context, string) (bool, error)
+	ResourcePolicy        func(context.Context, string, string) (ActionResourcePolicy, error)
+	Call                  func(context.Context, ActionCall) (ActionCallResult, error)
+	RefreshRequest        func(context.Context, connectortargets.ActionRequest) (connectortargets.ActionRequest, error)
+	Observe               func(context.Context, string, any)
+	Redact                func(context.Context, string) string
+	RunningHint           func(connectortargets.ActionRequest) string
+	StageUpload           connectors.FileUploadStager
+	AcquireUploadDispatch func(context.Context) (func(), error)
+	ValidateUpload        func(context.Context, string, string, map[string]any, string) error
 }
 
 type ActionScopeProvider func(http.ResponseWriter, *http.Request) (ActionScope, bool)
@@ -73,12 +78,14 @@ type ActionScopeProvider func(http.ResponseWriter, *http.Request) (ActionScope, 
 type ActionHTTPHandlers struct {
 	scope     ActionScopeProvider
 	admission *runtimecontrol.Admission
+	uploads   chan struct{}
 }
 
 func NewActionHTTPHandlers(scope ActionScopeProvider) *ActionHTTPHandlers {
 	return &ActionHTTPHandlers{
 		scope:     scope,
 		admission: runtimecontrol.NewAdmission(actionRequestsPerMinute, time.Minute, actionConcurrentRequests),
+		uploads:   make(chan struct{}, 2),
 	}
 }
 
@@ -87,10 +94,8 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	admissionKey := "runtime:" + scope.RuntimeID + ":token:" + strconv.FormatInt(scope.TokenID, 10)
-	release, retryAfter, admitted := h.admission.Acquire(admissionKey)
+	release, admitted := h.admit(w, scope)
 	if !admitted {
-		writeResourceLimit(w, retryAfter)
 		return
 	}
 	defer release()
@@ -98,26 +103,46 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	if !httptransport.DecodeJSON(w, r, &request, maxActionBodyBytes) {
 		return
 	}
+	if !validateActionCall(w, r, scope, &request) {
+		return
+	}
+	h.call(w, r, scope, request)
+}
+
+func (h *ActionHTTPHandlers) admit(w http.ResponseWriter, scope ActionScope) (func(), bool) {
+	key := "runtime:" + scope.RuntimeID + ":token:" + strconv.FormatInt(scope.TokenID, 10)
+	release, retryAfter, ok := h.admission.Acquire(key)
+	if !ok {
+		writeResourceLimit(w, retryAfter)
+	}
+	return release, ok
+}
+
+func validateActionCall(w http.ResponseWriter, r *http.Request, scope ActionScope, request *ActionCallRequest) bool {
 	request.TargetRef = strings.TrimSpace(request.TargetRef)
 	request.ActionName = strings.TrimSpace(request.ActionName)
 	request.Reason = strings.TrimSpace(request.Reason)
 	request.IdempotencyKey = strings.TrimSpace(request.IdempotencyKey)
 	if request.TargetRef == "" {
 		httptransport.WriteError(w, http.StatusBadRequest, "target_ref is required")
-		return
+		return false
 	}
 	if !connectors.ValidIdentifier(request.ActionName) {
 		httptransport.WriteError(w, http.StatusBadRequest, "invalid action_name")
-		return
+		return false
 	}
 	if len([]byte(request.Reason)) > maxReasonBytes {
 		writeCodedError(w, http.StatusBadRequest, scope.Redact(r.Context(), fmt.Sprintf("reason must be %d bytes or less", maxReasonBytes)), "")
-		return
+		return false
 	}
 	if len(request.IdempotencyKey) > connectortargets.MaxIdempotencyKeyBytes {
 		httptransport.WriteError(w, http.StatusBadRequest, "idempotency_key is too long")
-		return
+		return false
 	}
+	return true
+}
+
+func (h *ActionHTTPHandlers) call(w http.ResponseWriter, r *http.Request, scope ActionScope, request ActionCallRequest) {
 	replay, err := scope.ReplayExists(r.Context(), request.IdempotencyKey)
 	if err != nil {
 		httptransport.WriteInternalError(w)
@@ -125,30 +150,54 @@ func (h *ActionHTTPHandlers) Call(w http.ResponseWriter, r *http.Request) {
 	}
 	policy := ActionResourcePolicy{MaxInputBytes: connectors.MaximumActionInputBytes}
 	if !replay {
-		visible, visibleErr := scope.ActionVisible(r.Context(), request.TargetRef, request.ActionName)
-		if visibleErr != nil {
-			httptransport.WriteInternalError(w)
-			return
-		}
-		if !visible {
-			httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
-			return
-		}
-		policy, err = scope.ResourcePolicy(r.Context(), request.TargetRef, request.ActionName)
-		if err != nil {
-			httptransport.WriteInternalError(w)
+		var ok bool
+		policy, ok = visibleActionPolicy(w, r, scope, request)
+		if !ok {
 			return
 		}
 	}
-	inputJSON, err := json.Marshal(request.Input)
+	dispatchAction(w, r, scope, request, policy.MaxInputBytes)
+}
+
+func visibleActionPolicy(w http.ResponseWriter, r *http.Request, scope ActionScope, request ActionCallRequest) (ActionResourcePolicy, bool) {
+	visible, err := scope.ActionVisible(r.Context(), request.TargetRef, request.ActionName)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return ActionResourcePolicy{}, false
+	}
+	if !visible {
+		httptransport.WriteError(w, http.StatusNotFound, "connector target not found")
+		return ActionResourcePolicy{}, false
+	}
+	policy, err := scope.ResourcePolicy(r.Context(), request.TargetRef, request.ActionName)
+	if err != nil {
+		httptransport.WriteInternalError(w)
+		return ActionResourcePolicy{}, false
+	}
+	return policy, true
+}
+
+func dispatchAction(w http.ResponseWriter, r *http.Request, scope ActionScope, request ActionCallRequest, maxInputBytes int) {
+	if !actionInputWithinBudget(w, request.Input, maxInputBytes) {
+		return
+	}
+	executeActionCall(w, r, scope, request)
+}
+
+func actionInputWithinBudget(w http.ResponseWriter, input map[string]any, maxInputBytes int) bool {
+	inputJSON, err := json.Marshal(input)
 	if err != nil {
 		httptransport.WriteError(w, http.StatusBadRequest, "input must be valid JSON")
-		return
+		return false
 	}
-	if policy.MaxInputBytes < 1 || len(inputJSON) > policy.MaxInputBytes {
+	if maxInputBytes < 1 || len(inputJSON) > maxInputBytes {
 		writeCodedError(w, http.StatusRequestEntityTooLarge, "connector action input exceeds its size limit", "action_input_too_large")
-		return
+		return false
 	}
+	return true
+}
+
+func executeActionCall(w http.ResponseWriter, r *http.Request, scope ActionScope, request ActionCallRequest) {
 	result, err := scope.Call(r.Context(), ActionCall{
 		Source: "mcp", TokenID: scope.TokenID, TargetRef: request.TargetRef,
 		ActionName: request.ActionName, Input: request.Input, Reason: request.Reason,
@@ -193,6 +242,13 @@ func (h *ActionHTTPHandlers) GetRequest(w http.ResponseWriter, r *http.Request) 
 	if request.TokenID == nil || *request.TokenID != scope.TokenID {
 		httptransport.WriteError(w, http.StatusNotFound, "connector action request not found")
 		return
+	}
+	if scope.RefreshRequest != nil {
+		request, err = scope.RefreshRequest(r.Context(), request)
+		if err != nil {
+			httptransport.WriteInternalError(w)
+			return
+		}
 	}
 	response := ResponseFromResult(scope.RunningHint, request, connectors.ActionResult{
 		Status: request.Status, Output: request.Output, DisplayText: request.DisplayText, Error: request.Error,

@@ -41,7 +41,8 @@ func (uploads WorkspaceUploads) Stage(ctx context.Context, tokenID int64, reques
 		return err
 	}
 	// The multipart reader checks EOF after its file part before returning EOF.
-	_, owned, err = runtime.Storage().CreateMCPUpload(ctx, filetransfer.MCPUploadStage{
+	var item filetransfer.Record
+	item, owned, err = runtime.Storage().CreateMCPUpload(ctx, filetransfer.MCPUploadStage{
 		TokenID: tokenID, IdempotencyKey: request.Ref, Identity: identity, RuntimeID: request.RuntimeID, TempPath: staged,
 	}, time.Now())
 	if errors.Is(err, filetransfer.ErrMCPUploadCapacity) {
@@ -49,6 +50,9 @@ func (uploads WorkspaceUploads) Stage(ctx context.Context, tokenID int64, reques
 	}
 	if errors.Is(err, filetransfer.ErrIdempotencyConflict) || errors.Is(err, filetransfer.ErrIdempotencyResultExpired) {
 		return connectors.ErrUploadStageConflict
+	}
+	if err == nil && !filetransfer.MCPUploadReady(item, time.Now()) {
+		return connectors.ErrUploadStageExpired
 	}
 	return err
 }

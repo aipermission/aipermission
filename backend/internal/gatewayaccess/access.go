@@ -93,10 +93,12 @@ type MCPActionCallResult struct {
 }
 
 type MCPActionResourcePolicy struct {
-	MaxInputBytes int
+	MaxInputBytes  int
+	MaxUploadBytes int64
 }
 
 type MCPRunningHint func(connectortargets.ActionRequest) string
+type MCPRequestRefresh func(context.Context, connectortargets.ActionRequest) (connectortargets.ActionRequest, error)
 
 type DeliveryGate interface {
 	Acquire(context.Context) (func(), error)
@@ -113,17 +115,21 @@ type MCPOutputAuthorization struct {
 }
 
 type MCPActionScope struct {
-	Database       *sql.DB
-	RuntimeID      string
-	TokenID        int64
-	Output         *MCPOutputAuthorization
-	ActionVisible  func(context.Context, string, string) (bool, error)
-	ReplayExists   func(context.Context, string) (bool, error)
-	ResourcePolicy func(context.Context, string, string) (MCPActionResourcePolicy, error)
-	Call           func(context.Context, MCPActionCall) (MCPActionCallResult, error)
-	Observe        func(context.Context, string, any)
-	Redact         func(context.Context, string) string
-	RunningHint    MCPRunningHint
+	Database              *sql.DB
+	RuntimeID             string
+	TokenID               int64
+	Output                *MCPOutputAuthorization
+	ActionVisible         func(context.Context, string, string) (bool, error)
+	ReplayExists          func(context.Context, string) (bool, error)
+	ResourcePolicy        func(context.Context, string, string) (MCPActionResourcePolicy, error)
+	Call                  func(context.Context, MCPActionCall) (MCPActionCallResult, error)
+	RefreshRequest        MCPRequestRefresh
+	Observe               func(context.Context, string, any)
+	Redact                func(context.Context, string) string
+	RunningHint           MCPRunningHint
+	StageUpload           connectors.FileUploadStager
+	AcquireUploadDispatch func(context.Context) (func(), error)
+	ValidateUpload        func(context.Context, string, string, map[string]any, string) error
 }
 
 type MCPRuntimeState interface {
@@ -195,6 +201,7 @@ type MCPConnectorReadHTTP interface {
 
 type MCPConnectorActionHTTP interface {
 	Call(http.ResponseWriter, *http.Request)
+	Upload(http.ResponseWriter, *http.Request)
 	GetRequest(http.ResponseWriter, *http.Request)
 }
 

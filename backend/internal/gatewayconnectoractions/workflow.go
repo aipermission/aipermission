@@ -273,6 +273,16 @@ func (component *Component) MCPCall(runtime Workspace) func(context.Context, Cal
 	}
 }
 
+func (component *Component) RequestRefresh(runtime Workspace) func(context.Context, connectortargets.ActionRequest) (connectortargets.ActionRequest, error) {
+	return func(ctx context.Context, request connectortargets.ActionRequest) (connectortargets.ActionRequest, error) {
+		workflow, err := component.workflow(runtime)
+		if err != nil {
+			return connectortargets.ActionRequest{}, err
+		}
+		return workflow.runtime.RefreshRequest(ctx, request)
+	}
+}
+
 func (component *Component) Finish(ctx context.Context, runtime Workspace, requestID int64, status connectors.ResultStatus, output any, displayText, errorText string, hints ...connectors.OutputHint) (connectortargets.ActionRequest, error) {
 	workflow, err := component.workflow(runtime)
 	if err != nil {

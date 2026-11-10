@@ -67,6 +67,7 @@ func generateFrontendContract(typescript bool) []byte {
 	output.WriteByte('\n')
 	writeRuntimeList(&output, "connectorActionResponseRequiredFields", restcontract.ConnectorActionResponseRequiredFields(), typescript)
 	fmt.Fprintf(&output, "\nexport const connectorActionMaximumInputBytes = %d;\n", connectors.MaximumActionInputBytes)
+	fmt.Fprintf(&output, "export const connectorActionMaximumUploadBytes = %d;\n", connectors.MaximumFileUploadBytes)
 	fmt.Fprintf(&output, "export const connectorActionMaximumExecutionSeconds = %d;\n", connectors.MaximumActionExecutionSeconds)
 	fmt.Fprintf(&output, "export const connectorActionRequestTimeoutMs = %d;\n", connectors.ActionRequestTimeout/time.Millisecond)
 	fmt.Fprintf(&output, "export const connectorActionDefaultClientTimeoutMs = %d;\n", connectors.DefaultActionClientTimeout/time.Millisecond)

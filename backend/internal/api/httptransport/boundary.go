@@ -354,7 +354,8 @@ func IsUnboundedRequestRoute(path string) bool {
 }
 
 func ManagesLifecycleLock(path string) bool {
-	if path == "/api/backup/download" || path == "/api/backup/import" || path == "/api/backup/remote/restore" {
+	if path == "/api/backup/download" || path == "/api/backup/import" || path == "/api/backup/remote/restore" ||
+		path == "/api/mcp/connector-actions/upload" {
 		return true
 	}
 	return strings.HasPrefix(path, "/api/backup/providers/") &&
@@ -391,6 +392,8 @@ func RequestTimeoutForPath(path string, fallback, actionTimeout time.Duration) t
 	switch path {
 	case "/api/file-transfers/browse", "/api/file-transfers/expand":
 		return RemoteBrowseRequestTimeout
+	case "/api/mcp/connector-actions/upload":
+		return 10 * time.Minute
 	case "/api/connector-actions/local-run", "/api/mcp/connector-actions/call":
 		return actionTimeout
 	default:

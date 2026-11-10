@@ -26,7 +26,7 @@ func TestActionHandlersFailClosedWithoutCompositionScope(t *testing.T) {
 	handlers := NewActionHTTPHandlers(func(http.ResponseWriter, *http.Request) (ActionScope, bool) {
 		return ActionScope{}, true
 	})
-	for name, handler := range map[string]http.HandlerFunc{"call": handlers.Call, "get": handlers.GetRequest} {
+	for name, handler := range map[string]http.HandlerFunc{"call": handlers.Call, "get": handlers.GetRequest, "upload": handlers.Upload} {
 		t.Run(name, func(t *testing.T) {
 			response := httptest.NewRecorder()
 			handler(response, httptest.NewRequest(http.MethodGet, "/", nil))

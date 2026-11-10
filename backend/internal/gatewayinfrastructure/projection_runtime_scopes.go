@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
 	gatewaymanagement "github.com/aipermission/aipermission/backend/internal/gatewayconnectormanagement"
@@ -45,14 +46,18 @@ func (component *AccessOwner) mcpReadScope(handle *WorkspaceHandle, ports MCPRea
 }
 
 type MCPActionPorts struct {
-	TokenID     int64
-	Delivery    func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
-	Principal   func(int64) (gatewayaccess.Principal, error)
-	Policy      gatewaymanagement.Catalog
-	Call        func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
-	Observe     func(context.Context, string, any)
-	Redact      func(context.Context, string) string
-	RunningHint gatewayaccess.MCPRunningHint
+	ValidateUpload        func(context.Context, string, string, map[string]any, string) error
+	StageUpload           connectors.FileUploadStager
+	AcquireUploadDispatch func(context.Context) (func(), error)
+	TokenID               int64
+	Delivery              func(func(context.Context) (func(), error)) gatewayactions.DeliveryGate
+	Principal             func(int64) (gatewayaccess.Principal, error)
+	Policy                gatewaymanagement.Catalog
+	Call                  func(context.Context, gatewayaccess.MCPActionCall) (gatewayaccess.MCPActionCallResult, error)
+	RefreshRequest        gatewayaccess.MCPRequestRefresh
+	Observe               func(context.Context, string, any)
+	Redact                func(context.Context, string) string
+	RunningHint           gatewayaccess.MCPRunningHint
 }
 
 func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPActionPorts) (gatewayaccess.MCPActionScope, bool) {
@@ -85,10 +90,14 @@ func (component *AccessOwner) mcpActionScope(handle *WorkspaceHandle, ports MCPA
 		ResourcePolicy: func(ctx context.Context, targetRef, actionName string) (gatewayaccess.MCPActionResourcePolicy, error) {
 			policy, err := ports.Policy.MCPActionResourcePolicy(ctx, ports.TokenID, targetRef, actionName)
 			return gatewayaccess.MCPActionResourcePolicy{
-				MaxInputBytes: policy.MaxInputBytes,
+				MaxInputBytes:  policy.MaxInputBytes,
+				MaxUploadBytes: policy.MaxUploadBytes,
 			}, err
 		},
-		Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint,
+		Call: ports.Call, Observe: ports.Observe, Redact: ports.Redact, RunningHint: ports.RunningHint, StageUpload: ports.StageUpload,
+		AcquireUploadDispatch: ports.AcquireUploadDispatch,
+		ValidateUpload:        ports.ValidateUpload,
+		RefreshRequest:        ports.RefreshRequest,
 	}, true
 }
 

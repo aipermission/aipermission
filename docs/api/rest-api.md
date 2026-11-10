@@ -909,11 +909,11 @@ exposed through connector actions and still goes through token
 target/profile/action permission checks.
 
 The local UI can upload local files, download remote files, and pause/resume or
-cancel transfer queues. MCP uses the generic connector-action tools instead of
-separate file-transfer HTTP endpoints. In 0.2.x the SSH connector exposes remote
-browsing and remote-to-local download queue creation through
-`browse_remote_files` and `start_file_download`; uploads, save-file dialogs, and
-queue pause/resume/cancel remain local web UI operations. MCP transfer-related
+cancel transfer queues. SSH exposes `browse_remote_files`,
+`start_file_download`, `upload_file`, and `get_file_upload_status` through
+the MCP connector action pipeline. The streaming upload endpoint below is
+separate from the UI endpoints. Save-file dialogs and queue pause/resume/cancel
+remain local web UI operations. MCP transfer-related
 responses never include file contents, local temporary paths, archive staging
 paths, or local upload contents.
 
@@ -1795,11 +1795,25 @@ GET  /api/mcp/connector-targets
 GET  /api/mcp/connector-help
 GET  /api/mcp/connector-actions
 POST /api/mcp/connector-actions/call
+POST /api/mcp/connector-actions/upload
 GET  /api/mcp/connector-action-requests/{id}
 ```
 
 MCP endpoints authenticate with the API token. They reject revoked or expired
 tokens and check token/target/profile/action permissions.
+
+`POST /api/mcp/connector-actions/upload` accepts `multipart/form-data`:
+first a JSON `metadata` part (at most 16 KiB), then a single binary `file`
+part. Request `GET /api/mcp/connector-actions?target_ref=...&upload=stream-v1`
+to include upload actions in discovery; older clients do not see the new
+capability field. The metadata has `target_ref`, `action_name`, `reason`,
+`idempotency_key` and `manifest` with `file_name`, `remote_path`,
+`size_bytes`, `checksum_sha256` (lowercase hex), and `overwrite`
+(default false). Only actions with a positive `max_upload_bytes` accept this
+endpoint. The caller's local path is not sent to the gateway. The action
+response follows the normal connector-action contract; approval request status
+and eventual transfer status are distinct. See
+[MCP File Upload](mcp-tools.md#mcp-file-upload).
 
 Connector MCP endpoints expose connector targets visible to the token,
 AI-readable connector help, action lists, action execution, and action request

@@ -19,9 +19,26 @@ func (r *Runtime) pendingUploadReady(ctx context.Context, request connectortarge
 	})
 }
 
-func (r *Runtime) refreshUploadReplay(ctx context.Context, request connectortargets.ActionRequest, targetRef string) (connectortargets.ActionRequest, error) {
-	if request.Status != connectors.ResultApprovalPending || request.TokenID == nil {
+// RefreshRequest reconciles expiring upload approvals before returning a polled
+// request. The caller must check token ownership before invoking this workflow.
+func (r *Runtime) RefreshRequest(ctx context.Context, request connectortargets.ActionRequest) (connectortargets.ActionRequest, error) {
+	if !pendingUploadApproval(request) {
 		return request, nil
+	}
+	if err := r.validate(); err != nil {
+		return request, err
+	}
+	release, err := r.delivery.Acquire(ctx)
+	if err != nil {
+		return request, err
+	}
+	defer release()
+	return r.refreshPendingUpload(ctx, request, connectors.FormatTargetRef(request.ConnectorKind, request.TargetID, request.ProfileID))
+}
+
+func pendingUploadApproval(request connectortargets.ActionRequest) bool {
+	if request.Status != connectors.ResultApprovalPending || request.TokenID == nil || request.Source != SourceMCP {
+		return false
 	}
 	var snapshot struct {
 		Action struct {
@@ -30,9 +47,17 @@ func (r *Runtime) refreshUploadReplay(ctx context.Context, request connectortarg
 			} `json:"definition"`
 		} `json:"action"`
 	}
-	if json.Unmarshal([]byte(request.ApprovalContext), &snapshot) != nil || snapshot.Action.Definition.MaxUploadBytes <= 0 {
+	return json.Unmarshal([]byte(request.ApprovalContext), &snapshot) == nil && snapshot.Action.Definition.MaxUploadBytes > 0
+}
+
+func (r *Runtime) refreshUploadReplay(ctx context.Context, request connectortargets.ActionRequest, targetRef string) (connectortargets.ActionRequest, error) {
+	if !pendingUploadApproval(request) {
 		return request, nil
 	}
+	return r.refreshPendingUpload(ctx, request, targetRef)
+}
+
+func (r *Runtime) refreshPendingUpload(ctx context.Context, request connectortargets.ActionRequest, targetRef string) (connectortargets.ActionRequest, error) {
 	ready, err := r.pendingUploadReady(ctx, request, targetRef)
 	if err != nil || ready {
 		return request, err

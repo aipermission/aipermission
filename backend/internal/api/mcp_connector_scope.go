@@ -2,7 +2,10 @@ package api
 
 import (
 	"context"
+	"io"
 	"net/http"
+
+	"github.com/aipermission/aipermission/backend/internal/connectors"
 
 	gatewayaccess "github.com/aipermission/aipermission/backend/internal/gatewayaccess"
 	gatewayactions "github.com/aipermission/aipermission/backend/internal/gatewayconnectoractions"
@@ -51,9 +54,19 @@ func (s mcpHandlers) mcpConnectorActionPorts(w http.ResponseWriter, r *http.Requ
 	}
 	call := s.connectorActions.MCPCall(auth.runtime)
 	ports := gatewayinfra.MCPActionPorts{
+		ValidateUpload: func(ctx context.Context, target, action string, input map[string]any, reason string) error {
+			return s.connectorActions.ValidateUpload(ctx, auth.runtime, gatewayactions.PrepareRequest{
+				Source: "mcp", TargetRef: target, ActionName: action, Input: input, Reason: reason,
+			})
+		},
+		AcquireUploadDispatch: s.workspaceOwner.WorkspaceLifecycle().AcquireReadContext,
+		StageUpload: func(ctx context.Context, stage connectors.FileUploadStageRequest, reader io.Reader) error {
+			return s.operationsOwner.Uploads(auth.runtime).Stage(ctx, auth.TokenID, stage, reader)
+		},
 		TokenID: auth.TokenID, RunningHint: s.connectorRuntime.RunningHintPort(),
-		Delivery: s.connectorActions.Delivery,
-		Policy:   s.connectorCatalog(auth.runtime),
+		RefreshRequest: s.connectorActions.RequestRefresh(auth.runtime),
+		Delivery:       s.connectorActions.Delivery,
+		Policy:         s.connectorCatalog(auth.runtime),
 		Principal: func(tokenID int64) (gatewayaccess.Principal, error) {
 			return s.tokenExecutionPrincipal(auth.runtime, tokenID)
 		},

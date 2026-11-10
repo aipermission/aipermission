@@ -504,6 +504,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "max_upload_bytes": {
+            "maximum": 536870912,
+            "minimum": 1,
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           },
@@ -6752,6 +6757,27 @@
     "/api/mcp/connector-actions/call": {
       "post": {
         "operationId": "postApiMcpConnectorActionsCall",
+        "responses": {
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Error response"
+          }
+        },
+        "tags": [
+          "mcp"
+        ],
+        "x-aipermission-contract-level": "route-inventory"
+      }
+    },
+    "/api/mcp/connector-actions/upload": {
+      "post": {
+        "operationId": "postApiMcpConnectorActionsUpload",
         "responses": {
           "default": {
             "content": {

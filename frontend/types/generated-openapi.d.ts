@@ -1540,6 +1540,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mcp/connector-actions/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiMcpConnectorActionsUpload"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mcp/connector-help": {
         parameters: {
             query?: never;
@@ -2442,6 +2458,7 @@ export interface components {
             };
             label: string;
             max_input_bytes: number;
+            max_upload_bytes?: number;
             name: string;
             output_hint?: {
                 [key: string]: unknown;
@@ -5825,6 +5842,26 @@ export interface operations {
         };
     };
     postApiMcpConnectorActionsCall: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Error response */
+            default: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    postApiMcpConnectorActionsUpload: {
         parameters: {
             query?: never;
             header?: never;
