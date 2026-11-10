@@ -60,6 +60,9 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 	if e.server == nil || e.runtime == nil {
 		return connectors.ActionResult{}, fmt.Errorf("ssh runtime is not available")
 	}
+	if action.ActionName == sshconnector.ActionGetFileUploadStatus {
+		return e.fileUploadStatus(ctx, runtimeContext, action)
+	}
 	runtimeID, err := management.RuntimeIDForTargetRefCapability(ctx, e.runtime, action.TargetRef, runtimeCapabilityForAction(action.ActionName))
 	if err != nil {
 		return connectors.ActionResult{}, err
@@ -76,6 +79,8 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 		return e.browseRemoteFiles(ctx, runtimeID, action)
 	case sshconnector.ActionStartFileDownload:
 		return e.startFileDownload(ctx, runtimeContext, runtimeID, action)
+	case sshconnector.ActionUploadFile:
+		return e.launchFileUpload(ctx, runtimeContext, runtimeID, action)
 	default:
 		return connectors.ActionResult{}, fmt.Errorf("%w: %s", sshconnector.ErrUnsupportedAction, action.ActionName)
 	}
@@ -83,7 +88,7 @@ func (e runtimeExecutor) ExecuteSSHAction(ctx context.Context, runtimeContext co
 
 func runtimeCapabilityForAction(actionName string) string {
 	switch actionName {
-	case sshconnector.ActionBrowseRemoteFiles, sshconnector.ActionStartFileDownload:
+	case sshconnector.ActionBrowseRemoteFiles, sshconnector.ActionStartFileDownload, sshconnector.ActionUploadFile:
 		return connectorapi.RuntimeCapabilityFileTransfer
 	default:
 		return connectorapi.RuntimeCapabilityLiveConsole

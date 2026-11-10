@@ -479,6 +479,8 @@ func builtInDeterminismSamplesPartTwo(t *testing.T, kind string) (connectors.Tar
 			sshconnector.ActionRestartConsoleSession: {},
 			sshconnector.ActionBrowseRemoteFiles:     {"path": "~"},
 			sshconnector.ActionStartFileDownload:     {"remote_paths": []any{"/etc/hosts"}, "archive_name": "hosts.zip"},
+			sshconnector.ActionUploadFile:            {"upload_ref": "example", "remote_path": "/tmp/example", "file_name": "example", "size_bytes": 0, "checksum_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+			sshconnector.ActionGetFileUploadStatus:   {"upload_ref": "example"},
 		}
 	default:
 		t.Fatalf("missing built-in deterministic samples for connector %q", kind)

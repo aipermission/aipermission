@@ -157,6 +157,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 			"Use browse_remote_files before file transfers when the remote path is uncertain.",
 			fmt.Sprintf("Directory listings return at most %d entries; choose a narrower path when truncated is true.", MaxBrowseRemoteRows),
 			"Use start_file_download for remote-to-local transfer queues.",
+			"Use upload_connector_file with upload_file to stream an allowed client-local file to an absolute destination. After approval, poll get_file_upload_status with the original upload_ref until completed.",
 			"Prefer bounded output: tail -n, journalctl --no-pager -n, docker logs --tail, or redirect full output to a temp file.",
 		},
 		Warnings: []string{
@@ -168,7 +169,7 @@ func (Connector) GetHelp(_ context.Context, target connectors.TargetView) (conne
 }
 
 func (Connector) GetActionList(context.Context, connectors.TargetView, connectors.CredentialProfileView) ([]connectors.ActionDefinition, error) {
-	return []connectors.ActionDefinition{
+	definitions := []connectors.ActionDefinition{
 		{
 			Name:        ActionExec,
 			Label:       "Run command",
@@ -249,7 +250,8 @@ func (Connector) GetActionList(context.Context, connectors.TargetView, connector
 			}},
 			OutputHint: connectors.OutputHint{Format: "json"},
 		},
-	}, nil
+	}
+	return append(definitions, fileUploadActions()...), nil
 }
 
 func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) (connectors.PreparedAction, error) {
@@ -344,6 +346,8 @@ func (Connector) PrepareAction(_ context.Context, req connectors.ActionRequest) 
 		base.ContextMaterial["remote_paths"] = remotePaths
 		base.ContextMaterial["archive_name"] = archiveName
 		return base, nil
+	case ActionUploadFile, ActionGetFileUploadStatus:
+		return prepareFileUpload(req, base)
 	default:
 		return connectors.PreparedAction{}, fmt.Errorf("%w: %s", ErrUnsupportedAction, req.ActionName)
 	}
