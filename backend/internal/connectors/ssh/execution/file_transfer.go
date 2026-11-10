@@ -183,6 +183,9 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 	if info.IsDir() {
 		return TransferResult{}, fmt.Errorf("local path is a directory")
 	}
+	if err := validateUploadSource(ctx, local, info, options.ExpectedContent); err != nil {
+		return TransferResult{}, err
+	}
 
 	client, sshClient, err := sftpClient(ctx, target)
 	if err != nil {
@@ -193,6 +196,9 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 	stopContextClose := closeOnContext(ctx, sshClient)
 	defer stopContextClose()
 
+	if err := checkUploadBeforeWriting(ctx, options.AuthorizePublish); err != nil {
+		return TransferResult{}, err
+	}
 	if dir := path.Dir(remotePath); dir != "" && dir != "." && dir != "/" {
 		if err := client.MkdirAll(dir); err != nil {
 			return TransferResult{}, fmt.Errorf("create remote directory: %w", err)
@@ -252,6 +258,9 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 	if closeErr != nil {
 		return TransferResult{}, fmt.Errorf("close remote temporary file: %w", closeErr)
 	}
+	if err := verifyUploadContent(options.ExpectedContent, copied, checksum); err != nil {
+		return TransferResult{}, err
+	}
 	if err := ctx.Err(); err != nil {
 		return TransferResult{}, err
 	}
@@ -261,7 +270,7 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 		}
 	}
 	committer := &authenticatedUploadCommitter{Client: client, ssh: sshClient}
-	if err := commitRemoteUpload(ctx, committer, tempPath, remotePath, overwrite); err != nil {
+	if err := publishRemoteUpload(ctx, committer, sshClient, tempPath, remotePath, overwrite, options.AuthorizePublish); err != nil {
 		return TransferResult{
 			Bytes: copied, Size: info.Size(), ChecksumSHA256: checksum,
 			DurationMS: time.Since(started).Milliseconds(),
@@ -401,6 +410,10 @@ func remoteUploadTempPaths(remotePath string, attempt int) (string, string, erro
 }
 
 func commitRemoteUpload(ctx context.Context, client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool) error {
+	return commitRemoteUploadWithGuard(ctx, client, tempPath, remotePath, overwrite, func(mutate func() error) error { return mutate() })
+}
+
+func commitRemoteUploadWithGuard(ctx context.Context, client remoteUploadCommitter, tempPath string, remotePath string, overwrite bool, publish func(func() error) error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -432,31 +445,13 @@ func commitRemoteUpload(ctx context.Context, client remoteUploadCommitter, tempP
 		if err := client.Chmod(tempPath, preservedPermissionMode(existingMetadata.Mode)); err != nil {
 			return fmt.Errorf("preserve remote destination permissions: %w", err)
 		}
-		if err := client.PosixRename(tempPath, remotePath); err == nil {
-			return nil
-		} else if isUnsupportedPosixRename(err) {
-			return connectors.ClassifyError(
-				"atomic_replace_unsupported",
-				fmt.Errorf("remote server does not support safe atomic overwrite; keep overwrite disabled or remove the destination explicitly: %w", err),
-			)
-		} else {
-			return classifyRemoteRenameError("posix_rename", err)
-		}
+		return publish(func() error { return replaceRemoteUpload(client, tempPath, remotePath) })
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := client.Link(tempPath, remotePath); err != nil {
-		if isDefiniteRemoteFileExists(err) {
-			return fmt.Errorf("remote file already exists")
-		}
-		if isUnsupportedHardlink(err) {
-			return connectors.ClassifyError(
-				"atomic_create_unsupported",
-				fmt.Errorf("remote server does not support safe atomic create; refusing a racy upload: %w", err),
-			)
-		}
-		return classifyRemoteRenameError("hardlink", err)
+	if err := publish(func() error { return linkRemoteUpload(client, tempPath, remotePath) }); err != nil {
+		return err
 	}
 	if err := client.Remove(tempPath); err != nil {
 		return connectors.ClassifyOutcomeUnknown("hardlink_cleanup", map[string]any{
@@ -625,6 +620,9 @@ func copyWithProgress(ctx context.Context, dst io.Writer, src io.Reader, total i
 		}
 		nr, er := src.Read(buffer)
 		if nr > 0 {
+			if options.ExpectedContent != nil && int64(nr) > options.ExpectedContent.SizeBytes-copied {
+				return copied, "", connectors.ErrUploadContentChanged
+			}
 			if options.MaxBytes > 0 && int64(nr) > options.MaxBytes-copied {
 				return copied, "", fmt.Errorf("%w: transfer exceeds the %d byte limit", connectors.ErrTransferByteLimit, options.MaxBytes)
 			}

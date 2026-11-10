@@ -50,8 +50,8 @@ func TestGetHelpAndActionList(t *testing.T) {
 		t.Fatalf("action list: %v", err)
 	}
 	connectortest.AssertActionListStable(t, connector, target, connectors.CredentialProfileView{ConnectorKind: Kind, Kind: "private_key"})
-	if len(actions) != 5 {
-		t.Fatalf("expected 5 actions, got %d", len(actions))
+	if len(actions) != 7 {
+		t.Fatalf("expected 7 actions, got %d", len(actions))
 	}
 	if actions[0].Name != ActionExec || actions[0].Risk != connectors.RiskWrite {
 		t.Fatalf("unexpected exec action: %#v", actions[0])
@@ -190,7 +190,7 @@ func TestPrepareStartFileDownloadRequiresRemotePaths(t *testing.T) {
 func TestPrepareRejectsUnknownAction(t *testing.T) {
 	_, err := New().PrepareAction(context.Background(), connectors.ActionRequest{
 		Target:     connectors.TargetView{Ref: "ssh:worker-2", ConnectorKind: Kind},
-		ActionName: "upload_file",
+		ActionName: "unknown_action",
 	})
 	if !errors.Is(err, ErrUnsupportedAction) {
 		t.Fatalf("expected ErrUnsupportedAction, got %v", err)

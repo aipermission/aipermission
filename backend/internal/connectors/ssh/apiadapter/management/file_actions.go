@@ -51,15 +51,7 @@ func browseRemoteFilesOutput(runtimeID int64, remotePath string, entries []conne
 func StartFileDownloadAction(ctx context.Context, server connectorapi.RuntimeActionGateway, runtimeContext connectors.RuntimeContext, runtimeID int64, remotePaths []string, archiveName string) (connectors.ActionResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	batch, err := server.ConnectorCreateAndRunDownloadBatch(ctx, connectorapi.TransferAuthorization{
-		ConnectorKind:         runtimeContext.Target.ConnectorKind,
-		TargetID:              runtimeContext.Target.ID,
-		TargetRef:             runtimeContext.Target.Ref,
-		TargetUpdatedAt:       runtimeContext.Target.UpdatedAt,
-		ProfileID:             runtimeContext.Profile.ID,
-		ProfileUpdatedAt:      runtimeContext.Profile.UpdatedAt,
-		ProfileSecretRevision: runtimeContext.Profile.SecretRevision,
-	}, runtimeID, remotePaths, archiveName, filetransfer.SourceMCP)
+	batch, err := server.ConnectorCreateAndRunDownloadBatch(ctx, connectorapi.TransferAuthorizationFor(runtimeContext), runtimeID, remotePaths, archiveName, filetransfer.SourceMCP)
 	if err != nil {
 		return connectors.ActionResult{}, err
 	}
