@@ -23,6 +23,9 @@ and this project uses semantic versioning for public releases.
 - Preserve upload authorization failure causes and stage information without exposing
   raw revalidation errors or confusing local cancellation with permission loss; retain
   fail-closed checks and unknown-outcome precedence.
+- Keep SSH upload byte evidence after interrupted writes, retain the approved digest
+  when content validation fails, and prevent secondary staging-record cleanup deadlines
+  from replacing the primary failure.
 
 ### Security
 
