@@ -7,6 +7,7 @@ import (
 	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/runtimecontrol"
 	"github.com/aipermission/aipermission/backend/internal/securitypolicy"
+	"github.com/aipermission/aipermission/backend/internal/sqldb"
 	"github.com/aipermission/aipermission/backend/internal/vaultfinalization"
 	"github.com/aipermission/aipermission/backend/internal/vaultsessions"
 )
@@ -20,11 +21,15 @@ type State struct {
 
 func New(database *sql.DB) *State {
 	state := &State{policy: securitypolicy.NewService(database), vaultLeases: vaultsessions.NewStore()}
+	waits := &sqldb.PoolWaitReporter{}
 	state.vaultDelivery.SetDeliveryGuard(func(ctx context.Context) error {
 		if err := connectortargets.NewLifecycleFinalizationStore(database).RequireReady(ctx); err != nil {
+			waits.Report(database, err)
 			return err
 		}
-		return vaultfinalization.NewStore(database).RequireReady(ctx)
+		err := vaultfinalization.NewStore(database).RequireReady(ctx)
+		waits.Report(database, err)
+		return err
 	})
 	return state
 }

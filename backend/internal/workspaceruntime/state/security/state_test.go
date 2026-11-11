@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 	"github.com/aipermission/aipermission/backend/internal/db"
 	"github.com/aipermission/aipermission/backend/internal/vaultfinalization"
 )
@@ -41,6 +42,28 @@ func TestPendingVaultFinalizationBlocksSecretDelivery(t *testing.T) {
 	release, err := state.VaultDeliveryCoordinator().AcquireDelivery(t.Context())
 	if err != nil {
 		t.Fatal(err)
+	}
+	release()
+	lifecycle := connectortargets.NewLifecycleFinalizationStore(database)
+	if err := lifecycle.Queue(t.Context(), connectortargets.LifecycleFinalizationChange{TargetID: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := state.VaultDeliveryCoordinator().AcquireDelivery(t.Context()); !errors.Is(err, connectortargets.ErrLifecycleFinalizationPending) {
+		t.Fatalf("connector finalization did not block delivery: %v", err)
+	}
+	pending, err := lifecycle.Pending(t.Context())
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("pending finalization=%#v error=%v", pending, err)
+	}
+	if err := lifecycle.MarkVaultComplete(t.Context(), pending[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.MarkRequestsComplete(t.Context(), pending[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	release, err = state.VaultDeliveryCoordinator().AcquireDelivery(t.Context())
+	if err != nil {
+		t.Fatalf("completed connector finalization retained delivery fence: %v", err)
 	}
 	release()
 }

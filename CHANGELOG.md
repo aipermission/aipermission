@@ -30,6 +30,9 @@ and this project uses semantic versioning for public releases.
   transaction owner, preserving warm encrypted connections after acknowledged rollback
   instead of repeatedly reopening SQLCipher. Keep caller deadlines, atomic history
   updates, and fail-closed delivery checks.
+- Capture rate-limited pool counts and bounded code-location evidence on delivery
+  database deadlines without logging SQL, arguments, paths or credentials; retain
+  existing authorization failures and timeout limits.
 
 ### Security
 

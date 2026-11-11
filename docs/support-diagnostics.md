@@ -34,6 +34,25 @@ The report excludes by design:
 This boundary is covered by a golden redaction test containing sentinel
 credentials, names, addresses, commands, output, and paths.
 
+## Local Delivery Deadline Evidence
+
+When a delivery guard reaches its deadline, the backend can write a bounded
+`delivery database deadline diagnostics` record to its local service log. This
+contains pool counts, cumulative pool-wait totals, and allowlisted function
+names derived from program counters. It never formats function arguments,
+context values, SQL text, SQL parameters, filesystem paths, or raw errors.
+Records are limited to one every 30 seconds per unlocked workspace, at most
+eight grouped code stacks and sixteen function names per group. A truncated
+capture is marked explicitly.
+
+Pool counts belong to the affected database; `code_scope: "process"` means the
+code-location sample spans the process and cannot by itself attribute a stack
+to a particular database. The record is investigation evidence, not proof of
+the connection holder or a successful authorization. No permission, timeout,
+pool-size or fail-closed behavior is relaxed. These records are not added to
+the downloadable JSON report. Other service log lines may contain different
+information, so do not share the entire log without reviewing it.
+
 ## Sharing A Report
 
 Diagnostics are designed to be safe to inspect and selectively share, but no
