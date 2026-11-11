@@ -228,7 +228,7 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 		)
 		if cleaned && stagingRecorded && options.ClearStaging != nil {
 			if clearErr := options.ClearStaging(context.Background(), tempPath); clearErr != nil {
-				returnErr = errors.Join(returnErr, fmt.Errorf("clear remote staging record: %w", clearErr))
+				returnErr = withUploadCleanupError(returnErr, fmt.Errorf("clear remote staging record: %w", clearErr))
 			}
 		}
 		return TransferResult{}, returnErr
@@ -245,28 +245,30 @@ func UploadFileWithOptions(ctx context.Context, target Target, localPath string,
 			)
 			if cleaned && stagingRecorded && options.ClearStaging != nil {
 				if err := options.ClearStaging(context.Background(), tempPath); err != nil {
-					returnErr = errors.Join(returnErr, fmt.Errorf("clear remote staging record: %w", err))
+					returnErr = withUploadCleanupError(returnErr, fmt.Errorf("clear remote staging record: %w", err))
 				}
 			}
 		}
 	}()
 	copied, checksum, err := copyWithProgress(ctx, remote, local, info.Size(), options)
+	result = TransferResult{Bytes: copied, Size: info.Size(), DurationMS: time.Since(started).Milliseconds()}
 	closeErr := remote.Close()
 	if err != nil {
-		return TransferResult{}, fmt.Errorf("upload file: %w", err)
+		return result, fmt.Errorf("upload file: %w", err)
 	}
 	if closeErr != nil {
-		return TransferResult{}, fmt.Errorf("close remote temporary file: %w", closeErr)
+		return result, fmt.Errorf("close remote temporary file: %w", closeErr)
 	}
 	if err := verifyUploadContent(options.ExpectedContent, copied, checksum); err != nil {
-		return TransferResult{}, err
+		return result, err
 	}
+	result.ChecksumSHA256 = checksum
 	if err := ctx.Err(); err != nil {
-		return TransferResult{}, err
+		return result, err
 	}
 	if options.Wait != nil {
 		if err := options.Wait(ctx); err != nil {
-			return TransferResult{}, err
+			return result, err
 		}
 	}
 	committer := &authenticatedUploadCommitter{Client: client, ssh: sshClient}
