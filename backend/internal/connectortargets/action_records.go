@@ -477,7 +477,7 @@ func (s *Store) insertActionRequestIdempotent(ctx context.Context, input InsertA
 		return ActionRequest{}, false, ValidationError("retry policy must be JSON serializable")
 	}
 	now := nowString()
-	idempotencyScope := actionRequestIdempotencyScope(input.TokenID, input.Source)
+	idempotencyScope := ActionIdempotencyScope(input.TokenID, input.Source)
 	executor, commit, rollback, err := s.transaction(ctx, "connector action request")
 	if err != nil {
 		return ActionRequest{}, false, err
@@ -673,12 +673,13 @@ func (s *Store) GetActionRequestByIdempotency(ctx context.Context, tokenID *int6
 	if strings.TrimSpace(key) == "" {
 		return ActionRequest{}, ErrActionRequestNotFound
 	}
-	return getActionRequestByIdempotencyWithExecutor(ctx, s.db, actionRequestIdempotencyScope(tokenID, source), key)
+	return getActionRequestByIdempotencyWithExecutor(ctx, s.db, ActionIdempotencyScope(tokenID, source), key)
 }
 
 func getActionRequestByIdempotencyWithExecutor(ctx context.Context, executor storeDB, scope, key string) (ActionRequest, error) {
+	// Bound equality alone does not imply the partial index's nonempty predicate.
 	request, err := scanActionRequest(executor.QueryRowContext(ctx,
-		actionRequestSelectSQL()+` WHERE r.idempotency_scope = ? AND r.idempotency_key = ?`,
+		actionRequestSelectSQL()+` WHERE r.idempotency_scope = ? AND r.idempotency_key = ? AND r.idempotency_key <> ''`,
 		scope, strings.TrimSpace(key),
 	))
 	if errors.Is(err, sql.ErrNoRows) {
@@ -722,13 +723,6 @@ func getActionRequestIdempotencyTombstone(ctx context.Context, executor storeDB,
 		return ActionRequest{}, fmt.Errorf("decode retained connector action retry policy: %w", err)
 	}
 	return request, nil
-}
-
-func actionRequestIdempotencyScope(tokenID *int64, source string) string {
-	if tokenID != nil {
-		return fmt.Sprintf("token:%d", *tokenID)
-	}
-	return "source:" + actionRequestSource(source)
 }
 
 func (s *Store) FinishActionRequest(ctx context.Context, input FinishActionRequestInput) (ActionRequest, error) {

@@ -357,7 +357,7 @@ func TestStoreActionRequestIdempotencySurvivesRequestRetention(t *testing.T) {
 		WHERE request_id = ?`, request.ID).Scan(&retainedScope, &retainedKey, &retainedHash); err != nil {
 		t.Fatalf("read retained idempotency tombstone: %v", err)
 	}
-	if retainedScope != actionRequestIdempotencyScope(input.TokenID, input.Source) ||
+	if retainedScope != ActionIdempotencyScope(input.TokenID, input.Source) ||
 		retainedKey != input.IdempotencyKey || retainedHash != input.IdempotencyIdentityHash {
 		t.Fatalf("unexpected retained idempotency identity: scope=%q key=%q hash=%q", retainedScope, retainedKey, retainedHash)
 	}
