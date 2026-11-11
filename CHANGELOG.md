@@ -15,6 +15,12 @@ and this project uses semantic versioning for public releases.
   workspace-bounded source access, optional explicit directories, size and checksum
   verification, approval, and transfer status.
 
+### Fixed
+
+- Bound intermediate transfer-progress persistence to the owning transfer lifetime so
+  database contention cannot indefinitely block streaming or cancellation; keep final
+  evidence and terminal writes authoritative.
+
 ### Security
 
 - Require patched libxslt 1.1.43-r4 or later in the frontend runtime for CVE-2026-87636

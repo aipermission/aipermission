@@ -16,6 +16,7 @@ const (
 	fileTransferPersistenceRetryInterval  = 100 * time.Millisecond
 	fileTransferPersistenceMaxRetryDelay  = 2 * time.Second
 	fileTransferPersistenceAttemptTimeout = 2 * time.Second
+	fileTransferProgressAttemptTimeout    = 100 * time.Millisecond
 )
 
 func transferLaunchError(result transferjobs.LaunchResult) error {
@@ -79,7 +80,7 @@ func (s Runner) RunUpload(ctx context.Context, runtime *Runtime, transferID int6
 		log.Printf("read file upload failed transfer=%d error=%v", transferID, err)
 		return
 	}
-	options := s.transferOptions(runtime, transferID, nil, 0)
+	options := s.transferOptions(ctx, runtime, transferID, nil, 0)
 	result, err := runBoundUpload(ctx, execution, item, overwrite, options)
 	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
 		log.Printf("file upload final evidence unavailable transfer=%d error=%v", transferID, evidenceErr)
@@ -143,7 +144,7 @@ func (s Runner) RunDownload(ctx context.Context, runtime *Runtime, transferID in
 		return
 	}
 	result, err := execution.Adapter.DownloadFile(ctx, execution.Gateway, execution.Runtime, item.RuntimeID, item.RemotePath, item.TempPath, connectors.TransferOptions{
-		Progress: s.transferProgress(runtime, transferID),
+		Progress: s.transferProgress(ctx, runtime, transferID),
 		MaxBytes: s.maxObjectBytes,
 	})
 	if evidenceErr := transferjobs.PersistFileTransferEvidence(runtime.finalization.Context(), runtime.store, transferID, result.Bytes, result.ChecksumSHA256); evidenceErr != nil {
@@ -424,7 +425,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 		log.Printf("read file transfer failed transfer=%d error=%v", transferID, err)
 		return nil
 	}
-	options := s.transferOptions(runtime, transferID, control.Wait, s.maxObjectBytes)
+	options := s.transferOptions(itemCtx, runtime, transferID, control.Wait, s.maxObjectBytes)
 	var result connectors.TransferResult
 	if item.Direction == filetransfer.DirectionUpload {
 		result, err = runBoundUpload(itemCtx, execution, item, overwrite, options)
@@ -459,7 +460,7 @@ func (s Runner) runTransferBatchItem(ctx context.Context, runtime *Runtime, tran
 	return nil
 }
 
-func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectors.TransferProgress {
+func (s Runner) transferProgress(owner context.Context, runtime *Runtime, transferID int64) connectors.TransferProgress {
 	var lastWrite time.Time
 	started := time.Now()
 	return func(transferred int64, total int64) {
@@ -468,22 +469,25 @@ func (s Runner) transferProgress(runtime *Runtime, transferID int64) connectors.
 			return
 		}
 		lastWrite = now
+		ctx, cancel := context.WithTimeout(owner, fileTransferProgressAttemptTimeout)
+		defer cancel()
 		bytesPerSecond, etaSeconds := filetransfer.SpeedAndETA(transferred, total, now.Sub(started))
-		if err := runtime.store.UpdateProgressStats(context.Background(), transferID, transferred, total, bytesPerSecond, etaSeconds); err != nil {
+		if err := runtime.store.UpdateProgressStats(ctx, transferID, transferred, total, bytesPerSecond, etaSeconds); err != nil {
 			log.Printf("update file transfer progress failed transfer=%d error=%v", transferID, err)
+			return
 		}
-		item, err := runtime.store.Get(context.Background(), transferID)
+		item, err := runtime.store.Get(ctx, transferID)
 		if err == nil && item.BatchID > 0 {
-			if err := runtime.store.RecalculateBatch(context.Background(), item.BatchID); err != nil {
+			if err := runtime.store.RecalculateBatch(ctx, item.BatchID); err != nil {
 				log.Printf("recalculate file transfer batch progress failed batch=%d error=%v", item.BatchID, err)
 			}
 		}
 	}
 }
 
-func (s Runner) transferOptions(runtime *Runtime, transferID int64, wait func(context.Context) error, maxBytes int64) connectors.TransferOptions {
+func (s Runner) transferOptions(ctx context.Context, runtime *Runtime, transferID int64, wait func(context.Context) error, maxBytes int64) connectors.TransferOptions {
 	return connectors.TransferOptions{
-		Progress: s.transferProgress(runtime, transferID), Wait: wait, MaxBytes: maxBytes,
+		Progress: s.transferProgress(ctx, runtime, transferID), Wait: wait, MaxBytes: maxBytes,
 		RecordStaging: func(_ context.Context, ref string) error {
 			ctx, cancel := context.WithTimeout(runtime.finalization.Context(), fileTransferPersistenceAttemptTimeout)
 			defer cancel()
