@@ -20,6 +20,9 @@ and this project uses semantic versioning for public releases.
 - Bound intermediate transfer-progress persistence to the owning transfer lifetime so
   database contention cannot indefinitely block streaming or cancellation; keep final
   evidence and terminal writes authoritative.
+- Preserve upload authorization failure causes and stage information without exposing
+  raw revalidation errors or confusing local cancellation with permission loss; retain
+  fail-closed checks and unknown-outcome precedence.
 
 ### Security
 

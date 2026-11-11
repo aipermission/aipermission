@@ -56,3 +56,27 @@ func TestOnlyMCPUploadsReceiveAnApprovedContentGuard(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPUploadAuthorizationMonitorPreservesCancellationCause(t *testing.T) {
+	want := errors.New("fixture authorization lookup failed")
+	var checks atomic.Int32
+	authorize := func(ctx context.Context) (context.Context, func(), error) {
+		if checks.Add(1) > 1 {
+			return nil, nil, want
+		}
+		return ctx, func() {}, nil
+	}
+	ctx, stop, err := monitorUploadAuthorization(t.Context(), authorize)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	select {
+	case <-ctx.Done():
+		if !errors.Is(context.Cause(ctx), want) {
+			t.Fatalf("authorization cause lost: %v", context.Cause(ctx))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("authorization failure did not stop the stream")
+	}
+}

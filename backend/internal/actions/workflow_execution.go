@@ -231,14 +231,14 @@ func (r *Runtime) Revalidate(ctx context.Context, request connectortargets.Actio
 	}
 	fresh, err := r.service.Prepare(ctx, prepared.Requested)
 	if err != nil {
-		return prepared, fmt.Errorf("%w: target, profile, or action is no longer available", ErrConnectorAuthorizationChanged)
+		return prepared, revalidationFailure("target, profile, or action is no longer available", err)
 	}
 	if request.TokenID == nil {
 		return fresh, nil
 	}
 	token, err := r.tokens.Get(ctx, *request.TokenID, r.now().UTC())
 	if err != nil || !token.Active {
-		return prepared, fmt.Errorf("%w: token is no longer active", ErrConnectorAuthorizationChanged)
+		return prepared, revalidationFailure("token is no longer active", err)
 	}
 	permission, err := connectortargets.NewStore(r.database).GetActionPermission(ctx, token.ID, fresh.Target.ID, fresh.Profile.ID, fresh.Action.ActionName, r.now().UTC())
 	if errors.Is(err, connectortargets.ErrActionPermissionNotFound) || (err == nil && permission.ExecutionRule != requiredRule) {

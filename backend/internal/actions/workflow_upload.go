@@ -3,6 +3,8 @@ package actions
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
@@ -122,10 +124,19 @@ func uploadGrantExpiry(approval string) (time.Time, error) {
 
 func (r *Runtime) revalidateUploadDispatch(ctx context.Context, original connectortargets.ActionRequest, prepared PreparedRequest, rule connectortargets.ActionPermissionRule) error {
 	current, err := connectortargets.NewStore(r.database).GetActionRequest(ctx, original.ID)
-	if err != nil || current.ApprovalContextHash != original.ApprovalContextHash ||
+	if errors.Is(err, connectortargets.ErrActionRequestNotFound) {
+		return ErrConnectorAuthorizationChanged
+	}
+	if err != nil {
+		return fmt.Errorf("read upload authorization request: %w", err)
+	}
+	if current.ApprovalContextHash != original.ApprovalContextHash ||
 		(current.Status != connectors.ResultRunning && current.Status != connectors.ResultCompleted) {
 		return ErrConnectorAuthorizationChanged
 	}
 	_, err = r.Revalidate(ctx, original, prepared, rule)
+	if contextErr := ctx.Err(); err != nil && contextErr != nil {
+		return contextErr
+	}
 	return err
 }
