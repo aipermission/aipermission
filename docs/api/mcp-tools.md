@@ -699,6 +699,13 @@ The gateway rechecks permission during SFTP streaming and before the atomic
 destination write. Revocation can stop an active transfer, but cannot recall
 bytes the remote SSH server has already received.
 
+A failed authorization check also stops the transfer when the gateway cannot
+verify current access, for example while database access is unavailable. This
+does not by itself prove that the operator changed permission. History retains
+the authorization stage rather than presenting that check as the whole transfer
+budget expiring. Progress is a persisted snapshot: zero displayed bytes is not
+proof that no remote I/O occurred. Reconcile the original upload before retrying.
+
 Grant `upload_file` and `get_file_upload_status` separately on the exact SSH
 profile. Prompt requires operator approval; Always queues immediately. Set
 the read-only `get_file_upload_status` action to Always for unattended polling. The

@@ -32,6 +32,7 @@ func TestClassifyFileTransferInterruption(t *testing.T) {
 		{name: "deadline context", ctx: deadlineCtx, err: context.Canceled, want: fileTransferTimedOut},
 		{name: "deadline error", ctx: context.Background(), err: context.DeadlineExceeded, want: fileTransferTimedOut},
 		{name: "user cancellation", ctx: canceledCtx, err: context.Canceled, want: fileTransferCanceledByUser},
+		{name: "user cancellation with nested deadline", ctx: canceledCtx, err: context.DeadlineExceeded, want: fileTransferCanceledByUser},
 		{name: "connector cancellation without local cancel", ctx: context.Background(), err: context.Canceled, want: fileTransferNotInterrupted},
 		{name: "ordinary failure", ctx: context.Background(), err: errors.New("network failed"), want: fileTransferNotInterrupted},
 	}

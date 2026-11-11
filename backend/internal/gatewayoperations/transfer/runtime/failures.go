@@ -127,6 +127,13 @@ func (s Runner) finishFileTransferError(runtime *Runtime, transferID int64, ctx 
 	if connectors.ErrorStatus(err) == connectors.ResultOutcomeUnknown {
 		return s.failFileTransfer(runtime, transferID, execution, err, filetransfer.FailureKindOutcomeUnknown)
 	}
+	if connectors.ErrorCode(err) == "upload_authorization_failed" && ctx.Err() == nil {
+		kind := filetransfer.FailureKindUnknown
+		if errors.Is(err, context.DeadlineExceeded) {
+			kind = filetransfer.FailureKindTimeout
+		}
+		return s.failFileTransfer(runtime, transferID, execution, err, kind)
+	}
 	if errors.Is(err, connectors.ErrTransferByteLimit) {
 		return s.failFileTransfer(runtime, transferID, execution, err, filetransfer.FailureKindValidation)
 	}
@@ -175,11 +182,14 @@ const (
 )
 
 func classifyFileTransferInterruption(ctx context.Context, err error) fileTransferInterruption {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.Is(err, context.DeadlineExceeded) {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fileTransferTimedOut
 	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return fileTransferCanceledByUser
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fileTransferTimedOut
 	}
 	return fileTransferNotInterrupted
 }
