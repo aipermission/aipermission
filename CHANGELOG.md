@@ -26,6 +26,10 @@ and this project uses semantic versioning for public releases.
 - Keep SSH upload byte evidence after interrupted writes, retain the approved digest
   when content validation fails, and prevent secondary staging-record cleanup deadlines
   from replacing the primary failure.
+- Finalize canceled console transcript and transfer lifecycle writes through the shared
+  transaction owner, preserving warm encrypted connections after acknowledged rollback
+  instead of repeatedly reopening SQLCipher. Keep caller deadlines, atomic history
+  updates, and fail-closed delivery checks.
 
 ### Security
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 func (s *Store) PauseBatch(ctx context.Context, id int64) (bool, error) {
@@ -299,19 +300,14 @@ func (s *Store) finishBatch(ctx context.Context, id int64, status string, errorT
 }
 
 func (s *Store) RecalculateBatch(ctx context.Context, id int64) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	err := transactionstate.Run(ctx, s.db, func(tx *sql.Tx) error {
+		if err := recalculateBatch(ctx, tx, id); err != nil {
+			return err
+		}
+		return syncBatchTransferHistoryWithExecutor(ctx, tx, id)
+	})
 	if err != nil {
-		return fmt.Errorf("begin file transfer batch recalculation: %w", err)
-	}
-	defer tx.Rollback()
-	if err := recalculateBatch(ctx, tx, id); err != nil {
-		return err
-	}
-	if err := syncBatchTransferHistoryWithExecutor(ctx, tx, id); err != nil {
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit file transfer batch recalculation: %w", err)
+		return fmt.Errorf("recalculate file transfer batch: %w", err)
 	}
 	return nil
 }
