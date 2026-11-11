@@ -15,6 +15,11 @@ and this project uses semantic versioning for public releases.
   workspace-bounded source access, optional explicit directories, size and checksum
   verification, approval, and transfer status.
 
+### Security
+
+- Require patched libxslt 1.1.43-r4 or later in the frontend runtime for CVE-2026-87636
+  and CVE-2026-9947; stop image builds when the patched package is unavailable.
+
 ## [0.2.78] - 2026-11-09
 
 ### Added
