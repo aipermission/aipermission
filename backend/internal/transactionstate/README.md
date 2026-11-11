@@ -3,7 +3,8 @@
 `Run` owns one pinned local SQL transaction and releases the connection before
 returning to its caller. Audit projection and connector resource readback must
 run after it returns, not inside the callback against the same pool. The audited
-mutation coordinator and scoped credential-resource creation use this owner;
+mutation coordinator, scoped credential-resource creation, console transcript
+flushes, and transfer lifecycle/history projections use this owner;
 connector domain code never receives its database or physical connection.
 
 The callback must use the supplied transaction, must not commit/roll it back,
@@ -19,6 +20,13 @@ rollback on cancellation. BEGIN uses the local SQLCipher driver's deferred
 transaction and bounded busy wait; detaching its context does not detach SQL
 operations inside the callback. The owner synchronously finalizes the
 transaction even when the caller has stopped waiting.
+
+For these hot persistence paths, acknowledged rollback also preserves the warm
+encrypted connection. A canceled `database/sql` transaction can otherwise retire
+the native SQLCipher connection and force subsequent work to reopen it and redo
+key derivation. Short progress deadlines must not turn ordinary cancellation
+into repeated connection churn. No pool-size, encryption, authorization deadline,
+or delivery-guard relaxation is needed; uncertain connections are still retired.
 
 Failure finality is explicit:
 

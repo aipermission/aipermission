@@ -2,6 +2,7 @@ package filetransfer
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/history"
+	"github.com/aipermission/aipermission/backend/internal/transactionstate"
 )
 
 func (s *Store) MarkRunning(ctx context.Context, id int64) (bool, error) {
@@ -319,27 +321,27 @@ func (s *Store) updateTransferWithHistory(ctx context.Context, id int64, operati
 }
 
 func (s *Store) updateTransferWithProjection(ctx context.Context, id int64, operation string, project func(context.Context, history.CommandProjectionExecutor, int64) error, query string, args ...any) (bool, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	changed := false
+	err := transactionstate.Run(ctx, s.db, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("%s: %w", operation, err)
+		}
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("read %s rows: %w", operation, err)
+		}
+		if rows == 0 {
+			return nil
+		}
+		if err := project(ctx, tx, id); err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
 	if err != nil {
-		return false, fmt.Errorf("begin %s: %w", operation, err)
+		return false, fmt.Errorf("%s transaction: %w", operation, err)
 	}
-	defer tx.Rollback()
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return false, fmt.Errorf("%s: %w", operation, err)
-	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("read %s rows: %w", operation, err)
-	}
-	if rows == 0 {
-		return false, nil
-	}
-	if err := project(ctx, tx, id); err != nil {
-		return false, err
-	}
-	if err := tx.Commit(); err != nil {
-		return false, fmt.Errorf("commit %s: %w", operation, err)
-	}
-	return true, nil
+	return changed, nil
 }
