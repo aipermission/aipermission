@@ -33,6 +33,10 @@ and this project uses semantic versioning for public releases.
 - Capture rate-limited pool counts and bounded code-location evidence on delivery
   database deadlines without logging SQL, arguments, paths or credentials; retain
   existing authorization failures and timeout limits.
+- Use the existing nonempty-key partial index for connector idempotency lookups, upload
+  status and pre-dispatch cleanup instead of scanning retained request payloads. Share
+  the persisted action-owner scope and preserve token checks, replay identity and
+  retention tombstones without changing schema, pool size or authorization deadlines.
 
 ### Security
 

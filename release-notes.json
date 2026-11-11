@@ -14,7 +14,8 @@
         "Preserve upload authorization failure causes and stage information without exposing raw revalidation errors or confusing local cancellation with permission loss; retain fail-closed checks and unknown-outcome precedence.",
         "Keep SSH upload byte evidence after interrupted writes, retain the approved digest when content validation fails, and prevent secondary staging-record cleanup deadlines from replacing the primary failure.",
         "Finalize canceled console transcript and transfer lifecycle writes through the shared transaction owner, preserving warm encrypted connections after acknowledged rollback instead of repeatedly reopening SQLCipher. Keep caller deadlines, atomic history updates, and fail-closed delivery checks.",
-        "Capture rate-limited pool counts and bounded code-location evidence on delivery database deadlines without logging SQL, arguments, paths or credentials; retain existing authorization failures and timeout limits."
+        "Capture rate-limited pool counts and bounded code-location evidence on delivery database deadlines without logging SQL, arguments, paths or credentials; retain existing authorization failures and timeout limits.",
+        "Use the existing nonempty-key partial index for connector idempotency lookups, upload status and pre-dispatch cleanup instead of scanning retained request payloads. Share the persisted action-owner scope and preserve token checks, replay identity and retention tombstones without changing schema, pool size or authorization deadlines."
       ]
     },
     {

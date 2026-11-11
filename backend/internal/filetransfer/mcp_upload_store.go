@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aipermission/aipermission/backend/internal/connectors"
+	"github.com/aipermission/aipermission/backend/internal/connectortargets"
 )
 
 // CreateMCPUpload binds a private staged file to the authenticated token's
@@ -123,13 +124,8 @@ func (s *Store) MCPUploadStatus(ctx context.Context, tokenID int64, key, targetR
 		return Record{}, 0, ErrNotFound
 	}
 	var id, requestID int64
-	err := s.db.QueryRowContext(ctx, `SELECT i.resource_id, COALESCE(a.id, 0)
-		FROM file_transfer_start_idempotency i
-		LEFT JOIN connector_action_requests a ON a.token_id = ? AND a.source = 'mcp'
-			AND a.idempotency_key = i.idempotency_key AND a.connector_kind = ? AND a.target_id = ?
-			AND a.profile_id = ? AND a.action_name = ?
-		WHERE i.scope = ? AND i.idempotency_key = ? AND i.resource_kind = ?`,
-		tokenID, kind, targetID, profileID, actionName, mcpUploadScope(tokenID), key, IdempotencyResourceTransfer).Scan(&id, &requestID)
+	err := s.db.QueryRowContext(ctx, mcpUploadStatusSQL,
+		tokenID, connectortargets.ActionIdempotencyScope(&tokenID, SourceMCP), kind, targetID, profileID, actionName, mcpUploadScope(tokenID), key, IdempotencyResourceTransfer).Scan(&id, &requestID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Record{}, 0, ErrNotFound
 	}
@@ -167,17 +163,9 @@ func validateMCPUploadRuntime(ctx context.Context, database uploadRuntimeReader,
 
 func (s *Store) ExpireMCPUploads(ctx context.Context, now time.Time) error {
 	cutoff := now.UTC().Format(mcpUploadTimeLayout)
-	const disposableStage = `EXISTS (SELECT 1 FROM file_transfer_start_idempotency i
-		WHERE i.resource_id = f.id AND i.resource_kind = 'transfer' AND i.scope LIKE 'mcp-upload:%'
-		AND (f.temp_expires_at <= ? OR EXISTS (
-			SELECT 1 FROM connector_action_requests a
-			WHERE a.token_id = CAST(substr(i.scope, length('mcp-upload:') + 1) AS INTEGER)
-			AND a.source = 'mcp' AND a.idempotency_key = i.idempotency_key
-			AND a.status IN ('declined', 'stale', 'blocked', 'failed', 'error', 'canceled')
-		)))`
 	rows, err := s.db.QueryContext(ctx, `SELECT f.id FROM file_transfers f
-		WHERE f.source = ? AND f.direction = ? AND f.status = ? AND `+disposableStage+`
-		ORDER BY f.id LIMIT ?`, SourceMCP, DirectionUpload, StatusPending, cutoff, MaxMCPUploadStagedFiles)
+		WHERE f.source = ? AND f.direction = ? AND f.status = ? AND `+mcpUploadDisposableStageSQL+`
+		ORDER BY f.id LIMIT ?`, SourceMCP, DirectionUpload, StatusPending, cutoff, connectortargets.TokenIdempotencyScopePrefix, MaxMCPUploadStagedFiles)
 	if err != nil {
 		return err
 	}
@@ -197,8 +185,8 @@ func (s *Store) ExpireMCPUploads(ctx context.Context, now time.Time) error {
 	for _, id := range ids {
 		_, err := s.updateTransferWithHistory(ctx, id, "expire MCP upload", `UPDATE file_transfers AS f
 			SET status = ?, error = ?, completed_at = ?, updated_at = ?, temp_expires_at = ?
-			WHERE f.id = ? AND f.status = ? AND `+disposableStage, StatusCanceled,
-			"MCP upload canceled before dispatch", cutoff, cutoff, cutoff, id, StatusPending, cutoff)
+			WHERE f.id = ? AND f.status = ? AND `+mcpUploadDisposableStageSQL, StatusCanceled,
+			"MCP upload canceled before dispatch", cutoff, cutoff, cutoff, id, StatusPending, cutoff, connectortargets.TokenIdempotencyScopePrefix)
 		if err != nil {
 			return err
 		}
