@@ -9,6 +9,8 @@ and this project uses semantic versioning for public releases.
 
 ## [Unreleased]
 
+## [0.2.79] - 2026-11-16
+
 ### Added
 
 - Stream MCP client-local files to SSH through token-scoped SFTP upload actions, with

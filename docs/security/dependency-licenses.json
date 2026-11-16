@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "ad0fe894cbf803e6395998da5dffa7621f95b1e7c4daa815a98ac1776855be55"
+      "sha256": "7c3a87112f856ddef08e5aade2360df502e57b9d99d3b01b2c5488f8fe7b72cf"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "18f29f7f623d2ae6511464f37c7e933f73784e382c2526c2447ce3899e1d04a0"
+      "sha256": "943a4c7d68b5fa4f16136d3b7d2e0e07bfe7e665e28b433f922de11eae9dac68"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "901249eb228a744e1397ad59dc7c5d7ec8dbfb59c03c7d67961587b3ca83302d"
+      "sha256": "381cf8e8c6ef84aba6b46aa0dc6ae108bf55209a73878bb005a83fb586a74743"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "ea470e1bcea326735140fed8a9eefc6c55fd8f763b985d26e02b8c96459f07f6"
+      "sha256": "b08b1e79941d0a09b182447c6deb2a4dd9657878ef0c27acc3117681ac29e9ca"
     },
     {
       "path": "scripts/package.json",
@@ -55,11 +55,11 @@
       "source": "frontend/package-lock.json",
       "location": "",
       "name": "aipermission-frontend",
-      "version": "0.2.78",
+      "version": "0.2.79",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "028785035753d8714fb931aa12119cb3ef99b4c7a5207eb648e89fd10b97aeb4"
+      "metadata_sha256": "98ecd6592ef387eb7bf9ce98a5f39587025e49b5b99088c7b2f8165a11b26918"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4415,11 +4415,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "",
       "name": "@aipermission/mcp",
-      "version": "0.2.78",
+      "version": "0.2.79",
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "7112da85d4909b613932474a430e366d98fef0d41d13747da619c6f639a3f5f3"
+      "metadata_sha256": "5e6183e2147787e2a79c91807c8236b620542866fe9aabe0069de6bfc8048bd6"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8201,7 +8201,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed development ESLint MIT, config-array Apache-2.0 and minimatch/nonrecursive-glob-match BlueOak-1.0.0 metadata and upstream-compatible ranges; preserved exact historical evidence gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed release 0.2.79 first-party package version metadata; external dependency identities, license declarations and evidence unchanged; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
