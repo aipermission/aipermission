@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { createServer } from "vite";
 import type { Browser } from "@playwright/test";
+import type { ViteDevServer } from "vite";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = join(currentDir, "..", "..");
@@ -16,19 +17,36 @@ const connectorTemplateKinds = readdirSync(connectorTemplatesDir, { withFileType
   .sort();
 
 test("connector template registry evaluates at runtime", async () => {
-  const server = await createServer({
-    configFile: join(frontendRoot, "vite.config.js"),
-    root: frontendRoot,
-    logLevel: "silent",
-    server: { host: "127.0.0.1", port: 0, strictPort: false },
-  });
-  await server.listen();
-  await server.warmupRequest("/src/connectors/templates/registry.tsx");
-  const address = server.httpServer?.address();
-  assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
-  const baseURL = `http://127.0.0.1:${address.port}/`;
+  const cacheDir = mkdtempSync(join(frontendRoot, "node_modules", ".registry-runtime-"));
+  let server: ViteDevServer | undefined;
   let browser: Browser | undefined;
   try {
+    server = await createServer({
+      configFile: join(frontendRoot, "vite.config.js"),
+      root: frontendRoot,
+      cacheDir,
+      logLevel: "silent",
+      plugins: [
+        {
+          name: "registry-runtime-no-watch",
+          config(config) {
+            // Vite's project-config merge drops inline null overrides.
+            config.server ??= {};
+            config.server.watch = null;
+          },
+        },
+      ],
+      // The HTML crawl cannot see imports inside page.evaluate.
+      optimizeDeps: { entries: ["index.html", "src/connectors/templates/registry.tsx"] },
+      // This probe evaluates modules, not file changes. Cold dependency
+      // discovery must not navigate away from the in-flight evaluation.
+      server: { host: "127.0.0.1", port: 0, strictPort: false, hmr: false },
+    });
+    await server.listen();
+    await server.warmupRequest("/src/connectors/templates/registry.tsx");
+    const address = server.httpServer?.address();
+    assert.ok(address && typeof address !== "string", "vite dev server should expose a TCP address");
+    const baseURL = `http://127.0.0.1:${address.port}/`;
     browser = await chromium.launch();
     const page = await browser.newPage();
     const pageErrors: Error[] = [];
@@ -139,9 +157,14 @@ test("connector template registry evaluates at runtime", async () => {
       [],
     );
   } finally {
-    if (browser) {
-      await browser.close();
+    try {
+      await browser?.close();
+    } finally {
+      try {
+        await server?.close();
+      } finally {
+        rmSync(cacheDir, { recursive: true, force: true });
+      }
     }
-    await server.close();
   }
 });
