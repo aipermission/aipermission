@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "fa299a4226680632f62c7f7af06b3db00a93410d63cce27c4237f3490740ad78"
+      "sha256": "095acd69bd1952f3e98541219b7ce33379ca41ff0942c2abacd6e34b41e933f0"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "0e7382e04aca156702d22c0f1bd974764281194666e225c86ac56f6b85dbf5b8"
+      "sha256": "8a416b2880b5863c412955d4d6f115357c73184a489ccacd820bc817ba062d6e"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6145,7 +6145,7 @@
       },
       {
         "Path": "github.com/jackc/pgx/v5",
-        "Version": "v5.11.0"
+        "Version": "v5.13.0"
       },
       {
         "Path": "github.com/klauspost/compress",
@@ -6840,12 +6840,31 @@
         "module": "h1:IzBBtyK9AHqf98cctWFifYSci2hgQR/cd56wB4p+ogg=",
         "go_mod": "h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4="
       },
-      "requirement": "direct",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "github.com/jackc/pgx/v5@v5.11.0/LICENSE",
+            "sha256": "467f95e074fe23079a5623ed652619682692041b8551da27e3c2ddb9659a1507",
+            "bytes": 1078
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/jackc/pgx/v5",
+      "version": "v5.13.0",
+      "checksums": {
+        "module": "h1:Hl08k64maU0nrRyVUEbwCnK6/gT0EhMrtAqBHz9/gA4=",
+        "go_mod": "h1:u2Fi6no03HCSBYE+ZVdLxbwdu3xyi2vU+K/YNJioSds="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/jackc/pgx/v5@v5.13.0/LICENSE",
             "sha256": "467f95e074fe23079a5623ed652619682692041b8551da27e3c2ddb9659a1507",
             "bytes": 1078
           }
@@ -6865,6 +6884,24 @@
         "files": [
           {
             "path": "github.com/jackc/puddle/v2@v2.2.2/LICENSE",
+            "sha256": "2d50e98a4900b4d6457a38d39c1432fdc156fc2f7b365f2e33ec9344acbb0057",
+            "bytes": 1073
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/jackc/puddle/v2",
+      "version": "v2.2.3",
+      "checksums": {
+        "module": "h1:f8HoREISb3l5eO9coPgK7U3hKLhWGokOFVcThl5jrao="
+      },
+      "requirement": "sum-only",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/jackc/puddle/v2@v2.2.3/LICENSE",
             "sha256": "2d50e98a4900b4d6457a38d39c1432fdc156fc2f7b365f2e33ec9344acbb0057",
             "bytes": 1073
           }
@@ -8124,7 +8161,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed patched Node.js runtime floors and MCP package metadata; dependency identities and license declarations unchanged; preserved exact historical evidence gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed pgx 5.13.0 and puddle 2.2.3 MIT license files and checksums; preserved patched MSSQL replacement; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
