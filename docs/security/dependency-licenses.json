@@ -11,19 +11,19 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "5e9f2c5f506a42d771d05226a4dde3616aac6bf2a7b6e325033c2c0ff59af26e"
+      "sha256": "ad0fe894cbf803e6395998da5dffa7621f95b1e7c4daa815a98ac1776855be55"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "a427fda4e63a31bf14cd2cb922cbf9ca979e5b8b3103ee939b05baf17c0535ee"
+      "sha256": "18f29f7f623d2ae6511464f37c7e933f73784e382c2526c2447ce3899e1d04a0"
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "58acb28c648268a4f50006d8e73ee88b2ae77bff5a942d130acb9b307f44cce5"
+      "sha256": "901249eb228a744e1397ad59dc7c5d7ec8dbfb59c03c7d67961587b3ca83302d"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "4418676ac937abdd6be4d0a68589ac7c5bb87411fdaf6ba4e43cfcf9f0b7ffca"
+      "sha256": "ea470e1bcea326735140fed8a9eefc6c55fd8f763b985d26e02b8c96459f07f6"
     },
     {
       "path": "scripts/package.json",
@@ -59,7 +59,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "a311d0f5b4bb06c19d41758d2619eb5c487a2a78edb86332af17f38daa1186bf"
+      "metadata_sha256": "028785035753d8714fb931aa12119cb3ef99b4c7a5207eb648e89fd10b97aeb4"
     },
     {
       "source": "frontend/package-lock.json",
@@ -675,11 +675,21 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@eslint/config-array",
       "name": "@eslint/config-array",
-      "version": "0.23.5",
+      "version": "0.23.6",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.5.tgz",
-      "integrity": "sha512-Y3kKLvC1dvTOT+oGlqNQ1XLqK6D1HU2YXPc52NmAlJZbMMWDzGYXMiPRJ8TYD39muD/OTjlZmNJ4ib7dvSrMBA==",
-      "metadata_sha256": "f514a834585815005a842e1c17a7a8622481c9309e7312fab11fe563d8b8d0f8"
+      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.6.tgz",
+      "integrity": "sha512-WrTH7nioI9QPY4NZGnsywmecswJdgeq4BCM76qok9VgjTO29ZgUzUvcuJLVPYVQM4uDbaPBU0M33R9DIxI8X3w==",
+      "metadata_sha256": "b203f1d1f5b2e1f5a80a9e0ab7b976088ad297d3d7b2aceeadb8af6b346585f9"
+    },
+    {
+      "source": "frontend/package-lock.json",
+      "location": "node_modules/@eslint/config-array/node_modules/minimatch",
+      "name": "minimatch",
+      "version": "11.0.8",
+      "declared_license": "BlueOak-1.0.0",
+      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.8.tgz",
+      "integrity": "sha512-nFQuYSTVrGvysVBps5Ih+0BdnYFN/Cj3C816r6+p7yK+FHrVLGE4O4N9AFwykrlNlvM2HYt+Rad1Uiro6h88Ig==",
+      "metadata_sha256": "b99a844224c319a2f4c44454ef4a8b9d0e70c12ca3d79d18ffc202269cb30955"
     },
     {
       "source": "frontend/package-lock.json",
@@ -780,6 +790,16 @@
       "resolved": "https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.4.3.tgz",
       "integrity": "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==",
       "metadata_sha256": "5eaa2b9f64580c3c295b6d0e6e6f9bf1a1e4fc1698ad017eccc5cd8e2fc0b9f3"
+    },
+    {
+      "source": "frontend/package-lock.json",
+      "location": "node_modules/@isaacs/nonrecursive-glob-match",
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.1.0",
+      "declared_license": "BlueOak-1.0.0",
+      "resolved": "https://registry.npmjs.org/@isaacs/nonrecursive-glob-match/-/nonrecursive-glob-match-1.1.0.tgz",
+      "integrity": "sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw==",
+      "metadata_sha256": "db186785000511263abaafd3c589d5d8e8ff46c039b3638cd2d7dcb44bdfb109"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2485,11 +2505,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.14.0",
+      "version": "10.15.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.14.0.tgz",
-      "integrity": "sha512-T0pNsxkb9IKmtQjhpK3d7nWOpFv+YHuMbTJnSVMoQblF0onvXfErrtp4V1jHtsQPan7dKaGVD0q1WCXnzMF31A==",
-      "metadata_sha256": "57efd783249e22b1498c29ea7dad8b2b55aaaa81d9f6bc5d4a80b2776628f52f"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.15.0.tgz",
+      "integrity": "sha512-+5Wg4p+ze3sG1WErYgUO/3H1IQIfFBymVUA0Fo/XTeBOLS6UQIUekpSJ8sdRkn7O7wjh84b55w/roqavH2aScg==",
+      "metadata_sha256": "f273553995215088a6982d88fd9e0d33e2b8d379da53445b5dcee80321a42aef"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2540,6 +2560,16 @@
       "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-5.0.1.tgz",
       "integrity": "sha512-tD40eHxA35h0PEIZNeIjkHoDR4YjjJp34biM0mDvplBe//mB+IHCqHDGV7pxF+7MklTvighcCPPZC7ynWyjdTA==",
       "metadata_sha256": "1f815ae460292d9b80646ccd1ff2a4f67901164e2c8ffcae98f1774a48aa29b0"
+    },
+    {
+      "source": "frontend/package-lock.json",
+      "location": "node_modules/eslint/node_modules/minimatch",
+      "name": "minimatch",
+      "version": "11.0.8",
+      "declared_license": "BlueOak-1.0.0",
+      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.8.tgz",
+      "integrity": "sha512-nFQuYSTVrGvysVBps5Ih+0BdnYFN/Cj3C816r6+p7yK+FHrVLGE4O4N9AFwykrlNlvM2HYt+Rad1Uiro6h88Ig==",
+      "metadata_sha256": "b99a844224c319a2f4c44454ef4a8b9d0e70c12ca3d79d18ffc202269cb30955"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4389,7 +4419,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "2fd6a7b9c2d614ecf0a61eeaed4c1a3886d284e853790162959d1c6a28e42473"
+      "metadata_sha256": "7112da85d4909b613932474a430e366d98fef0d41d13747da619c6f639a3f5f3"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4445,11 +4475,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/@eslint/config-array",
       "name": "@eslint/config-array",
-      "version": "0.23.5",
+      "version": "0.23.6",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.5.tgz",
-      "integrity": "sha512-Y3kKLvC1dvTOT+oGlqNQ1XLqK6D1HU2YXPc52NmAlJZbMMWDzGYXMiPRJ8TYD39muD/OTjlZmNJ4ib7dvSrMBA==",
-      "metadata_sha256": "f514a834585815005a842e1c17a7a8622481c9309e7312fab11fe563d8b8d0f8"
+      "resolved": "https://registry.npmjs.org/@eslint/config-array/-/config-array-0.23.6.tgz",
+      "integrity": "sha512-WrTH7nioI9QPY4NZGnsywmecswJdgeq4BCM76qok9VgjTO29ZgUzUvcuJLVPYVQM4uDbaPBU0M33R9DIxI8X3w==",
+      "metadata_sha256": "b203f1d1f5b2e1f5a80a9e0ab7b976088ad297d3d7b2aceeadb8af6b346585f9"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4560,6 +4590,16 @@
       "resolved": "https://registry.npmjs.org/@humanwhocodes/retry/-/retry-0.4.3.tgz",
       "integrity": "sha512-bV0Tgo9K4hfPCek+aMAn81RppFKv2ySDQeMoSZuvTASywNTnVJCArCZE2FWqpvIatKu7VMRLWlR1EazvVhDyhQ==",
       "metadata_sha256": "5eaa2b9f64580c3c295b6d0e6e6f9bf1a1e4fc1698ad017eccc5cd8e2fc0b9f3"
+    },
+    {
+      "source": "packages/mcp/package-lock.json",
+      "location": "node_modules/@isaacs/nonrecursive-glob-match",
+      "name": "@isaacs/nonrecursive-glob-match",
+      "version": "1.1.0",
+      "declared_license": "BlueOak-1.0.0",
+      "resolved": "https://registry.npmjs.org/@isaacs/nonrecursive-glob-match/-/nonrecursive-glob-match-1.1.0.tgz",
+      "integrity": "sha512-GPm/Dbvk5RLmhRnxXIa7nTpK0xtl4E0wj0MslsuNiJ1FIROU+2+9lgUC/dgF7Ey4QCWhfEsgxilMRMCdHPfDfw==",
+      "metadata_sha256": "db186785000511263abaafd3c589d5d8e8ff46c039b3638cd2d7dcb44bdfb109"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -4925,11 +4965,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/eslint",
       "name": "eslint",
-      "version": "10.14.0",
+      "version": "10.15.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.14.0.tgz",
-      "integrity": "sha512-T0pNsxkb9IKmtQjhpK3d7nWOpFv+YHuMbTJnSVMoQblF0onvXfErrtp4V1jHtsQPan7dKaGVD0q1WCXnzMF31A==",
-      "metadata_sha256": "57efd783249e22b1498c29ea7dad8b2b55aaaa81d9f6bc5d4a80b2776628f52f"
+      "resolved": "https://registry.npmjs.org/eslint/-/eslint-10.15.0.tgz",
+      "integrity": "sha512-+5Wg4p+ze3sG1WErYgUO/3H1IQIfFBymVUA0Fo/XTeBOLS6UQIUekpSJ8sdRkn7O7wjh84b55w/roqavH2aScg==",
+      "metadata_sha256": "f273553995215088a6982d88fd9e0d33e2b8d379da53445b5dcee80321a42aef"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -5535,11 +5575,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/minimatch",
       "name": "minimatch",
-      "version": "10.2.6",
+      "version": "11.0.8",
       "declared_license": "BlueOak-1.0.0",
-      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-10.2.6.tgz",
-      "integrity": "sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==",
-      "metadata_sha256": "0a59778efc3c4a83f728bbd7c54aa415e4c48ac110001ea4715cbd95117c0df3"
+      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.8.tgz",
+      "integrity": "sha512-nFQuYSTVrGvysVBps5Ih+0BdnYFN/Cj3C816r6+p7yK+FHrVLGE4O4N9AFwykrlNlvM2HYt+Rad1Uiro6h88Ig==",
+      "metadata_sha256": "b99a844224c319a2f4c44454ef4a8b9d0e70c12ca3d79d18ffc202269cb30955"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8161,7 +8201,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed frontend and MCP tooling identities, integrity and unchanged ISC, MIT and Apache-2.0 declarations; preserved exact historical evidence gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed development ESLint MIT, config-array Apache-2.0 and minimatch/nonrecursive-glob-match BlueOak-1.0.0 metadata and upstream-compatible ranges; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
