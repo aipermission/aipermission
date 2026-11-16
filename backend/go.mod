@@ -18,7 +18,7 @@ require (
 	github.com/emersion/go-smtp v0.25.0
 	github.com/golang-sql/sqlexp v0.1.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/klauspost/compress v1.20.3
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/microsoft/go-mssqldb v1.11.2
