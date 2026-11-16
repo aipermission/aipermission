@@ -40,6 +40,9 @@ and this project uses semantic versioning for public releases.
 
 ### Security
 
+- Update PostgreSQL pgx to 5.13.0 for GHSA-w9rp-vfrh-q8vv; malformed wire rows fail
+  without publishing partial results or retrying the query, with a native protocol
+  regression test.
 - Update the reviewed Node.js toolchain to 24.22.3 and MCP runtime floors to 22.23.5,
   24.22.3 or 26.13.1 for the November security release; restart AI clients after
   updating Node.js.

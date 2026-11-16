@@ -77,6 +77,8 @@ func (f *executeWireFixture) serve() error {
 		return b.Flush()
 	}
 	b.Send(&pgproto3.AuthenticationOk{})
+	b.Send(&pgproto3.ParameterStatus{Name: "standard_conforming_strings", Value: "on"})
+	b.Send(&pgproto3.ParameterStatus{Name: "client_encoding", Value: "UTF8"})
 	b.Send(&pgproto3.BackendKeyData{ProcessID: 42, SecretKey: []byte{1, 2, 3, 4}})
 	b.Send(&pgproto3.ReadyForQuery{TxStatus: 'I'})
 	if err := b.Flush(); err != nil {
