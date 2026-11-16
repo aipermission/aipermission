@@ -35,7 +35,7 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "d60e77f47f6831b6891667639993a0eeed86e18b0a5e2ef104d03ea17442547a"
+      "sha256": "fa299a4226680632f62c7f7af06b3db00a93410d63cce27c4237f3490740ad78"
     },
     {
       "path": "backend/go.sum",
@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "526bb968d9711f3021d36978bca1629146f4c69b8e61c4e6ded7a74233c8ebdf"
+      "sha256": "84d2ab0a3d0f164e23f5ae8c615e51952a8808be60f31882856c1213ef0dfe1a"
     },
     {
       "path": "third_party/go-mssqldb-upstream.json",
@@ -6097,7 +6097,7 @@
       "Path": "github.com/aipermission/aipermission/backend"
     },
     "Go": "1.26.0",
-    "Toolchain": "go1.27.3",
+    "Toolchain": "go1.27.4",
     "Require": [
       {
         "Path": "github.com/ClickHouse/clickhouse-go/v2",
@@ -8120,11 +8120,11 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "526bb968d9711f3021d36978bca1629146f4c69b8e61c4e6ded7a74233c8ebdf"
+    "sha256": "84d2ab0a3d0f164e23f5ae8c615e51952a8808be60f31882856c1213ef0dfe1a"
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed frontend and MCP npm dependency identities and unchanged declared license families, SCRAM 1.4.0 evidence and preserved historical gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed Go 1.27.4 parser and native builder alignment; dependency identities and license declarations unchanged; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {

@@ -2,7 +2,7 @@ module github.com/aipermission/aipermission/backend
 
 go 1.26.0
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 replace github.com/microsoft/go-mssqldb => ../third_party/go-mssqldb
 
