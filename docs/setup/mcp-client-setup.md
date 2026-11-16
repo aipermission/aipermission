@@ -9,7 +9,7 @@ Prerequisites:
 1. The gateway is running with `docker compose up`.
 2. An API token exists in the web UI.
 3. The token has at least one connector target/profile/action permission.
-4. Patched Node.js 22.23.4+, 24.22.1+, or 26.12.1+ and npm/npx are available in the AI client's child-process
+4. Patched Node.js 22.23.5+, 24.22.3+, or 26.13.1+ and npm/npx are available in the AI client's child-process
    environment. GUI applications, WSL, and native Windows shells can have a
    different `PATH` from the terminal where setup is run.
 

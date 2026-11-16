@@ -98,7 +98,7 @@ and [credential boundary](docs/security/credential-boundary.md) before using it
 with important systems.
 
 Security updates cover both gateway images and the MCP client's Node.js
-runtime. Use patched Node 22.23.4+, 24.22.1+, or 26.12.1+ for MCP, then restart
+runtime. Use patched Node 22.23.5+, 24.22.3+, or 26.13.1+ for MCP, then restart
 the client after upgrading its interpreter. See the [changelog](CHANGELOG.md)
 and [native dependency inventory](docs/security/native-dependencies.md), including
 the explicitly tracked SQLCipher upstream follow-up.
@@ -137,7 +137,7 @@ through MCP or the normal REST API.
 Requirements:
 
 - Docker with Docker Compose
-- Patched Node.js 22.23.4+, 24.22.1+, or 26.12.1+ with npm/npx for the MCP bridge; Node.js 24.22.2 is the reviewed development toolchain
+- Patched Node.js 22.23.5+, 24.22.3+, or 26.13.1+ with npm/npx for the MCP bridge; Node.js 24.22.3 is the reviewed development toolchain
 
 Start from a full Git checkout so version pinning and repository verification
 metadata remain available:

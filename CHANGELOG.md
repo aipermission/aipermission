@@ -40,6 +40,9 @@ and this project uses semantic versioning for public releases.
 
 ### Security
 
+- Update the reviewed Node.js toolchain to 24.22.3 and MCP runtime floors to 22.23.5,
+  24.22.3 or 26.13.1 for the November security release; restart AI clients after
+  updating Node.js.
 - Align native builders, CI and contributor verification on Go 1.27.4 for GO-2026-6859
   (CVE-2026-97054), preserving the existing bounded HTTP body and authorization checks.
 - Require patched libxslt 1.1.43-r4 or later in the frontend runtime for CVE-2026-87636

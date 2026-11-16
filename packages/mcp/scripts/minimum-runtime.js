@@ -9,7 +9,7 @@ import { minimumRuntimeVersions, supportedNodeEngines } from "../src/runtime-pol
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const version = minimumRuntimeVersions[0];
-const archiveHash = "1805bcd35e6815559bd2eb97db438d3fdb0eb3a5e6a977b7c1badca76337e9ce";
+const archiveHash = "cdeb8670a0c81f51b4dc4ac61919f9b1ad917b304bf8221eb939570663d240f8";
 assert.equal(JSON.parse(await fs.readFile(new URL("../package.json", import.meta.url), "utf8")).engines.node, supportedNodeEngines);
 
 // Ubuntu CI exercises the published runtime floor, independently of build tooling.

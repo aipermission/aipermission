@@ -12,7 +12,7 @@ for (const entry of ["cli.js", "server.js"]) {
       [
         "--input-type=module",
         "--eval",
-        `process.argv = ["node", ${JSON.stringify(target)}, "--help"]; Object.defineProperty(process.versions, "node", { value: "24.22.0" }); await import(${JSON.stringify(target)});`,
+        `process.argv = ["node", ${JSON.stringify(target)}, "--help"]; Object.defineProperty(process.versions, "node", { value: "24.22.2" }); await import(${JSON.stringify(target)});`,
       ],
       {
         encoding: "utf8",
@@ -22,25 +22,30 @@ for (const entry of ["cli.js", "server.js"]) {
     );
     assert.ifError(result.error);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /Unsupported Node\.js.*24\.22\.0/);
+    assert.match(result.stderr, /Unsupported Node\.js.*24\.22\.2/);
     assert.doesNotMatch(result.stderr, /API_TOKEN|gateway URL configuration/);
   });
 }
 
 test("runtime policy excludes vulnerable patches, EOL lines and prereleases", () => {
-  for (const version of ["22.23.4", "22.24.0", "24.22.1", "24.23.0", "26.12.1", "27.0.0"]) {
+  for (const version of ["22.23.5", "22.24.0", "24.22.3", "24.23.0", "26.13.1", "27.0.0"]) {
     assert.equal(isSupportedNodeRuntime(version), true, version);
   }
   for (const version of [
     "20.19.0",
     "22.21.0",
     "22.23.3",
+    "22.23.4",
     "23.99.0",
     "24.22.0",
+    "24.22.1",
+    "24.22.2",
     "25.99.0",
     "26.12.0",
-    "24.22.1-rc.1",
-    "v24.22.1",
+    "26.12.1",
+    "26.13.0",
+    "24.22.3-rc.1",
+    "v24.22.3",
     "",
     undefined,
     "99999999999999999.0.0",

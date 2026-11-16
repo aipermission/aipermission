@@ -19,11 +19,11 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "754d36b3886c3628aef1441e8bc7b517a93c0764b641d75fedded8db3de11510"
+      "sha256": "58acb28c648268a4f50006d8e73ee88b2ae77bff5a942d130acb9b307f44cce5"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "651a7483bb7533257fa617d781dd5003bbb5232fee450a3be913a9a5ad60a532"
+      "sha256": "66928d48b72e64c057d9e11671aaf4bacfa2320a23ef163919e9080170384f16"
     },
     {
       "path": "scripts/package.json",
@@ -4389,7 +4389,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "148416d5501049381e9ec1d7da8bbe0c146e5fbeca0abcac2a4675f29dbd023d"
+      "metadata_sha256": "2fd6a7b9c2d614ecf0a61eeaed4c1a3886d284e853790162959d1c6a28e42473"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8124,7 +8124,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed Go 1.27.4 parser and native builder alignment; dependency identities and license declarations unchanged; preserved exact historical evidence gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed patched Node.js runtime floors and MCP package metadata; dependency identities and license declarations unchanged; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
