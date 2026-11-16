@@ -40,6 +40,10 @@ and this project uses semantic versioning for public releases.
 
 ### Security
 
+- Update development-only ESLint to 10.15.0 and its compatible config/glob dependencies
+  for GHSA-g3hv-75wg-m249. Retain the separately tracked frontend
+  TypeScript/accessibility tooling advisory until compatible upstream fixes exist; do
+  not force dependency overrides.
 - Refresh the MCP SDK's transitive Hono dependency to 4.13.19, including upstream
   middleware security fixes, without exposing an HTTP server or changing the stdio
   gateway boundary.

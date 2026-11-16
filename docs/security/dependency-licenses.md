@@ -9,6 +9,13 @@ and Go source checksums are captured; existing native evidence, patched MSSQL
 ownership and the 38 acknowledged historical gaps remain unchanged. This is
 metadata review, not legal compatibility or vulnerability clearance.
 
+The same release records development-only ESLint 10.15.0 (MIT), config-array
+0.23.6 (Apache-2.0), minimatch 11.0.8 and nonrecursive-glob-match 1.1.0
+(BlueOak-1.0.0). These resolve within upstream dependency ranges; no override
+forces minimatch 11 into frontend TypeScript or accessibility consumers that
+still require version 10. Their development-only advisory remains open until
+compatible fixes are available. Neither linter is shipped in the MCP artifact.
+
 Release 0.2.78 records SCRAM 1.4.0 and removes its obsolete
 `xdg-go/pbkdf2` dependency. SCRAM's named license hash is unchanged. Reviewed
 upstream MSSQL snapshot checksums remain present even though `go mod tidy`

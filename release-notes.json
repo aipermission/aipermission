@@ -21,6 +21,7 @@
     {
       "title": "Security",
       "items": [
+        "Update development-only ESLint to 10.15.0 and its compatible config/glob dependencies for GHSA-g3hv-75wg-m249. Retain the separately tracked frontend TypeScript/accessibility tooling advisory until compatible upstream fixes exist; do not force dependency overrides.",
         "Refresh the MCP SDK's transitive Hono dependency to 4.13.19, including upstream middleware security fixes, without exposing an HTTP server or changing the stdio gateway boundary.",
         "Update PostgreSQL pgx to 5.13.0 for GHSA-w9rp-vfrh-q8vv; malformed wire rows fail without publishing partial results or retrying the query, with a native protocol regression test.",
         "Update the reviewed Node.js toolchain to 24.22.3 and MCP runtime floors to 22.23.5, 24.22.3 or 26.13.1 for the November security release; restart AI clients after updating Node.js.",
