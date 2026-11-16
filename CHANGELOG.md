@@ -54,6 +54,12 @@ and this project uses semantic versioning for public releases.
 - Require patched libxslt 1.1.43-r4 or later in the frontend runtime for CVE-2026-87636
   and CVE-2026-9947; stop image builds when the patched package is unavailable.
 
+### Maintenance
+
+- Refresh frontend Lucide 1.72.0, user-event 14.6.10, TypeScript ESLint 8.72.2,
+  fake-indexeddb 6.2.8, jscpd 5.4.3, Vite 6.4.6 and frontend/MCP Prettier 3.10.1 through
+  maintainer-authored commits, preserving existing quality budgets.
+
 ## [0.2.78] - 2026-11-09
 
 ### Added

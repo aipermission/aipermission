@@ -1,5 +1,14 @@
 # Dependency License Metadata Inventory
 
+Release 0.2.79 records pgx 5.13.0 and puddle 2.2.3 with named MIT evidence,
+and MCP Hono 4.13.19 with its unchanged MIT declaration. It also records frontend
+Lucide 1.72.0 (ISC), user-event 14.6.10, TypeScript ESLint 8.72.2, jscpd 5.4.3,
+Vite 6.4.6 and Prettier 3.10.1 (MIT), plus fake-indexeddb 6.2.8 (Apache-2.0).
+MCP's development Prettier uses the same reviewed patch. Exact npm integrity
+and Go source checksums are captured; existing native evidence, patched MSSQL
+ownership and the 38 acknowledged historical gaps remain unchanged. This is
+metadata review, not legal compatibility or vulnerability clearance.
+
 Release 0.2.78 records SCRAM 1.4.0 and removes its obsolete
 `xdg-go/pbkdf2` dependency. SCRAM's named license hash is unchanged. Reviewed
 upstream MSSQL snapshot checksums remain present even though `go mod tidy`
