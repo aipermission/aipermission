@@ -40,6 +40,9 @@ and this project uses semantic versioning for public releases.
 
 ### Security
 
+- Refresh the MCP SDK's transitive Hono dependency to 4.13.19, including upstream
+  middleware security fixes, without exposing an HTTP server or changing the stdio
+  gateway boundary.
 - Update PostgreSQL pgx to 5.13.0 for GHSA-w9rp-vfrh-q8vv; malformed wire rows fail
   without publishing partial results or retrying the query, with a native protocol
   regression test.

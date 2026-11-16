@@ -23,7 +23,7 @@
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "66928d48b72e64c057d9e11671aaf4bacfa2320a23ef163919e9080170384f16"
+      "sha256": "d28f14b866a24c5d233034a7132c9ae9a17a3eb1f7e362449a00973d621d5c02"
     },
     {
       "path": "scripts/package.json",
@@ -5275,11 +5275,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/hono",
       "name": "hono",
-      "version": "4.13.12",
+      "version": "4.13.19",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/hono/-/hono-4.13.12.tgz",
-      "integrity": "sha512-6E2QDAc9Ick9Sq77ZrGS/dk2WUYni91aufTw6LJKpV7w8kW5/GxVUc650FOADOmlwg3K+f7Pun6XlV+pYmW6gw==",
-      "metadata_sha256": "c01d68a59d102616aff8ece0c658b6bd35daafa5ef6b3f1e2ab21a102614d7d6"
+      "resolved": "https://registry.npmjs.org/hono/-/hono-4.13.19.tgz",
+      "integrity": "sha512-KmXvQAXwcAHV+muzbIwoJ23niEB5nMoDVr9WcRkU8mvjUECm/1+7v4Jgp7P7a+H6MLFrh+vXrGonGrGS+RQfkA==",
+      "metadata_sha256": "4f9e0072a5513cdc23eafc8fe9bab11bba8b1e0d4cf703235a0d353c9eb649cb"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -8161,7 +8161,7 @@
   },
   "review": {
     "status": "metadata-reviewed",
-    "reviewer": "Codex maintainer: reviewed pgx 5.13.0 and puddle 2.2.3 MIT license files and checksums; preserved patched MSSQL replacement; preserved exact historical evidence gaps; no legal compatibility assertion",
+    "reviewer": "Codex maintainer: reviewed SDK-compatible Hono 4.13.19 package identity, integrity and unchanged MIT license declaration; preserved exact historical evidence gaps; no legal compatibility assertion",
     "scope": "Metadata and evidence gaps only; no legal or SPDX compatibility assertion",
     "missing_go_evidence": [
       {
