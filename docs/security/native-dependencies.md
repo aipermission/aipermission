@@ -99,11 +99,30 @@ are not treated as complete native-code CVE coverage.
 
 ## Frontend Runtime Packages
 
+The untagged post-0.2.79 maintenance refresh requires
+`nginx>=1.30.7-r0` and `libxml2>=2.13.9-r5` after a fresh image scan.
+See the [nginx advisories](https://nginx.org/en/security_advisories.html) and
+[Alpine libxml2 tracker](https://security.alpinelinux.org/vuln/CVE-2026-11979).
+The immutable base remains unchanged. Its inactive GeoIP, image-filter, njs
+and XSLT modules are removed before upgrading nginx: their exact old-version
+dependencies otherwise prevent APK from selecting a patched binary. The
+gateway configuration loads none of these optional modules, and the rebuilt
+image must pass `nginx -t` as UID101.
+These package matches do not assert that optional HTTP/2, HTTP/3, mail proxy
+or XML utilities are enabled by the gateway configuration.
+
+The backend image explicitly upgrades and enforces
+`libpam-modules`, `libpam-modules-bin`, `libpam-runtime` and `libpam0g`
+at `1.5.2-6+deb12u3` or newer for
+[Debian DLA-4941-1](https://security-tracker.debian.org/tracker/DLA-4941-1).
+The native inventory records these floors; the final image scan remains a
+separate required check. This does not add PAM authentication to AIPermission.
+
 The frontend Dockerfile upgrades the pinned nginx image's Alpine packages and
 requires `libx11>=1.8.14-r0` for CVE-2026-88806, alongside the existing PCRE2 and
 TIFF minimums. The unprivileged base is pinned to nginx 1.30.6's immutable image
-digest, preserving its matched nginx modules. It also requires
-`nginx>=1.30.6-r0` for CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205; see the
+digest; the patched binary resolves under the newer floors above. The earlier
+`nginx>=1.30.6-r0` floor addressed CVE-2026-15176, CVE-2026-93479 and CVE-2026-97205; see the
 [upstream nginx advisories](https://nginx.org/en/security_advisories.html).
 This package floor is not evidence that the application's configuration exposes
 each advisory's prerequisites. A source regression preserves the guards and

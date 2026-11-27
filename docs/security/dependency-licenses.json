@@ -43,7 +43,7 @@
     },
     {
       "path": "docs/security/native-dependencies.json",
-      "sha256": "84d2ab0a3d0f164e23f5ae8c615e51952a8808be60f31882856c1213ef0dfe1a"
+      "sha256": "282cf9dd9e1b04320cf6eb99fda184de896b85d1f7a0a5058f430078c7d654c3"
     },
     {
       "path": "third_party/go-mssqldb-upstream.json",
@@ -8245,7 +8245,7 @@
   ],
   "native": {
     "path": "docs/security/native-dependencies.json",
-    "sha256": "84d2ab0a3d0f164e23f5ae8c615e51952a8808be60f31882856c1213ef0dfe1a"
+    "sha256": "282cf9dd9e1b04320cf6eb99fda184de896b85d1f7a0a5058f430078c7d654c3"
   },
   "review": {
     "status": "metadata-reviewed",

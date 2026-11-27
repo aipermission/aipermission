@@ -119,6 +119,18 @@ test("backend bootstraps patched APT without vulnerable download retries", () =>
 test("frontend runtime installs patched native packages before dropping root", () => {
   assert.match(
     read("frontend/Dockerfile"),
-    /USER root\s+RUN apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0' 'tiff>=4\.7\.2-r0' 'libx11>=1\.8\.14-r0' 'nginx>=1\.30\.6-r0' 'brotli-libs>=1\.2\.1-r0' 'curl>=8\.23\.0-r0' 'libcurl>=8\.23\.0-r0' 'libexpat>=2\.10\.0-r0' 'musl>=1\.2\.6-r3' 'musl-utils>=1\.2\.6-r3' 'libxslt>=1\.1\.43-r4'\s+USER 101/,
+    /USER root\s+# [^\n]+\nRUN apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \\\n\s+&& apk upgrade --no-cache [^\n]*\\\n\s+&& apk add --upgrade --no-cache 'pcre2>=10\.49-r0' 'tiff>=4\.7\.2-r0' 'libx11>=1\.8\.14-r0' 'nginx>=1\.30\.7-r0' 'brotli-libs>=1\.2\.1-r0' 'curl>=8\.23\.0-r0' 'libcurl>=8\.23\.0-r0' 'libexpat>=2\.10\.0-r0' 'musl>=1\.2\.6-r3' 'musl-utils>=1\.2\.6-r3' 'libxslt>=1\.1\.43-r4' 'libxml2>=2\.13\.9-r5'\s+USER 101/,
   );
+});
+
+test("backend runtime installs and enforces patched PAM package minimums", () => {
+  const dockerfile = read("backend/Dockerfile");
+  const inventory = JSON.parse(read("docs/security/native-dependencies.json"));
+  const install = dockerfile.split("FROM debian:")[1].match(/apt-get -o Acquire::Retries=0 install[^\n]+/)[0];
+  for (const name of ["libpam-modules", "libpam-modules-bin", "libpam-runtime", "libpam0g"]) {
+    assert.ok(install.split(/\s+/).includes(name));
+    assert.ok(inventory.sqlcipher.container.runtime_packages.includes(name));
+    assert.equal(inventory.sqlcipher.container.runtime_minimum_versions[name], "1.5.2-6+deb12u3");
+    assert.ok(dockerfile.includes(`dpkg --compare-versions "$(dpkg-query -W -f='\${Version}' ${name})" ge "1.5.2-6+deb12u3"`));
+  }
 });

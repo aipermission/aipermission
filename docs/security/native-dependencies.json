@@ -32,10 +32,23 @@
       "builder_image": "golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea",
       "runtime_image": "debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171",
       "build_packages": ["apt", "libssl-dev"],
-      "runtime_packages": ["apt", "libapt-pkg6.0", "libpcre2-8-0", "libssl3"],
+      "runtime_packages": [
+        "apt",
+        "libapt-pkg6.0",
+        "libpam-modules",
+        "libpam-modules-bin",
+        "libpam-runtime",
+        "libpam0g",
+        "libpcre2-8-0",
+        "libssl3"
+      ],
       "runtime_minimum_versions": {
         "apt": "2.6.2",
         "libapt-pkg6.0": "2.6.2",
+        "libpam-modules": "1.5.2-6+deb12u3",
+        "libpam-modules-bin": "1.5.2-6+deb12u3",
+        "libpam-runtime": "1.5.2-6+deb12u3",
+        "libpam0g": "1.5.2-6+deb12u3",
         "libpcre2-8-0": "10.42-1+deb12u2"
       },
       "resolved_package_versions": "published-image-sbom"

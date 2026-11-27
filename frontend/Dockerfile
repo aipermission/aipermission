@@ -22,8 +22,10 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.30.6-alpine@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
 
 USER root
-RUN apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid \
-    && apk add --upgrade --no-cache 'pcre2>=10.49-r0' 'tiff>=4.7.2-r0' 'libx11>=1.8.14-r0' 'nginx>=1.30.6-r0' 'brotli-libs>=1.2.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' 'libexpat>=2.10.0-r0' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' 'libxslt>=1.1.43-r4'
+# These inactive upstream modules pin nginx to the old base-image patch.
+RUN apk del --no-cache nginx-module-geoip nginx-module-image-filter nginx-module-njs nginx-module-xslt \
+    && apk upgrade --no-cache libcrypto3 libssl3 libexpat libuuid \
+    && apk add --upgrade --no-cache 'pcre2>=10.49-r0' 'tiff>=4.7.2-r0' 'libx11>=1.8.14-r0' 'nginx>=1.30.7-r0' 'brotli-libs>=1.2.1-r0' 'curl>=8.23.0-r0' 'libcurl>=8.23.0-r0' 'libexpat>=2.10.0-r0' 'musl>=1.2.6-r3' 'musl-utils>=1.2.6-r3' 'libxslt>=1.1.43-r4' 'libxml2>=2.13.9-r5'
 USER 101
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf

@@ -40,7 +40,7 @@ FROM debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe6
 WORKDIR /app
 
 RUN apt-get -o Acquire::Retries=0 update \
-	&& apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt ca-certificates curl gnupg gosu libpcre2-8-0 libssl3 \
+	&& apt-get -o Acquire::Retries=0 install -y --no-install-recommends apt ca-certificates curl gnupg gosu libpam-modules libpam-modules-bin libpam-runtime libpam0g libpcre2-8-0 libssl3 \
 	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge "2.6.2" \
 	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg6.0)" ge "2.6.2" \
 	&& install -d /usr/share/postgresql-common/pgdg \
@@ -52,6 +52,10 @@ RUN apt-get -o Acquire::Retries=0 update \
 	&& apt-get install -y --no-install-recommends postgresql-client-14 postgresql-client-15 postgresql-client-16 postgresql-client-17 postgresql-client-18 \
 	&& apt-get purge -y --auto-remove curl gnupg \
 	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge "10.42-1+deb12u2" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpam-modules)" ge "1.5.2-6+deb12u3" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpam-modules-bin)" ge "1.5.2-6+deb12u3" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpam-runtime)" ge "1.5.2-6+deb12u3" \
+	&& dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpam0g)" ge "1.5.2-6+deb12u3" \
 	&& rm -rf /var/lib/apt/lists/* \
 	&& useradd --system --uid 10001 --home /app --shell /usr/sbin/nologin aipermission \
 	&& mkdir -p /app/data \
