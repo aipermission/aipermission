@@ -6,6 +6,11 @@ identity, native evidence and the 38 acknowledged historical gaps are preserved.
 This records dependency metadata, not legal compatibility or vulnerability
 clearance.
 
+The same maintenance batch records MCP Undici 8.13.0 with its unchanged MIT
+declaration and exact registry integrity. Existing timeout, dispatcher disposal
+and stdio artifact checks remain required; the published 0.2.79 npm package is
+not replaced by this untagged source update.
+
 Release 0.2.79 records pgx 5.13.0 and puddle 2.2.3 with named MIT evidence,
 and MCP Hono 4.13.19 with its unchanged MIT declaration. It also records frontend
 Lucide 1.72.0 (ISC), user-event 14.6.10, TypeScript ESLint 8.72.2, jscpd 5.4.3,
