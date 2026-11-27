@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "e187263e77f54e758deb2505d8a703867d87658b1225ba691ebad8557f35e051"
+      "sha256": "9f87b8e60c1b36ea5ac80d7992d8e4bbeb6b8fa0a39d3ec3e21ea2fe7fb85fa0"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "e994305b96ac3069ca78395b3c4e0b40c3ceacdd7bc975ee4ebdc1db56b4142e"
+      "sha256": "ebf12d8fcf12b80f482b37443f2f7640eab6f1e0e5c65b4b775048ec91213ec5"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6191,7 +6191,7 @@
       },
       {
         "Path": "github.com/gorilla/websocket",
-        "Version": "v1.5.3"
+        "Version": "v1.5.4-0.20240701034025-d67f41855da4"
       },
       {
         "Path": "github.com/jackc/pgx/v5",
@@ -6833,12 +6833,31 @@
         "module": "h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aNNg=",
         "go_mod": "h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE="
       },
-      "requirement": "direct",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "github.com/gorilla/websocket@v1.5.3/LICENSE",
+            "sha256": "2be1b548b0387ca8948e1bb9434e709126904d15f622cc2d0d8e7f186e4d122d",
+            "bytes": 1312
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/gorilla/websocket",
+      "version": "v1.5.4-0.20240701034025-d67f41855da4",
+      "checksums": {
+        "module": "h1:PYKzliEgITjLJoJqbV90S0YRaG8LNAsICH6fp6MApC0=",
+        "go_mod": "h1:r4w70xmWCQKmi1ONH4KIaBptdivuRPyosB9RmPlGEwA="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/gorilla/websocket@v1.5.4-0.20240701034025-d67f41855da4/LICENSE",
             "sha256": "2be1b548b0387ca8948e1bb9434e709126904d15f622cc2d0d8e7f186e4d122d",
             "bytes": 1312
           }
