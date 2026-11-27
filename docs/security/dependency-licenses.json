@@ -11,11 +11,11 @@
   "sources": [
     {
       "path": "frontend/package.json",
-      "sha256": "7c3a87112f856ddef08e5aade2360df502e57b9d99d3b01b2c5488f8fe7b72cf"
+      "sha256": "070f180f8fea8261702b953e0794378f1736ab6eed086733ac18ab3c02502f94"
     },
     {
       "path": "frontend/package-lock.json",
-      "sha256": "943a4c7d68b5fa4f16136d3b7d2e0e07bfe7e665e28b433f922de11eae9dac68"
+      "sha256": "e2e1421f3e106a77bb8f0343f22db813e8785e547820252cd192d4c5ba03aef3"
     },
     {
       "path": "packages/mcp/package.json",
@@ -59,7 +59,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "98ecd6592ef387eb7bf9ce98a5f39587025e49b5b99088c7b2f8165a11b26918"
+      "metadata_sha256": "aef131ecfa08a884de70c3a7d5b6ec32c9271f220abc34ed31d576852fa5841f"
     },
     {
       "source": "frontend/package-lock.json",
@@ -885,11 +885,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@playwright/test",
       "name": "@playwright/test",
-      "version": "1.65.0",
+      "version": "1.65.1",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.65.0.tgz",
-      "integrity": "sha512-iGURLGuKDLakSEl7Pgfv8h7f+XLT+V861Wfhz0zlEl5nyFuKUopdkFBPKqTllTUp06aOwPuH8iuUEb3yp3MpbQ==",
-      "metadata_sha256": "4908cc444c16667dc2aef999104f27bf4af6585c28484ef257d34268dcc101ee"
+      "resolved": "https://registry.npmjs.org/@playwright/test/-/test-1.65.1.tgz",
+      "integrity": "sha512-y+NCIRm2LvY4slUVWvGh1nujJ8RF/hEisIsq2mtUPgdQC4L701bq5hZGMhrpeXjACvwvO9tj5dJqhvM6TP9lbw==",
+      "metadata_sha256": "46f5cf50e58241adefbb256ddff846248d0422b197ce1afc7b66def07f36386e"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1665,11 +1665,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@testing-library/user-event",
       "name": "@testing-library/user-event",
-      "version": "14.6.10",
+      "version": "14.6.13",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@testing-library/user-event/-/user-event-14.6.10.tgz",
-      "integrity": "sha512-tA4stGNp3mLGOGO+lh87UA56Tz4c8NVGBSkyIF58O+W/bs2Re9BCI9xihnL70+DsThncFznE0skS88SM1D2hyg==",
-      "metadata_sha256": "4ceabd1236fcf23c553836b746a50a824dde23fb08aecaeb6ce15845180fb2e9"
+      "resolved": "https://registry.npmjs.org/@testing-library/user-event/-/user-event-14.6.13.tgz",
+      "integrity": "sha512-2LVZGptuB5un1Cu/u31o9adkCwbsUTMp4B4p04xupI7uobvTIpgKidSdShqZiReo/mQmvR9xjgdgTgge4oAbYA==",
+      "metadata_sha256": "86231dea75e58fa50514e4c6bdc7e1e4345c797c940cc86d1ce81d56101dc3de"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1815,61 +1815,71 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/parser",
       "name": "@typescript-eslint/parser",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.72.2.tgz",
-      "integrity": "sha512-llP+T1YuJOLlxEciP6OyQGtz5SMxyn+9LA2BvZw5RmToGVa1y4beEDVQL6Gje7T5WFYh19WREjDCN9Ev4gm5AA==",
-      "metadata_sha256": "9c44e4a10cfbe7b7428161b8c5d3258df5e54b785b083e6b16ec32645423133e"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/parser/-/parser-8.73.0.tgz",
+      "integrity": "sha512-AuL45bVcmssHfZ3Di3cs9Q0l4gBm4ZFVrJOQEE7VpqW+PVgQaEwSwazz4TVIiFabXkk6U51EprYDwqw+HR8ePw==",
+      "metadata_sha256": "761ddbe939cee40ccdcf7304b8b1a79007d579f326340152d051311498f4e7ac"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/project-service",
       "name": "@typescript-eslint/project-service",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.72.2.tgz",
-      "integrity": "sha512-6y5dLTZdHhI8Eh3yIQ/bfQhRKwn5e+TpJj64o18Cngc0iW/BCrVvrr6zGYqXPnYH31u6YXAYiFh0+qxX5mybJw==",
-      "metadata_sha256": "42bce0dbd38b04421e174e665f90ca715db6406f2e0ae95e881e367beac43894"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/project-service/-/project-service-8.73.0.tgz",
+      "integrity": "sha512-/pEf8Rc4Mjk+qJnY0uO1+Gadeal8uv50xpuic+srG2vIVatA0XxvWMUeMtFvs6OCHqftiQ7/+qH4aehG5stzIA==",
+      "metadata_sha256": "750566ec9c477c3109378227e1e4db026af69fa293c388677fb6272966d3b079"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/scope-manager",
       "name": "@typescript-eslint/scope-manager",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.72.2.tgz",
-      "integrity": "sha512-iIoMJ6/8c1/QpFNyFjU0d1YzPco4MsZjQw0k3V+vfzNWAFmUmvhlyMoYEoYYDQZXc+J6Gi1X5XcxlzW2taIIGQ==",
-      "metadata_sha256": "588318dc0490fc627b973f5dce144127dced63b782a2177696f3625ba5a6dce8"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/scope-manager/-/scope-manager-8.73.0.tgz",
+      "integrity": "sha512-/TjD738Iq2rzj5z0ixVOi+TsvgjAzZPLPaH1yWdDBytR/HTR5gMpyYWZeCe5WTQZLwk3ho8AV7U3muoQCRtXBQ==",
+      "metadata_sha256": "22ed7cbf01cd7b02811d6ebe45fa1b25adb4df6f14071b11b629b7a69b4e6bb2"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/tsconfig-utils",
       "name": "@typescript-eslint/tsconfig-utils",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.72.2.tgz",
-      "integrity": "sha512-+h3iCgZXuTNtoLXcnnjP12ZUHLMqoUcIHPfQrFEXTUqvb9dF8QK9b5nv5VtSo5fLkdHuks8ehbTzZj3rImAm9w==",
-      "metadata_sha256": "4f01464c9b2f3d2283d530d7d0a9c5c728310a37fd67eca31e8326bb80c491db"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/tsconfig-utils/-/tsconfig-utils-8.73.0.tgz",
+      "integrity": "sha512-lmtCFOfYaJfpqZywGuXi4FpNtE+NQ+YLe3T0K9rtEDcW8ZuGWvfI++pj8r05sYMI8vWT2CYK4rWyedmD6Rp4og==",
+      "metadata_sha256": "45cfe817c78ccccbda8dae84bd3d6d857f45a23810c021da20eb356b28d8c328"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/types",
       "name": "@typescript-eslint/types",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.72.2.tgz",
-      "integrity": "sha512-Xfn37OLZx03+PCU7qWx9DTv2FCRh1E6fk2+wONeNY15HXIwtcwuveaSwVpGAUptkNmPQegRxW5JyRel9T7wrog==",
-      "metadata_sha256": "3faec71f03ab5d276125f6b1cce136ed2951c36786fbe8ecb71521a754d443a1"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/types/-/types-8.73.0.tgz",
+      "integrity": "sha512-O/1ytYzflF16QDKXx4/qOXg1IuZp+n7hr9t+S0nv7N/2Tl8rJiNCshztV1gcSUvHbPtoX3+zmNbtSAyVbzxVfw==",
+      "metadata_sha256": "a6a8e1d4b69659286de07d1d17401ef47735c7a0126dc652d3041690ecdd3e09"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/typescript-estree",
       "name": "@typescript-eslint/typescript-estree",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.72.2.tgz",
-      "integrity": "sha512-pQEGqIK/cqEvKivVWaFLYpe7XYejFxfuAOi4mu1oAWFvIo36aRHI9esRFTUxcIy/z8N482RJyH+LpZB0ZIU7Ow==",
-      "metadata_sha256": "d24fd3cee508e4f65db6d25b16bc27f2894d409f2b250ebb60db3bb1d1e65aa2"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/typescript-estree/-/typescript-estree-8.73.0.tgz",
+      "integrity": "sha512-InjlBkSdWceIwIBWSwS3ENUp+i0O02PGX3Zv2wnihWJC1WDVGvG7mTHuf8b57uAaITj94d6tRPDH+sUEtXdRQQ==",
+      "metadata_sha256": "f4136084f40e45ad56a7b8548431a9744487f2977443c0b6381509e3f543862d"
+    },
+    {
+      "source": "frontend/package-lock.json",
+      "location": "node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch",
+      "name": "minimatch",
+      "version": "11.0.9",
+      "declared_license": "BlueOak-1.0.0",
+      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-11.0.9.tgz",
+      "integrity": "sha512-KCFkfyjqerNlSstjlhIGNXIKZGA/6O4V4RlhZ+Dsr621SPPw0mzlypE9D9ZOoPiVefHID+j7/XuMMlqfD/F60Q==",
+      "metadata_sha256": "ec0c74c1164346a35eebef08eb88e6692c55bef078b587487df228c3ee8f0232"
     },
     {
       "source": "frontend/package-lock.json",
@@ -1885,11 +1895,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/@typescript-eslint/visitor-keys",
       "name": "@typescript-eslint/visitor-keys",
-      "version": "8.72.2",
+      "version": "8.73.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.72.2.tgz",
-      "integrity": "sha512-NAGrjn0Pitjqzq/GkgMC4kBYm233PQ8GffyQ9+kTA3AlNQYEzOf25EIM02BAHZv5FRJSpHpJk+OGUxVkOB93GQ==",
-      "metadata_sha256": "eca93d5489ee112642b1307a5e1c1cb22dad6cdc45a245dcd2f7588258114de0"
+      "resolved": "https://registry.npmjs.org/@typescript-eslint/visitor-keys/-/visitor-keys-8.73.0.tgz",
+      "integrity": "sha512-k4lsFVpRZICbltkIEEH4hZRkwXkqDF1GHBpClKQOHQY+RkoZAAuyc1ci3I6p+CB6v3U4jaHIUshc4RzzQXZWLg==",
+      "metadata_sha256": "eee4cf5235b75ab07ac28ea91e5a52653ebb7e31369e0bcfac9aa6d4ec8172fd"
     },
     {
       "source": "frontend/package-lock.json",
@@ -2425,11 +2435,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/dompurify",
       "name": "dompurify",
-      "version": "3.4.17",
+      "version": "3.4.18",
       "declared_license": "(MPL-2.0 OR Apache-2.0)",
-      "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.17.tgz",
-      "integrity": "sha512-B/pSlYVHQ58kqISD/yDjuJ1yfzI34m1gF4lAod2bwSRhiN4K5Cl3H8Af7hqB2PmTL911tdEudnnXn5FnhRoz0w==",
-      "metadata_sha256": "a187f785ac59fbe897341d7e5315d17468528fd6dba50b3e35b73bd8e01dfd37"
+      "resolved": "https://registry.npmjs.org/dompurify/-/dompurify-3.4.18.tgz",
+      "integrity": "sha512-ofe3wI/uNm68HInABYFJYqQxRw1EaKAjNdrFVKqjUY+UZurvNd2L/HuQe097s/4RivWiZyP6tT7aoT8atjfhwg==",
+      "metadata_sha256": "5a31df1f646760725777c2b23f1d441f5352aac49c95277bff7255e5e9c74c4c"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3375,11 +3385,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/lucide-react",
       "name": "lucide-react",
-      "version": "1.72.0",
+      "version": "1.77.0",
       "declared_license": "ISC",
-      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.72.0.tgz",
-      "integrity": "sha512-fbF5i1GU8GODETa3Q7rXqrJrcx3iPYrQtxthom103zGx+Z0BGwKYAW9s+9435ohYJ7hQm0av0PoZcqI1CRwNrg==",
-      "metadata_sha256": "b74880d22a81ebfbc0fff82cc62ccdb6fd3fcc275c27460286a17794ef12f1d5"
+      "resolved": "https://registry.npmjs.org/lucide-react/-/lucide-react-1.77.0.tgz",
+      "integrity": "sha512-VS6sOi8ZUH1qm6swBL/tpI4xAhB6pFTdHvw3pfCJD+DaTJwpyynVzfOS6mdyMZ+OCdY/GMSQbqinOMOPbNSrQA==",
+      "metadata_sha256": "7de1769d502092017cbe0f903a314b1673e31a04bb07641017b9ba9e943410e2"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3655,21 +3665,21 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/playwright",
       "name": "playwright",
-      "version": "1.65.0",
+      "version": "1.65.1",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.65.0.tgz",
-      "integrity": "sha512-F3AMWcR44qMBt4kq+6Kb6mX7bjGXshktKFOPULd7reED6ZJWevjbNRqysP7q+AATE9kdPEZBibex1BYsvpVoeA==",
-      "metadata_sha256": "ec52918dc895425cfa374741492afe46594d8c9e76af01110f301da52e5bff4b"
+      "resolved": "https://registry.npmjs.org/playwright/-/playwright-1.65.1.tgz",
+      "integrity": "sha512-vJ1FuoOrNwOKHUIVEvSt3jT1L+wjjDpwhwIstKtfvTh8XIG4FG4bIFuvNdMxi81LGfAhUgUZleVFaOLY4RIUUw==",
+      "metadata_sha256": "3ff04cd0773c21db88187e74729833db9ecb49a86447bf333dce03bdf992d038"
     },
     {
       "source": "frontend/package-lock.json",
       "location": "node_modules/playwright-core",
       "name": "playwright-core",
-      "version": "1.65.0",
+      "version": "1.65.1",
       "declared_license": "Apache-2.0",
-      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.0.tgz",
-      "integrity": "sha512-vNSKgH6YqtN7cdT/L334zo0a+YwkrpicyrHJlWWPIm/Q+Nn2SWInil01oT0mbu96U4GgoRtCYQD9CzJQgju+lA==",
-      "metadata_sha256": "72651e8717a34d627f9c553e8e6f4a7d881c6c0b105c102b10d3f9fb6447c8fa"
+      "resolved": "https://registry.npmjs.org/playwright-core/-/playwright-core-1.65.1.tgz",
+      "integrity": "sha512-hqPpz7blSMPxWVdoeE1yiBSzXsKiVOd2k+kjCvmUywD2GPO2Dd9HfcWnq9NN0GHbNZDFgZ9JfBFr+X5/BLo0qw==",
+      "metadata_sha256": "fc1991f1618f395ea8473bdd86563706a332bafc497fc2e0802fce22be9a6d39"
     },
     {
       "source": "frontend/package-lock.json",
@@ -3815,11 +3825,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/react-router",
       "name": "react-router",
-      "version": "8.5.1",
+      "version": "8.5.2",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/react-router/-/react-router-8.5.1.tgz",
-      "integrity": "sha512-5u1eQ46QjuXjNfEnLwzrnou1Bm5dquO3xjVYkkMYCudtkicD2AQHtx+fvXzPATtPJx8TW6DR1x1TDRqsfHyZBw==",
-      "metadata_sha256": "2d2a5a401f74cd0879ab88f183be50f7b9d1bc748763036aa8130254cdf58ef3"
+      "resolved": "https://registry.npmjs.org/react-router/-/react-router-8.5.2.tgz",
+      "integrity": "sha512-luPXqNUAIZAmCHbeBysc2KO7VJjckIMZk4ByEetS7Jotit8R6lLSVVeC76UE//AYK6QD6tAnVAPGkvmqMd+b1w==",
+      "metadata_sha256": "e463805fbe0bcf125f4064fafe925acdb3a69dedcbd41ff40d6a7884ab633bb1"
     },
     {
       "source": "frontend/package-lock.json",
@@ -4005,11 +4015,11 @@
       "source": "frontend/package-lock.json",
       "location": "node_modules/tailwind-merge",
       "name": "tailwind-merge",
-      "version": "3.7.0",
+      "version": "3.7.1",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/tailwind-merge/-/tailwind-merge-3.7.0.tgz",
-      "integrity": "sha512-XPPUyAc+cvspz3lHTcR/QgPfW2A0lv/xQNIjX3HGhLR+Nq2lHaLq5MtTesHn8GUr3W3DguT2KT5x3NVgRtYwmA==",
-      "metadata_sha256": "56966202792dc065874b58170ae1be8d71d1cde7a58af1555046873d6fd11498"
+      "resolved": "https://registry.npmjs.org/tailwind-merge/-/tailwind-merge-3.7.1.tgz",
+      "integrity": "sha512-v7y4BV4FUlO8exj/4M5UXKeoowDiuugVUg3tkMNIyOUCOHy5xp8+5aWQeXCtZ2491sUV1YPsVeM9EveZ6/xuZQ==",
+      "metadata_sha256": "752a21a68bd68d5f838cb520f9e0da8f9cc1f83e8379adca09d051102bc44c21"
     },
     {
       "source": "frontend/package-lock.json",
