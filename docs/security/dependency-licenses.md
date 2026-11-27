@@ -11,6 +11,13 @@ declaration and exact registry integrity. Existing timeout, dispatcher disposal
 and stdio artifact checks remain required; the published 0.2.79 npm package is
 not replaced by this untagged source update.
 
+The frontend refresh records DOMPurify 3.4.18 (MPL-2.0 OR Apache-2.0),
+Lucide 1.77.0 (ISC), React Router 8.5.2, Tailwind Merge 3.7.1, user-event
+14.6.13 and TypeScript ESLint 8.73.0 (MIT), and Playwright 1.65.1
+(Apache-2.0). The parser's compatible minimatch 11 dependency retains its
+BlueOak-1.0.0 declaration. The Monaco sanitizer bridge and existing quality
+floors remain unchanged; this records artifact identity, not legal clearance.
+
 Release 0.2.79 records pgx 5.13.0 and puddle 2.2.3 with named MIT evidence,
 and MCP Hono 4.13.19 with its unchanged MIT declaration. It also records frontend
 Lucide 1.72.0 (ISC), user-event 14.6.10, TypeScript ESLint 8.72.2, jscpd 5.4.3,
@@ -344,7 +351,7 @@ baseline edits remain subject to independent review.
 
 Monaco 0.57.0 includes an embedded DOMPurify copy as well as a declared npm
 dependency. An npm override alone does not replace that embedded code.
-The frontend pins DOMPurify 3.4.17 and its Vite bridge redirects only Monaco's
+The frontend pins DOMPurify 3.4.18 and its Vite bridge redirects only Monaco's
 exact sanitizer import to that package in both the production graph and Vite's
 development dependency optimizer. An actual optimizer regression verifies the
 patched output and source identity. Production graph verification rejects
