@@ -35,11 +35,11 @@
     },
     {
       "path": "backend/go.mod",
-      "sha256": "095acd69bd1952f3e98541219b7ce33379ca41ff0942c2abacd6e34b41e933f0"
+      "sha256": "e187263e77f54e758deb2505d8a703867d87658b1225ba691ebad8557f35e051"
     },
     {
       "path": "backend/go.sum",
-      "sha256": "8a416b2880b5863c412955d4d6f115357c73184a489ccacd820bc817ba062d6e"
+      "sha256": "e994305b96ac3069ca78395b3c4e0b40c3ceacdd7bc975ee4ebdc1db56b4142e"
     },
     {
       "path": "docs/security/native-dependencies.json",
@@ -6221,7 +6221,7 @@
       },
       {
         "Path": "github.com/twmb/franz-go/pkg/kmsg",
-        "Version": "v1.15.0"
+        "Version": "v1.15.1"
       },
       {
         "Path": "github.com/xdg-go/scram",
@@ -7372,12 +7372,31 @@
         "module": "h1:mILdOQm4JkWojbSYVQ7KJNJ1qMdYNsLrdNOBUVKM6IA=",
         "go_mod": "h1:sGkGxKexpRLBThFHJLjjywcyfkK09qB/g+X+wFWZQ/A="
       },
-      "requirement": "direct",
+      "requirement": "sum-only",
       "evidence": {
         "status": "files-recorded",
         "files": [
           {
             "path": "github.com/twmb/franz-go/pkg/kmsg@v1.15.0/LICENSE",
+            "sha256": "9ed9133de92870659a93ee70f11102dac696c23a65d68161fa292f1a23831be6",
+            "bytes": 1491
+          }
+        ]
+      }
+    },
+    {
+      "module": "github.com/twmb/franz-go/pkg/kmsg",
+      "version": "v1.15.1",
+      "checksums": {
+        "module": "h1:3sj7ekbH33t73nsBcHS0wtp/PyMIViHLNItZrE8V9zM=",
+        "go_mod": "h1:sGkGxKexpRLBThFHJLjjywcyfkK09qB/g+X+wFWZQ/A="
+      },
+      "requirement": "direct",
+      "evidence": {
+        "status": "files-recorded",
+        "files": [
+          {
+            "path": "github.com/twmb/franz-go/pkg/kmsg@v1.15.1/LICENSE",
             "sha256": "9ed9133de92870659a93ee70f11102dac696c23a65d68161fa292f1a23831be6",
             "bytes": 1491
           }
