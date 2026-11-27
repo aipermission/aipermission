@@ -19,11 +19,11 @@
     },
     {
       "path": "packages/mcp/package.json",
-      "sha256": "381cf8e8c6ef84aba6b46aa0dc6ae108bf55209a73878bb005a83fb586a74743"
+      "sha256": "0d68dc3f73bdc73912834c8f348c05501ce49b84ed4258c278310db829a5ccea"
     },
     {
       "path": "packages/mcp/package-lock.json",
-      "sha256": "b08b1e79941d0a09b182447c6deb2a4dd9657878ef0c27acc3117681ac29e9ca"
+      "sha256": "fccaffe08349547f3cf14dbc40f32d92997aa066221a997cf4515e51b122fbfa"
     },
     {
       "path": "scripts/package.json",
@@ -4419,7 +4419,7 @@
       "declared_license": "AGPL-3.0-only",
       "resolved": null,
       "integrity": null,
-      "metadata_sha256": "5e6183e2147787e2a79c91807c8236b620542866fe9aabe0069de6bfc8048bd6"
+      "metadata_sha256": "f96d33c858e1102b0a8c025ceb967b58d2aac3fc42b949d2dd9b99c66b6b5641"
     },
     {
       "source": "packages/mcp/package-lock.json",
@@ -6005,11 +6005,11 @@
       "source": "packages/mcp/package-lock.json",
       "location": "node_modules/undici",
       "name": "undici",
-      "version": "8.12.4",
+      "version": "8.13.0",
       "declared_license": "MIT",
-      "resolved": "https://registry.npmjs.org/undici/-/undici-8.12.4.tgz",
-      "integrity": "sha512-8Mx+uNKKER2bA4AdtedkqRbwUCIJFr2nJckXRe5yrDqzePqwLP7VNcctN8/XdmDSbF7mS+jJKIszlL+vbam1VA==",
-      "metadata_sha256": "43e56feb2810684b325c14c68e4208a8633b7fbd149fc98e4d521950d733fe0f"
+      "resolved": "https://registry.npmjs.org/undici/-/undici-8.13.0.tgz",
+      "integrity": "sha512-mxbeyRlRhHUTWE1zf/FwDOXTKMhE1vMQRz/o2oOir/5fIWsB79TeZrByMkj019EdDuxPg03jprCjFLxLkmxTCQ==",
+      "metadata_sha256": "f6ecb92262a58cbe1eda7e5a31ddcb40e5bc1ab9ba59394b2222cbb107ce8ea4"
     },
     {
       "source": "packages/mcp/package-lock.json",
