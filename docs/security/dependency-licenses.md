@@ -18,6 +18,13 @@ Lucide 1.77.0 (ISC), React Router 8.5.2, Tailwind Merge 3.7.1, user-event
 BlueOak-1.0.0 declaration. The Monaco sanitizer bridge and existing quality
 floors remain unchanged; this records artifact identity, not legal clearance.
 
+The same untagged batch pins Gorilla WebSocket to upstream fix commit
+`d67f41855da42d7bccd9ef050c49f7e54e783b95` for
+[GO-2026-6278](https://pkg.go.dev/vuln/GO-2026-6278). Client frame masking uses
+`crypto/rand` instead of `math/rand`; named BSD evidence and exact Go module
+checksums are recorded. This dependency update does not change gateway origin,
+session or authorization rules. Existing historical evidence gaps remain open.
+
 Release 0.2.79 records pgx 5.13.0 and puddle 2.2.3 with named MIT evidence,
 and MCP Hono 4.13.19 with its unchanged MIT declaration. It also records frontend
 Lucide 1.72.0 (ISC), user-event 14.6.10, TypeScript ESLint 8.72.2, jscpd 5.4.3,
